@@ -10,6 +10,7 @@ import { fileTypeFromBuffer } from "file-type";
 import { connectToDatabase } from "./config/database.js";
 import { env } from "./config/env.js";
 import { authRouter } from "./routes/auth.js";
+import { homeSections } from "./services/home/homeConfig.js";
 import { OpenAIImageGenerator } from "./services/openai/generation.js";
 import { buildPrompt, findStyle, styles } from "./services/styles/styles.js";
 import type { UploadedImage } from "./types/generation.js";
@@ -60,6 +61,10 @@ app.get("/.well-known/assetlinks.json", (_req: Request, res: Response) => {
 
 app.get("/health", (_req: Request, res: Response) => {
   res.json({ ok: true, service: "ai-photo-studio-backend" });
+});
+
+app.get("/api/home/config", (_req: Request, res: Response) => {
+  res.json({ sections: homeSections });
 });
 
 app.get("/api/styles", (req: Request, res: Response) => {

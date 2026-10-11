@@ -56,6 +56,83 @@ describe("Android App Links endpoint", () => {
   });
 });
 
+describe("home configuration endpoint", () => {
+  it("returns the ordered, visible initial home sections", async () => {
+    const response = await request(app).get("/api/home/config");
+
+    expect(response.status).toBe(200);
+    expect(response.body.sections).toEqual([
+      {
+        id: "trending-styles",
+        title: "Trending Styles",
+        type: "collection",
+        slug: "Trending",
+        visible: true,
+        order: 1,
+      },
+      {
+        id: "popular",
+        title: "Popular",
+        type: "popular",
+        visible: true,
+        order: 2,
+      },
+      {
+        id: "couple",
+        title: "Couple",
+        type: "collection",
+        slug: "Couple",
+        visible: true,
+        order: 3,
+      },
+      {
+        id: "merge",
+        title: "Merge",
+        type: "collection",
+        slug: "Merge",
+        visible: true,
+        order: 4,
+      },
+      {
+        id: "professional",
+        title: "Professional",
+        type: "collection",
+        slug: "Professional",
+        visible: true,
+        order: 5,
+      },
+      {
+        id: "bhakti",
+        title: "Bhakti",
+        type: "collection",
+        slug: "Bhakti",
+        visible: true,
+        order: 6,
+      },
+    ]);
+  });
+
+  it("uses existing collection names, while exposing the missing Bhakti data", async () => {
+    const response = await request(app).get("/api/home/config");
+    const existingCollections = new Set(
+      styles.flatMap((style) => style.collections.map((collection) => collection.toLowerCase())),
+    );
+    const configuredCollections = response.body.sections
+      .filter((section: { type: string }) => section.type === "collection")
+      .map((section: { slug: string }) => section.slug.toLowerCase());
+
+    expect(configuredCollections.filter((slug: string) => existingCollections.has(slug))).toEqual([
+      "trending",
+      "couple",
+      "merge",
+      "professional",
+    ]);
+    expect(configuredCollections.filter((slug: string) => !existingCollections.has(slug))).toEqual([
+      "bhakti",
+    ]);
+  });
+});
+
 describe("styles endpoint", () => {
   afterEach(() => {
     for (const style of styles) {
@@ -91,12 +168,12 @@ describe("styles endpoint", () => {
       ["professional-portrait", 10],
     ]);
     const expectedCollectionsByStyle: Record<string, string[]> = {
-      "cinematic-couple": ["Couple", "Popular", "Trending", "Merge"],
+      "cinematic-couple": ["Couple", "Trending", "Merge"],
       "90s-bollywood": ["Trending", "Popular"],
-      "vintage-film": [],
-      "anime-portrait": [],
-      wedding: [],
-      "professional-portrait": ["Professional", "Popular"],
+      "vintage-film": ["Popular"],
+      "anime-portrait": ["Popular"],
+      wedding: ["Couple"],
+      "professional-portrait": ["Professional"],
     };
     for (const style of response.body.styles) {
       expect(style).toHaveProperty("id");
@@ -105,7 +182,13 @@ describe("styles endpoint", () => {
       expect(style).toHaveProperty("prompt");
       expect(style).toHaveProperty("thumbnail");
       expect(style.collections).toEqual(expectedCollectionsByStyle[style.id]);
-      expect(style.previewImages).toEqual([]);
+      expect(style.previewImages).toEqual(
+        style.id === "cinematic-couple"
+          ? [
+              "https://res.cloudinary.com/xjqlkkta/image/upload/w_500,h_500,c_fill,q_auto,f_auto/v1791469404/Golden-Hour_Embrace_Over_the_City.png",
+            ]
+          : [],
+      );
       expect([1, 2]).toContain(style.imageCount);
     }
   });

@@ -22,7 +22,7 @@ export const styles: Style[] = [
     imageCount: 2,
     tokensRequired: 10,
     category: "Portrait",
-    collections: ["Couple", "Popular", "Trending", "Merge"],
+    collections: ["Couple", "Trending", "Merge"],
   },
   {
     id: "90s-bollywood",
@@ -46,7 +46,7 @@ export const styles: Style[] = [
     imageCount: 1,
     tokensRequired: 10,
     category: "Artistic",
-    collections: []
+    collections: ["Popular"]
   },
   {
     id: "anime-portrait",
@@ -58,7 +58,7 @@ export const styles: Style[] = [
     imageCount: 1,
     tokensRequired: 10,
     category: "Artistic",
-    collections: []
+    collections: ["Popular"]
   },
   {
     id: "wedding",
@@ -70,7 +70,7 @@ export const styles: Style[] = [
     imageCount: 1,
     tokensRequired: 10,
     category: "Portrait",
-    collections: []
+    collections: ["Couple"]
   },
   {
     id: "professional-portrait",
@@ -82,7 +82,7 @@ export const styles: Style[] = [
     imageCount: 1,
     tokensRequired: 10,
     category: "Portrait",
-    collections: ["Professional", "Popular"]
+    collections: ["Professional"]
   },
 ];
 
