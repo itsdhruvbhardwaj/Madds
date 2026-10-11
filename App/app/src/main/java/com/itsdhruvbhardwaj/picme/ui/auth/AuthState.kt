@@ -40,6 +40,16 @@ sealed interface AuthState {
     data class VerificationSuccess(val message: String) : AuthState
 
     /**
+     * Registration failed because the email already exists.
+     */
+    data object EmailAlreadyExists : AuthState
+
+    /**
+     * Session restoration failed due to a network error.
+     */
+    data object SessionCheckNetworkError : AuthState
+
+    /**
      * An authentication operation failed.
      * @property message A human-readable description of the failure.
      */

@@ -1,8 +1,11 @@
 package com.itsdhruvbhardwaj.picme.data.repository
 
+import com.google.gson.Gson
 import com.itsdhruvbhardwaj.picme.data.local.AuthTokenStorage
 import com.itsdhruvbhardwaj.picme.data.model.*
 import com.itsdhruvbhardwaj.picme.data.remote.AuthApiService
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import retrofit2.Response
 import java.io.IOException
 
@@ -14,6 +17,7 @@ class AuthRepository(
     private val apiService: AuthApiService,
     private val tokenStorage: AuthTokenStorage
 ) {
+    private val refreshMutex = Mutex()
 
     suspend fun login(email: String, password: String): Result<User> {
         return safeApiCall(
@@ -92,25 +96,46 @@ class AuthRepository(
         )
     }
 
+    /**
+     * Synchronized refresh operation to prevent concurrent refresh-token rotation conflicts.
+     * If multiple calls occur simultaneously, they queue and the subsequent calls check if
+     * a new token was already obtained by the first call.
+     */
     suspend fun refreshSession(): Result<Unit> {
-        val refreshToken = tokenStorage.getRefreshToken()
+        val initialRefreshToken = tokenStorage.getRefreshToken()
             ?: return Result.failure(Exception("No refresh token available"))
 
-        return safeApiCall(
-            call = { apiService.refreshToken(RefreshTokenRequest(refreshToken)) },
-            onSuccess = { response ->
-                val newAccessToken = response.accessToken
-                val newRefreshToken = response.refreshToken
-
-                if (newAccessToken != null && newRefreshToken != null) {
-                    // Replace BOTH stored tokens (token rotation)
-                    tokenStorage.saveTokens(newAccessToken, newRefreshToken)
-                    Result.success(Unit)
-                } else {
-                    Result.failure(Exception("Failed to rotate tokens"))
-                }
+        refreshMutex.withLock {
+            // Check if another thread already rotated the tokens while we were waiting for the lock
+            val currentRefreshToken = tokenStorage.getRefreshToken()
+            if (currentRefreshToken != initialRefreshToken && !currentRefreshToken.isNullOrEmpty()) {
+                return Result.success(Unit)
             }
-        )
+
+            return try {
+                val response = apiService.refreshToken(RefreshTokenRequest(initialRefreshToken))
+                if (response.isSuccessful && response.body()?.ok == true) {
+                    val newAccessToken = response.body()?.accessToken
+                    val newRefreshToken = response.body()?.refreshToken
+                    if (newAccessToken != null && newRefreshToken != null) {
+                        tokenStorage.saveTokens(newAccessToken, newRefreshToken)
+                        Result.success(Unit)
+                    } else {
+                        Result.failure(Exception("Failed to rotate tokens"))
+                    }
+                } else {
+                    val code = response.code()
+                    if (code == 401 || code == 403) {
+                        tokenStorage.clearTokens()
+                        Result.failure(Exception("session_expired"))
+                    } else {
+                        Result.failure(Exception("refresh_failed"))
+                    }
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
     }
 
     suspend fun getCurrentUser(): Result<User> {
@@ -176,12 +201,21 @@ class AuthRepository(
                 val errorCode = response.code()
                 val errorBodyString = response.errorBody()?.string() ?: ""
                 
+                // Attempt to parse structured error response
+                val errorResponse = try {
+                    Gson().fromJson(errorBodyString, ErrorResponse::class.java)
+                } catch (e: Exception) {
+                    null
+                }
+
+                val serverMessage = errorResponse?.message ?: errorBodyString
+                
                 val mappedMessage = when {
-                    errorBodyString.contains("verify your email", ignoreCase = true) -> "unverified_account"
-                    errorBodyString.contains("already exists", ignoreCase = true) -> "email_already_exists"
-                    errorBodyString.contains("invalid", ignoreCase = true) && errorBodyString.contains("token", ignoreCase = true) -> "invalid_token"
-                    errorBodyString.contains("expired", ignoreCase = true) -> "expired_token"
-                    errorBodyString.contains("already been used", ignoreCase = true) -> "token_already_used"
+                    errorCode == 409 || serverMessage.contains("already exists", ignoreCase = true) || serverMessage.contains("already taken", ignoreCase = true) -> "email_already_exists"
+                    serverMessage.contains("verify your email", ignoreCase = true) -> "unverified_account"
+                    serverMessage.contains("invalid", ignoreCase = true) && serverMessage.contains("token", ignoreCase = true) -> "invalid_token"
+                    serverMessage.contains("expired", ignoreCase = true) -> "expired_token"
+                    serverMessage.contains("already been used", ignoreCase = true) -> "token_already_used"
                     errorCode == 401 -> "invalid_credentials"
                     errorCode == 403 -> "forbidden"
                     errorCode >= 500 -> "server_failure"

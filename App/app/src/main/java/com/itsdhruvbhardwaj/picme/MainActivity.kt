@@ -1,5 +1,6 @@
 package com.itsdhruvbhardwaj.picme
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -7,40 +8,60 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.rememberNavController
 import com.itsdhruvbhardwaj.picme.data.local.AuthTokenStorage
 import com.itsdhruvbhardwaj.picme.data.remote.AuthApiService
+import com.itsdhruvbhardwaj.picme.data.remote.AuthAuthenticator
 import com.itsdhruvbhardwaj.picme.data.remote.StyleApiService
 import com.itsdhruvbhardwaj.picme.data.repository.AuthRepository
 import com.itsdhruvbhardwaj.picme.data.repository.StyleRepository
 import com.itsdhruvbhardwaj.picme.navigation.NavGraph
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.home.HomeViewModel
-import com.itsdhruvbhardwaj.picme.ui.screens.home.StylesGridViewModel
 import com.itsdhruvbhardwaj.picme.ui.theme.PicMeTheme
+import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
+    
+    private var intentState by mutableStateOf<Intent?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Manual Dependency Injection
+        val tokenStorage = AuthTokenStorage(applicationContext)
+        
+        // Use a late-init style approach to resolve circular dependency between AuthRepository and Authenticator
+        lateinit var authRepository: AuthRepository
+
+        val okHttpClient = OkHttpClient.Builder()
+            .authenticator(AuthAuthenticator(tokenStorage) { authRepository })
+            // Increased timeouts to accommodate Render.com cold starts (approx 30s)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
+
         val retrofit = Retrofit.Builder()
-            .baseUrl(BuildConfig.BACKEND_BASE_URL)
+            .baseUrl("https://picme-ai.onrender.com/")
+            .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
         
         val authApiService = retrofit.create(AuthApiService::class.java)
         val styleApiService = retrofit.create(StyleApiService::class.java)
         
-        val tokenStorage = AuthTokenStorage(applicationContext)
-        
-        val authRepository = AuthRepository(authApiService, tokenStorage)
+        authRepository = AuthRepository(authApiService, tokenStorage)
         val styleRepository = StyleRepository(styleApiService)
         
         val viewModelFactory = object : ViewModelProvider.Factory {
@@ -50,9 +71,6 @@ class MainActivity : ComponentActivity() {
                         AuthViewModel(authRepository) as T
                     modelClass.isAssignableFrom(HomeViewModel::class.java) -> 
                         HomeViewModel(styleRepository) as T
-                    // Note: StylesGridViewModel needs category, so it might be handled differently 
-                    // or via a separate factory/assisted injection if we used Hilt.
-                    // For now, we'll handle StylesGridViewModel instantiation in NavGraph or via a factory that can handle params.
                     else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
                 }
             }
@@ -68,14 +86,29 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val navController = rememberNavController()
+                    
+                    // Handle new intents delivered via singleTask / onNewIntent
+                    LaunchedEffect(intentState) {
+                        intentState?.let {
+                            navController.handleDeepLink(it)
+                            intentState = null // Reset after handling
+                        }
+                    }
+
                     NavGraph(
                         navController = navController,
                         authViewModel = authViewModel,
                         homeViewModel = homeViewModel,
-                        styleRepository = styleRepository // Pass repository to handle param-based VMs in NavGraph
+                        styleRepository = styleRepository
                     )
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intentState = intent
     }
 }

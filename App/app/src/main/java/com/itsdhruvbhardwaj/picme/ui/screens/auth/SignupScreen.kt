@@ -52,7 +52,15 @@ fun SignupScreen(
     var confirmPasswordVisible by remember { mutableStateOf(false) }
 
     val isLoading = authState is AuthState.Authenticating
-    val backendErrorMessage = (authState as? AuthState.Error)?.message
+    
+    // Determine the error message and whether it's an "Email Already Exists" case
+    val (errorMessage, isEmailAlreadyExists) = when (authState) {
+        is AuthState.EmailAlreadyExists -> 
+            "An account with this email already exists. Please sign in instead." to true
+        is AuthState.Error -> 
+            authState.message to false
+        else -> null to false
+    }
     
     // Validation States
     val isEmailValid = remember(email) { ValidationUtils.isValidEmail(email) }
@@ -197,14 +205,29 @@ fun SignupScreen(
                 )
             }
 
-            if (backendErrorMessage != null && isFormValid) {
-                Text(
-                    text = backendErrorMessage,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
+            if (errorMessage != null) {
+                Column(
                     modifier = Modifier.padding(top = 16.dp),
-                    textAlign = TextAlign.Center
-                )
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = errorMessage,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center
+                    )
+                    
+                    if (isEmailAlreadyExists) {
+                        TextButton(onClick = onSignInClick) {
+                            Text(
+                                text = "Sign In Now",
+                                color = Primary,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(32.dp))

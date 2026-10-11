@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * ViewModel responsible for managing authentication state and session restoration.
@@ -24,6 +26,8 @@ class AuthViewModel(
      */
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
+    private val checkSessionMutex = Mutex()
+
     init {
         checkSession()
     }
@@ -34,29 +38,48 @@ class AuthViewModel(
      */
     fun checkSession() {
         viewModelScope.launch {
-            _authState.value = AuthState.CheckingSession
+            if (checkSessionMutex.isLocked) return@launch
             
-            val userResult = authRepository.getCurrentUser()
-            
-            if (userResult.isSuccess) {
-                _authState.value = AuthState.Authenticated(userResult.getOrThrow())
-            } else {
-                // If getCurrentUser fails, it might be an expired token or missing session.
-                // We attempt to refresh the session.
-                val refreshResult = authRepository.refreshSession()
+            checkSessionMutex.withLock {
+                _authState.value = AuthState.CheckingSession
                 
-                if (refreshResult.isSuccess) {
-                    // Retry fetching user after successful token rotation.
-                    val retryUserResult = authRepository.getCurrentUser()
-                    if (retryUserResult.isSuccess) {
-                        _authState.value = AuthState.Authenticated(retryUserResult.getOrThrow())
-                    } else {
-                        // Profile fetch failed even after refresh.
-                        _authState.value = AuthState.Unauthenticated
-                    }
+                val userResult = authRepository.getCurrentUser()
+                
+                if (userResult.isSuccess) {
+                    _authState.value = AuthState.Authenticated(userResult.getOrThrow())
                 } else {
-                    // Refresh failed (token expired/revoked) or no token exists.
-                    _authState.value = AuthState.Unauthenticated
+                    val errorMessage = userResult.exceptionOrNull()?.message
+                    
+                    // If it's a network or server error, don't log out. Preserve tokens.
+                    if (errorMessage == "network_failure" || errorMessage == "server_failure") {
+                        _authState.value = AuthState.SessionCheckNetworkError
+                        return@withLock
+                    }
+
+                    // If access token is invalid/expired, attempt refresh.
+                    val refreshResult = authRepository.refreshSession()
+                    
+                    if (refreshResult.isSuccess) {
+                        val retryUserResult = authRepository.getCurrentUser()
+                        if (retryUserResult.isSuccess) {
+                            _authState.value = AuthState.Authenticated(retryUserResult.getOrThrow())
+                        } else {
+                            val retryError = retryUserResult.exceptionOrNull()?.message
+                            if (retryError == "network_failure" || retryError == "server_failure") {
+                                _authState.value = AuthState.SessionCheckNetworkError
+                            } else {
+                                _authState.value = AuthState.Unauthenticated
+                            }
+                        }
+                    } else {
+                        val refreshError = refreshResult.exceptionOrNull()?.message
+                        // Only log out if it's a definitive auth failure (401/403).
+                        if (refreshError == "network_failure" || refreshError == "server_failure") {
+                            _authState.value = AuthState.SessionCheckNetworkError
+                        } else {
+                            _authState.value = AuthState.Unauthenticated
+                        }
+                    }
                 }
             }
         }
@@ -86,7 +109,11 @@ class AuthViewModel(
                     _authState.value = AuthState.VerifyEmailRequired(email)
                 },
                 onFailure = { error ->
-                    _authState.value = AuthState.Error(mapError(error.message))
+                    if (error.message == "email_already_exists") {
+                        _authState.value = AuthState.EmailAlreadyExists
+                    } else {
+                        _authState.value = AuthState.Error(mapError(error.message))
+                    }
                 }
             )
         }
@@ -101,7 +128,6 @@ class AuthViewModel(
             val result = authRepository.verifyEmail(token)
             result.fold(
                 onSuccess = { user ->
-                    // Successful verification now starts an authenticated session
                     _authState.value = AuthState.Authenticated(user)
                 },
                 onFailure = { error ->

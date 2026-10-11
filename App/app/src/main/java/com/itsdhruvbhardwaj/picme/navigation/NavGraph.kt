@@ -1,15 +1,14 @@
 package com.itsdhruvbhardwaj.picme.navigation
 
 import android.content.Context
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -61,9 +60,6 @@ fun NavGraph(
         Screen.Profile.route
     )
 
-    // ALWAYS start with Splash Screen to ensure session check is performed
-    val startDestination = Screen.Splash.route
-
     Scaffold(
         bottomBar = {
             if (currentRoute in bottomBarScreens) {
@@ -83,39 +79,52 @@ fun NavGraph(
         Box(modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())) {
             NavHost(
                 navController = navController,
-                startDestination = startDestination
+                startDestination = Screen.Splash.route
             ) {
                 composable(Screen.Splash.route) {
-                    SplashScreen(onSplashFinished = {
-                        // Decide destination only when session check is not in progress
-                        if (authState !is AuthState.CheckingSession) {
-                            val isOnboardingCompleted = prefs.getBoolean("onboarding_completed", false)
-                            
-                            val destination = when {
-                                authState is AuthState.Authenticated -> Screen.Home.route
-                                !isOnboardingCompleted -> Screen.Onboarding.route
-                                else -> Screen.Login.route
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        SplashScreen(onSplashFinished = {
+                            if (authState is AuthState.Authenticated || authState is AuthState.Unauthenticated) {
+                                navigateFromSplash(navController, authState, prefs)
                             }
-                            
-                            navController.navigate(destination) {
-                                popUpTo(Screen.Splash.route) { inclusive = true }
+                        })
+
+                        if (authState is AuthState.SessionCheckNetworkError) {
+                            Surface(
+                                modifier = Modifier.fillMaxSize(),
+                                color = Color.Black.copy(alpha = 0.7f)
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = "Connection Error",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        color = Color.White
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "Unable to check session. Please check your internet.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color.White.copy(alpha = 0.8f),
+                                        modifier = Modifier.padding(horizontal = 48.dp),
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
+                                    Spacer(modifier = Modifier.height(24.dp))
+                                    Button(onClick = { authViewModel.checkSession() }) {
+                                        Text("Retry")
+                                    }
+                                }
                             }
                         }
-                    })
-                    
-                    // If splash animation finished but session check is still pending, 
-                    // this effect will trigger navigation as soon as checking finishes.
+                    }
+
                     LaunchedEffect(authState) {
-                        if (authState !is AuthState.CheckingSession && currentRoute == Screen.Splash.route) {
-                            val isOnboardingCompleted = prefs.getBoolean("onboarding_completed", false)
-                            val destination = when {
-                                authState is AuthState.Authenticated -> Screen.Home.route
-                                !isOnboardingCompleted -> Screen.Onboarding.route
-                                else -> Screen.Login.route
-                            }
-                            navController.navigate(destination) {
-                                popUpTo(Screen.Splash.route) { inclusive = true }
-                            }
+                        if ((authState is AuthState.Authenticated || authState is AuthState.Unauthenticated) && 
+                            currentRoute == Screen.Splash.route) {
+                            navigateFromSplash(navController, authState, prefs)
                         }
                     }
                 }
@@ -352,5 +361,21 @@ fun NavGraph(
                 composable(Screen.Create.route) { /* Direct Create route if needed */ }
             }
         }
+    }
+}
+
+private fun navigateFromSplash(
+    navController: NavHostController,
+    authState: AuthState,
+    prefs: android.content.SharedPreferences
+) {
+    val isOnboardingCompleted = prefs.getBoolean("onboarding_completed", false)
+    val destination = when {
+        authState is AuthState.Authenticated -> Screen.Home.route
+        !isOnboardingCompleted -> Screen.Onboarding.route
+        else -> Screen.Login.route
+    }
+    navController.navigate(destination) {
+        popUpTo(Screen.Splash.route) { inclusive = true }
     }
 }
