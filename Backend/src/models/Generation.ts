@@ -12,6 +12,18 @@ const GenerationSchema = new Schema(
       type: String,
       required: true,
     },
+    idempotencyKeyHash: {
+      type: String,
+      required: true,
+    },
+    requestFingerprint: {
+      type: String,
+      required: true,
+    },
+    creditsCost: {
+      type: Number,
+      required: true,
+    },
     imageUrl: {
       type: String,
       default: "",
@@ -22,13 +34,21 @@ const GenerationSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ["processing", "completed", "failed"],
+      enum: ["processing", "completed", "failed", "outcome_unknown"],
       default: "processing",
+    },
+    failureCode: {
+      type: String,
+      default: "",
     },
   },
   { timestamps: true },
 );
 
 GenerationSchema.index({ userId: 1, createdAt: -1 });
+GenerationSchema.index(
+  { userId: 1, idempotencyKeyHash: 1 },
+  { unique: true, partialFilterExpression: { idempotencyKeyHash: { $type: "string" } } },
+);
 
 export const Generation = mongoose.models.Generation || mongoose.model("Generation", GenerationSchema);

@@ -1,7 +1,68 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 
 process.env.OPENAI_API_KEY = "test-api-key";
+
+const generationMocks = vi.hoisted(() => ({
+  edit: vi.fn().mockResolvedValue({
+    data: [{ b64_json: "abc123" }],
+    usage: { input_tokens: 12, output_tokens: 8, total_tokens: 20 },
+  }),
+  generate: vi.fn(),
+  reserveGenerationCredits: vi.fn(),
+  completeGeneration: vi.fn(),
+  markGenerationOutcomeUnknown: vi.fn(),
+  refundGeneration: vi.fn(),
+}));
+
+vi.mock("express-rate-limit", () => ({
+  default: () => (_req: any, _res: any, next: any) => next(),
+}));
+
+vi.mock("./middleware/auth.js", () => ({
+  requireAuth: (req: any, res: any, next: any) => {
+    if (!req.headers.authorization) {
+      res.status(401).json({ ok: false, error: "Authentication required." });
+      return;
+    }
+    req.user = { id: "test-user", credits: 100 };
+    next();
+  },
+}));
+
+vi.mock("./services/credits/creditService.js", () => {
+  class InsufficientCreditsError extends Error {
+    constructor(
+      readonly requiredCredits: number,
+      readonly availableCredits: number,
+    ) {
+      super("Not enough credits.");
+    }
+  }
+  class IdempotencyConflictError extends Error {
+    constructor(
+      readonly generationId: string,
+      readonly status: "processing" | "completed" | "failed" | "outcome_unknown",
+      readonly sameRequest: boolean,
+    ) {
+      super("Duplicate generation.");
+    }
+  }
+  class UserNotFoundError extends Error {}
+
+  return {
+    hashIdempotencyKey: (key: string) => `hashed:${key}`,
+    fingerprintGenerationRequest: (styleId: string, images: unknown[]) =>
+      `${styleId}:${images.length}`,
+    reserveGenerationCredits: generationMocks.reserveGenerationCredits,
+    completeGeneration: generationMocks.completeGeneration,
+    markGenerationOutcomeUnknown: generationMocks.markGenerationOutcomeUnknown,
+    refundGeneration: generationMocks.refundGeneration,
+    InsufficientCreditsError,
+    IdempotencyConflictError,
+    UserNotFoundError,
+  };
+});
 
 import { app } from "./server.js";
 import { OpenAIImageGenerator } from "./services/openai/generation.js";
@@ -11,11 +72,8 @@ vi.mock("openai", () => {
   return {
     default: vi.fn().mockImplementation(() => ({
       images: {
-        edit: vi.fn().mockResolvedValue({
-          data: [{ b64_json: "abc123" }],
-          usage: { input_tokens: 12, output_tokens: 8, total_tokens: 20 },
-        }),
-        generate: vi.fn(),
+        edit: generationMocks.edit,
+        generate: generationMocks.generate,
       },
     })),
   };
@@ -280,7 +338,17 @@ describe("styles endpoint", () => {
 });
 
 describe("generation endpoint", () => {
-  it("continues to accept styleId and images", async () => {
+  beforeEach(() => {
+    generationMocks.reserveGenerationCredits.mockResolvedValue({
+      generationId: "generation-123",
+      balanceAfter: 90,
+    });
+    generationMocks.completeGeneration.mockResolvedValue(true);
+    generationMocks.refundGeneration.mockResolvedValue(true);
+    generationMocks.markGenerationOutcomeUnknown.mockResolvedValue(true);
+  });
+
+  it("rejects unauthenticated requests before processing the upload", async () => {
     const response = await request(app)
       .post("/api/generate")
       .field("styleId", "professional-portrait")
@@ -289,9 +357,201 @@ describe("generation endpoint", () => {
         contentType: "image/png",
       });
 
+    expect(response.status).toBe(401);
+    expect(generationMocks.reserveGenerationCredits).not.toHaveBeenCalled();
+    expect(generationMocks.edit).not.toHaveBeenCalled();
+  });
+
+  it("requires an idempotency key before accepting generation", async () => {
+    const response = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "Bearer test-token")
+      .field("styleId", "professional-portrait")
+      .attach("images", Buffer.from("fake-image-data"), {
+        filename: "portrait.png",
+        contentType: "image/png",
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("IDEMPOTENCY_KEY_REQUIRED");
+    expect(generationMocks.reserveGenerationCredits).not.toHaveBeenCalled();
+  });
+
+  it("continues to accept styleId and images with authentication and an idempotency key", async () => {
+    const response = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "Bearer test-token")
+      .set("Idempotency-Key", "request-key-123")
+      .field("styleId", "professional-portrait")
+      .field("tokensRequired", "0")
+      .field("credits", "100000")
+      .attach("images", Buffer.from("fake-image-data"), {
+        filename: "portrait.png",
+        contentType: "image/png",
+      });
+
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({ ok: true });
     expect(response.body.image).toMatch(/^data:image\/.+;base64,abc123$/);
+    expect(generationMocks.reserveGenerationCredits).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "test-user",
+        styleId: "professional-portrait",
+        creditsCost: 10,
+      }),
+    );
+    expect(generationMocks.completeGeneration).toHaveBeenCalledWith("generation-123");
+    expect(generationMocks.edit).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an unknown style before reserving credits", async () => {
+    const response = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "Bearer test-token")
+      .set("Idempotency-Key", "request-key-unknown")
+      .field("styleId", "not-a-style")
+      .attach("images", Buffer.from("fake-image-data"), {
+        filename: "portrait.png",
+        contentType: "image/png",
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("INVALID_STYLE");
+    expect(generationMocks.reserveGenerationCredits).not.toHaveBeenCalled();
+  });
+
+  it("rejects a style when its exact server-defined image count is not met", async () => {
+    const response = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "Bearer test-token")
+      .set("Idempotency-Key", "request-key-124")
+      .field("styleId", "cinematic-couple")
+      .attach("images", Buffer.from("fake-image-data"), {
+        filename: "portrait.png",
+        contentType: "image/png",
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("INVALID_IMAGE_COUNT");
+    expect(generationMocks.reserveGenerationCredits).not.toHaveBeenCalled();
+  });
+
+  it("returns structured insufficient-credit details without calling the provider", async () => {
+    const { InsufficientCreditsError } = await import("./services/credits/creditService.js");
+    generationMocks.reserveGenerationCredits.mockRejectedValueOnce(
+      new InsufficientCreditsError(10, 4),
+    );
+
+    const response = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "Bearer test-token")
+      .set("Idempotency-Key", "request-key-125")
+      .field("styleId", "professional-portrait")
+      .attach("images", Buffer.from("fake-image-data"), {
+        filename: "portrait.png",
+        contentType: "image/png",
+      });
+
+    expect(response.status).toBe(402);
+    expect(response.body).toEqual({
+      ok: false,
+      code: "INSUFFICIENT_CREDITS",
+      error: "Not enough credits.",
+      requiredCredits: 10,
+      availableCredits: 4,
+    });
+    expect(generationMocks.edit).not.toHaveBeenCalled();
+  });
+
+  it("does not repeat a provider call for a duplicate idempotency key", async () => {
+    const { IdempotencyConflictError } = await import("./services/credits/creditService.js");
+    generationMocks.reserveGenerationCredits.mockRejectedValueOnce(
+      new IdempotencyConflictError("generation-existing", "completed", true),
+    );
+
+    const response = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "Bearer test-token")
+      .set("Idempotency-Key", "request-key-126")
+      .field("styleId", "professional-portrait")
+      .attach("images", Buffer.from("fake-image-data"), {
+        filename: "portrait.png",
+        contentType: "image/png",
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe("GENERATION_ALREADY_COMPLETED");
+    expect(generationMocks.edit).not.toHaveBeenCalled();
+  });
+
+  it("refunds a confirmed provider rejection", async () => {
+    generationMocks.edit.mockRejectedValueOnce(Object.assign(new Error("Provider rejected request."), {
+      status: 400,
+    }));
+
+    const response = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "Bearer test-token")
+      .set("Idempotency-Key", "request-key-127")
+      .field("styleId", "professional-portrait")
+      .attach("images", Buffer.from("fake-image-data"), {
+        filename: "portrait.png",
+        contentType: "image/png",
+      });
+
+    expect(response.status).toBe(502);
+    expect(response.body.code).toBe("GENERATION_FAILED_CREDITS_REFUNDED");
+    expect(generationMocks.refundGeneration).toHaveBeenCalledWith(
+      "generation-123",
+      "PROVIDER_REJECTED",
+    );
+  });
+
+  it("does not report a refund when the refund transaction fails", async () => {
+    generationMocks.edit.mockRejectedValueOnce(Object.assign(new Error("Provider rejected request."), {
+      status: 400,
+    }));
+    generationMocks.refundGeneration.mockRejectedValueOnce(new Error("Database failure."));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const response = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "Bearer test-token")
+      .set("Idempotency-Key", "request-key-refund")
+      .field("styleId", "professional-portrait")
+      .attach("images", Buffer.from("fake-image-data"), {
+        filename: "portrait.png",
+        contentType: "image/png",
+      });
+
+    errorSpy.mockRestore();
+    expect(response.status).toBe(500);
+    expect(response.body.code).toBe("GENERATION_REFUND_PENDING");
+    expect(response.body.code).not.toBe("GENERATION_FAILED_CREDITS_REFUNDED");
+  });
+
+  it("keeps reserved credits held when the provider outcome is ambiguous", async () => {
+    generationMocks.edit.mockRejectedValueOnce(Object.assign(new Error("Provider unavailable."), {
+      status: 500,
+    }));
+
+    const response = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "Bearer test-token")
+      .set("Idempotency-Key", "request-key-128")
+      .field("styleId", "professional-portrait")
+      .attach("images", Buffer.from("fake-image-data"), {
+        filename: "portrait.png",
+        contentType: "image/png",
+      });
+
+    expect(response.status).toBe(504);
+    expect(response.body.code).toBe("GENERATION_OUTCOME_UNKNOWN");
+    expect(generationMocks.refundGeneration).not.toHaveBeenCalled();
+    expect(generationMocks.markGenerationOutcomeUnknown).toHaveBeenCalledWith(
+      "generation-123",
+      "PROVIDER_OUTCOME_UNKNOWN",
+    );
   });
 });
 

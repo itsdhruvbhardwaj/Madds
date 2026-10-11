@@ -12,6 +12,7 @@ export type AuthenticatedUser = {
   name: string;
   emailVerified: boolean;
   isActive: boolean;
+  credits: number;
   profileImage?: string | null;
 };
 
@@ -110,6 +111,7 @@ export function sanitizeUser(user: {
   emailVerified?: boolean;
   profileImage?: string | null;
   isActive?: boolean;
+  credits?: number;
 }): AuthenticatedUser {
   const id = typeof user._id === "string" ? user._id : user._id?.toString?.() ?? user.id ?? "";
 
@@ -119,6 +121,9 @@ export function sanitizeUser(user: {
     name: user.name ?? "",
     emailVerified: Boolean(user.emailVerified),
     isActive: Boolean(user.isActive),
+    credits: typeof user.credits === "number" && Number.isFinite(user.credits)
+      ? user.credits
+      : 0,
     profileImage: user.profileImage ?? null,
   };
 }

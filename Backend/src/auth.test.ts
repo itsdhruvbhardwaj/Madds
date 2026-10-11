@@ -18,10 +18,27 @@ const googleAuthMocks = vi.hoisted(() => ({
   sendEmail: vi.fn(),
 }));
 
+const creditServiceMocks = vi.hoisted(() => ({
+  createUserWithWelcomeCredits: vi.fn(),
+}));
+
 vi.mock("google-auth-library", () => ({
   OAuth2Client: vi.fn().mockImplementation(() => ({
     verifyIdToken: googleAuthMocks.verifyIdToken,
   })),
+}));
+
+vi.mock("./services/credits/creditService.js", () => ({
+  createUserWithWelcomeCredits: creditServiceMocks.createUserWithWelcomeCredits,
+  hashIdempotencyKey: vi.fn(),
+  fingerprintGenerationRequest: vi.fn(),
+  reserveGenerationCredits: vi.fn(),
+  completeGeneration: vi.fn(),
+  markGenerationOutcomeUnknown: vi.fn(),
+  refundGeneration: vi.fn(),
+  InsufficientCreditsError: class InsufficientCreditsError extends Error {},
+  IdempotencyConflictError: class IdempotencyConflictError extends Error {},
+  UserNotFoundError: class UserNotFoundError extends Error {},
 }));
 
 vi.mock("./models/User.js", () => ({
@@ -74,13 +91,14 @@ describe("auth registration", () => {
 
   it("registers a new user successfully", async () => {
     userModel.findOne.mockResolvedValue(null);
-    userModel.create.mockResolvedValue({
+    creditServiceMocks.createUserWithWelcomeCredits.mockResolvedValue({
       _id: "user-123",
       name: "John Doe",
       email: "john@example.com",
       emailVerified: false,
       isActive: true,
       profileImage: null,
+      credits: 100,
     });
     tokenModel.create.mockResolvedValue({ _id: "token-123" });
 
@@ -91,8 +109,15 @@ describe("auth registration", () => {
     expect(response.status).toBe(201);
     expect(response.body.ok).toBe(true);
     expect(response.body.user.email).toBe("john@example.com");
+    expect(response.body.user.credits).toBe(100);
     expect(response.body.user.passwordHash).toBeUndefined();
-    expect(userModel.create).toHaveBeenCalledTimes(1);
+    expect(creditServiceMocks.createUserWithWelcomeCredits).toHaveBeenCalledTimes(1);
+    expect(creditServiceMocks.createUserWithWelcomeCredits).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: "john@example.com",
+        passwordHash: expect.any(String),
+      }),
+    );
     expect(googleAuthMocks.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
       from: "noreply@example.com",
       to: "john@example.com",
@@ -110,6 +135,23 @@ describe("auth registration", () => {
 
     expect(response.status).toBe(409);
     expect(response.body.error).toBe("Registration failed.");
+    expect(creditServiceMocks.createUserWithWelcomeCredits).not.toHaveBeenCalled();
+  });
+
+  it("rejects a duplicate-key race without issuing a second welcome grant", async () => {
+    userModel.findOne.mockResolvedValue(null);
+    creditServiceMocks.createUserWithWelcomeCredits.mockRejectedValue(
+      Object.assign(new Error("duplicate key"), { code: 11000 }),
+    );
+
+    const response = await request(app)
+      .post("/api/auth/register")
+      .send({ name: "John Doe", email: "john@example.com", password: "StrongPass1!" });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe("Registration failed.");
+    expect(creditServiceMocks.createUserWithWelcomeCredits).toHaveBeenCalledTimes(1);
+    expect(tokenModel.create).not.toHaveBeenCalled();
   });
 
   it("rejects invalid email addresses", async () => {
@@ -175,12 +217,13 @@ describe("email verification", () => {
       emailVerified: true,
       isActive: true,
       profileImage: null,
+      credits: 500,
     });
     expect(response.body.accessToken).toBeTruthy();
     expect(response.body.refreshToken).toBeTruthy();
     expect(response.body.user).not.toHaveProperty("passwordHash");
     expect(response.body.user).not.toHaveProperty("googleId");
-    expect(response.body.user).not.toHaveProperty("credits");
+    expect(response.body.user.credits).toBe(500);
     expect(sessionModel.create).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: "user-456",
@@ -458,6 +501,7 @@ describe("login", () => {
       emailVerified: true,
       isActive: true,
       profileImage: null,
+      credits: 26,
     });
     sessionModel.create.mockResolvedValue({ _id: "session-99" });
 
@@ -470,6 +514,8 @@ describe("login", () => {
     expect(response.body.ok).toBe(true);
     expect(response.body.accessToken).toBeTruthy();
     expect(response.body.refreshToken).toBeTruthy();
+    expect(response.body.user.credits).toBe(26);
+    expect(creditServiceMocks.createUserWithWelcomeCredits).not.toHaveBeenCalled();
   });
 
   it("rejects invalid credentials", async () => {
@@ -537,10 +583,11 @@ describe("Google sign-in", () => {
       emailVerified: true,
       isActive: true,
       profileImage: "https://example.com/avatar.png",
+      credits: 100,
     };
     googleAuthMocks.verifyIdToken.mockResolvedValue(googleTicket({}));
     userModel.findOne.mockResolvedValue(null);
-    userModel.create.mockResolvedValue(createdUser);
+    creditServiceMocks.createUserWithWelcomeCredits.mockResolvedValue(createdUser);
     sessionModel.create.mockResolvedValue({ _id: "google-session-1" });
 
     const response = await request(app).post("/api/auth/google").send({
@@ -556,6 +603,7 @@ describe("Google sign-in", () => {
       email: "google@example.com",
       emailVerified: true,
       isActive: true,
+      credits: 100,
     });
     expect(response.body).not.toHaveProperty("passwordHash");
     expect(response.body).not.toHaveProperty("refreshTokenHash");
@@ -564,7 +612,7 @@ describe("Google sign-in", () => {
       idToken: "private-google-id-token",
       audience: "test-google-client-id",
     });
-    expect(userModel.create).toHaveBeenCalledWith(
+    expect(creditServiceMocks.createUserWithWelcomeCredits).toHaveBeenCalledWith(
       expect.objectContaining({
         googleId: "google-sub-123",
         email: "google@example.com",
@@ -640,6 +688,7 @@ describe("Google sign-in", () => {
       googleId: "google-sub-123",
       emailVerified: true,
       isActive: true,
+      credits: 38,
       profileImage: "",
     };
     googleAuthMocks.verifyIdToken.mockResolvedValue(googleTicket({}));
@@ -652,7 +701,9 @@ describe("Google sign-in", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.user.id).toBe("existing-google-user");
+    expect(response.body.user.credits).toBe(38);
     expect(userModel.create).not.toHaveBeenCalled();
+    expect(creditServiceMocks.createUserWithWelcomeCredits).not.toHaveBeenCalled();
     expect(sessionModel.create).toHaveBeenCalledTimes(1);
   });
 
@@ -665,6 +716,7 @@ describe("Google sign-in", () => {
       emailVerified: false,
       isActive: true,
       profileImage: "existing-profile.png",
+      credits: 25,
     };
     googleAuthMocks.verifyIdToken.mockResolvedValue(googleTicket({}));
     userModel.findOne
@@ -690,7 +742,9 @@ describe("Google sign-in", () => {
     expect(passwordAccount.name).toBe("Original Account Name");
     expect(passwordAccount.profileImage).toBe("existing-profile.png");
     expect(response.body.user.emailVerified).toBe(true);
+    expect(response.body.user.credits).toBe(25);
     expect(response.body.user).not.toHaveProperty("passwordHash");
+    expect(creditServiceMocks.createUserWithWelcomeCredits).not.toHaveBeenCalled();
   });
 
   it("does not authenticate a disabled Google user", async () => {
@@ -740,6 +794,7 @@ describe("Google sign-in", () => {
       googleId: "google-sub-123",
       emailVerified: true,
       isActive: true,
+      credits: 100,
     };
     googleAuthMocks.verifyIdToken.mockResolvedValue(
       googleTicket({ email: "refresh-google@example.com" }),
@@ -747,7 +802,7 @@ describe("Google sign-in", () => {
     userModel.findOne
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(null);
-    userModel.create.mockResolvedValue(googleUser);
+    creditServiceMocks.createUserWithWelcomeCredits.mockResolvedValue(googleUser);
     sessionModel.create
       .mockResolvedValueOnce({ _id: "google-session-old" })
       .mockResolvedValueOnce({ _id: "google-session-new" });
@@ -776,6 +831,8 @@ describe("Google sign-in", () => {
     expect(refreshResponse.body.accessToken).toBeTruthy();
     expect(refreshResponse.body.refreshToken).toBeTruthy();
     expect(refreshResponse.body.refreshToken).not.toBe(loginResponse.body.refreshToken);
+    expect(refreshResponse.body.user.credits).toBe(100);
+    expect(creditServiceMocks.createUserWithWelcomeCredits).toHaveBeenCalledTimes(1);
     expect(sessionModel.updateOne).toHaveBeenCalledWith(
       expect.objectContaining({ _id: "google-session-old" }),
       expect.objectContaining({ $set: expect.objectContaining({ revokedAt: expect.any(Date) }) }),
@@ -791,7 +848,14 @@ describe("refresh and logout", () => {
   it("rotates a valid refresh token", async () => {
     const oldToken = "old-refresh-token";
     const oldHash = "hash-old-refresh-token";
-    const user = { _id: "user-77", email: "refresh@example.com", name: "Refresh User", emailVerified: true, isActive: true };
+    const user = {
+      _id: "user-77",
+      email: "refresh@example.com",
+      name: "Refresh User",
+      emailVerified: true,
+      isActive: true,
+      credits: 47,
+    };
 
     sessionModel.findOne.mockReturnValue({
       lean: async () => ({
@@ -815,6 +879,8 @@ describe("refresh and logout", () => {
     expect(response.body.ok).toBe(true);
     expect(response.body.accessToken).toBeTruthy();
     expect(response.body.refreshToken).toBeTruthy();
+    expect(response.body.user.credits).toBe(47);
+    expect(creditServiceMocks.createUserWithWelcomeCredits).not.toHaveBeenCalled();
   });
 
   it("requires a bearer token for protected routes", async () => {

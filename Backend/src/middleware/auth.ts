@@ -12,6 +12,7 @@ export type AuthenticatedRequest = Request & {
     name?: string;
     emailVerified?: boolean;
     isActive?: boolean;
+    credits?: number;
     profileImage?: string | null;
   };
   sessionId?: string;
@@ -70,6 +71,9 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
       name: user.name,
       emailVerified: Boolean(user.emailVerified),
       isActive: user.isActive,
+      credits: typeof user.credits === "number" && Number.isFinite(user.credits)
+        ? user.credits
+        : 0,
       profileImage: user.profileImage ?? null,
     };
     req.sessionId = sessionId;

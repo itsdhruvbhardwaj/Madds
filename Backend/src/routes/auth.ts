@@ -9,10 +9,15 @@ import { EmailVerificationToken } from "../models/EmailVerificationToken.js";
 import { PasswordResetToken } from "../models/PasswordResetToken.js";
 import { Session } from "../models/Session.js";
 import { User } from "../models/User.js";
+import { createUserWithWelcomeCredits } from "../services/credits/creditService.js";
 import { sendPasswordResetEmail, sendVerificationEmail } from "../services/emailService.js";
 
 const router: Router = Router();
 const googleOAuthClient = new OAuth2Client();
+
+function isDuplicateKeyError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === 11000;
+}
 
 const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -248,7 +253,7 @@ router.post("/register", registerRateLimiter, async (req: Request, res: Response
     }
 
     const passwordHash = await hashPassword(password);
-    const user = await User.create({
+    const user = await createUserWithWelcomeCredits({
       name,
       email: normalizedEmail,
       passwordHash,
@@ -273,8 +278,11 @@ router.post("/register", registerRateLimiter, async (req: Request, res: Response
       message: "Registration successful. Please verify your email to continue.",
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to register account.";
-    return res.status(500).json({ ok: false, error: message });
+    if (isDuplicateKeyError(error)) {
+      return res.status(409).json({ ok: false, error: "Registration failed." });
+    }
+    console.error("Registration transaction failed.", error instanceof Error ? error.name : "UNKNOWN");
+    return res.status(500).json({ ok: false, error: "Unable to register account." });
   }
 });
 
@@ -612,14 +620,24 @@ router.post("/google", loginRateLimiter, async (req: Request, res: Response) => 
           user = existingEmailUser;
         }
       } else {
-        user = await User.create({
-          name: identity.name,
-          email: identity.email,
-          googleId: identity.googleId,
-          profileImage: identity.profileImage,
-          emailVerified: true,
-          isActive: true,
-        });
+        try {
+          user = await createUserWithWelcomeCredits({
+            name: identity.name,
+            email: identity.email,
+            googleId: identity.googleId,
+            profileImage: identity.profileImage,
+            emailVerified: true,
+            isActive: true,
+          });
+        } catch (error) {
+          if (!isDuplicateKeyError(error)) {
+            throw error;
+          }
+          user = await User.findOne({ googleId: identity.googleId });
+          if (!user) {
+            throw error;
+          }
+        }
       }
     }
 
@@ -699,6 +717,7 @@ router.post("/refresh", refreshRateLimiter, async (req: Request, res: Response) 
       ok: true,
       accessToken,
       refreshToken: newRefreshToken,
+      user: sanitizeUser(user),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to refresh session.";
@@ -749,6 +768,7 @@ router.get("/me", authRateLimiter, requireAuth, async (req: AuthenticatedRequest
       email: user.email,
       emailVerified: user.emailVerified,
       profileImage: user.profileImage ?? null,
+      credits: user.credits ?? 0,
     },
   });
 });
