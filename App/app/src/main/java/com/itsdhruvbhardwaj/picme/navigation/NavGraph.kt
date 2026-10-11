@@ -26,6 +26,8 @@ import com.itsdhruvbhardwaj.picme.ui.screens.auth.LoginScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.auth.SignupScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.auth.VerifyEmailScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.create.GenerationScreen
+import com.itsdhruvbhardwaj.picme.ui.screens.create.GenerationUiState
+import com.itsdhruvbhardwaj.picme.ui.screens.create.GenerationViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.create.ResultScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.create.SelectPhotosScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.home.HomeScreen
@@ -37,12 +39,15 @@ import com.itsdhruvbhardwaj.picme.ui.screens.home.StylesGridViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.onboarding.OnboardingScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.profile.ProfileScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.splash.SplashScreen
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 @Composable
 fun NavGraph(
     navController: NavHostController,
     authViewModel: AuthViewModel,
     homeViewModel: HomeViewModel,
+    generationViewModel: GenerationViewModel,
     styleRepository: StyleRepository
 ) {
     val context = LocalContext.current
@@ -256,8 +261,8 @@ fun NavGraph(
                         onStyleClick = { styleId ->
                             navController.navigate(Screen.StyleDetails.createRoute(styleId))
                         },
-                        onSeeAllClick = { category ->
-                            navController.navigate(Screen.StylesGrid.createRoute(category))
+                        onSeeAllClick = { category, collection ->
+                            navController.navigate(Screen.StylesGrid.createRoute(category, collection))
                         },
                         onProfileClick = { navController.navigate(Screen.Profile.route) }
                     )
@@ -269,15 +274,20 @@ fun NavGraph(
                         navArgument("category") {
                             type = NavType.StringType
                             nullable = true
+                        },
+                        navArgument("collection") {
+                            type = NavType.StringType
+                            nullable = true
                         }
                     )
                 ) { backStackEntry ->
                     val category = backStackEntry.arguments?.getString("category")
+                    val collection = backStackEntry.arguments?.getString("collection")
                     val gridViewModel: StylesGridViewModel = viewModel(
                         factory = object : androidx.lifecycle.ViewModelProvider.Factory {
                             override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
                                 @Suppress("UNCHECKED_CAST")
-                                return StylesGridViewModel(styleRepository, category) as T
+                                return StylesGridViewModel(styleRepository, category, collection) as T
                             }
                         }
                     )
@@ -309,31 +319,82 @@ fun NavGraph(
                         viewModel = detailsViewModel,
                         onBackClick = { navController.popBackStack() },
                         onTryStyleClick = { id -> 
-                            navController.navigate(Screen.SelectPhotos.route) 
+                            navController.navigate(Screen.SelectPhotos.createRoute(id)) 
                         }
                     )
                 }
 
-                composable(Screen.SelectPhotos.route) {
+                composable(
+                    route = Screen.SelectPhotos.route,
+                    arguments = listOf(
+                        navArgument("styleId") { type = NavType.StringType }
+                    )
+                ) { backStackEntry ->
+                    val styleId = backStackEntry.arguments?.getString("styleId") ?: ""
                     SelectPhotosScreen(
+                        styleId = styleId,
+                        styleRepository = styleRepository,
                         onBackClick = { navController.popBackStack() },
-                        onContinueClick = { navController.navigate(Screen.Generation.route) }
+                        onContinueClick = { uris -> 
+                            generationViewModel.setSelectedPhotos(uris)
+                            navController.navigate(Screen.Generation.createRoute(styleId)) 
+                        }
                     )
                 }
 
-                composable(Screen.Generation.route) {
+                composable(
+                    route = Screen.Generation.route,
+                    arguments = listOf(
+                        navArgument("styleId") { type = NavType.StringType }
+                    )
+                ) { backStackEntry ->
+                    val styleId = backStackEntry.arguments?.getString("styleId") ?: ""
+                    val genState by generationViewModel.uiState.collectAsState()
+                    val statusMsg by generationViewModel.statusMessage.collectAsState()
+                    val selectedPhotos by generationViewModel.selectedPhotos.collectAsState()
+
+                    LaunchedEffect(Unit) {
+                        generationViewModel.generateImage(styleId)
+                    }
+
                     GenerationScreen(
-                        progress = 0.65f, // Mock progress
-                        onCancelClick = { navController.popBackStack() }
+                        state = genState,
+                        statusMessage = statusMsg,
+                        selectedPhotos = selectedPhotos,
+                        onCancelClick = { 
+                            generationViewModel.resetState()
+                            navController.popBackStack() 
+                        },
+                        onRetryClick = { generationViewModel.generateImage(styleId) },
+                        onSuccess = { imageBase64 ->
+                            navController.navigate(Screen.Result.route) {
+                                popUpTo(Screen.Generation.route) { inclusive = true }
+                            }
+                        }
                     )
                 }
 
                 composable(Screen.Result.route) {
+                    val genState by generationViewModel.uiState.collectAsState()
+                    val isActionLoading by generationViewModel.isActionLoading.collectAsState()
+                    val imageBase64 = (genState as? GenerationUiState.Success)?.imageBase64 ?: ""
+                    
                     ResultScreen(
-                        onBackClick = { navController.popBackStack() },
-                        onSaveClick = { /* Handle Save */ },
-                        onShareClick = { /* Handle Share */ },
-                        onGenerateAgainClick = { navController.navigate(Screen.SelectPhotos.route) }
+                        imageBase64 = imageBase64,
+                        isActionLoading = isActionLoading,
+                        viewModel = generationViewModel,
+                        onBackClick = { 
+                            generationViewModel.resetState()
+                            navController.navigate(Screen.Home.route) {
+                                popUpTo(Screen.Home.route) { inclusive = true }
+                            }
+                        },
+                        onSaveClick = { generationViewModel.saveImageToGallery(context) },
+                        onShareClick = { generationViewModel.shareImage(context) },
+                        onGenerateAgainClick = { 
+                            generationViewModel.resetState()
+                            navController.popBackStack() 
+                        }
                     )
                 }
 

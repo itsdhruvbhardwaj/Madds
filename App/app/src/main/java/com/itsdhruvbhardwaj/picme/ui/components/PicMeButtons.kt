@@ -69,26 +69,35 @@ fun PicMeSecondaryButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    isLoading: Boolean = false
 ) {
     OutlinedButton(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
             .height(56.dp),
-        enabled = enabled,
+        enabled = enabled && !isLoading,
         shape = RoundedCornerShape(28.dp),
         border = ButtonDefaults.outlinedButtonBorder.copy(
             brush = Brush.horizontalGradient(listOf(Primary, Secondary))
         )
     ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelLarge.copy(
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
+        if (isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                color = Primary,
+                strokeWidth = 2.dp
             )
-        )
+        } else {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            )
+        }
     }
 }
 

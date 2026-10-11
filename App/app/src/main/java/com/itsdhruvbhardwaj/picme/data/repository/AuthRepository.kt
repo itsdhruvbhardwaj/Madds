@@ -29,6 +29,7 @@ class AuthRepository(
 
                 if (user != null && accessToken != null && refreshToken != null) {
                     tokenStorage.saveTokens(accessToken, refreshToken)
+                    tokenStorage.saveUser(user)
                     Result.success(user)
                 } else {
                     Result.failure(Exception("server_failure"))
@@ -61,6 +62,7 @@ class AuthRepository(
 
                 if (user != null && accessToken != null && refreshToken != null) {
                     tokenStorage.saveTokens(accessToken, refreshToken)
+                    tokenStorage.saveUser(user)
                     Result.success(user)
                 } else {
                     Result.failure(Exception("verification_success_no_tokens"))
@@ -88,6 +90,7 @@ class AuthRepository(
 
                 if (user != null && accessToken != null && refreshToken != null) {
                     tokenStorage.saveTokens(accessToken, refreshToken)
+                    tokenStorage.saveUser(user)
                     Result.success(user)
                 } else {
                     Result.failure(Exception("server_failure"))
@@ -145,9 +148,14 @@ class AuthRepository(
         return safeApiCall(
             call = { apiService.getCurrentUser("Bearer $accessToken") },
             onSuccess = { response ->
+                tokenStorage.saveUser(response.user)
                 Result.success(response.user)
             }
         )
+    }
+
+    fun getCachedUser(): User? {
+        return tokenStorage.getUser()
     }
 
     suspend fun logout(): Result<Unit> {

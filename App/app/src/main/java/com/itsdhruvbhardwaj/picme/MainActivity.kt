@@ -21,9 +21,11 @@ import com.itsdhruvbhardwaj.picme.data.remote.AuthApiService
 import com.itsdhruvbhardwaj.picme.data.remote.AuthAuthenticator
 import com.itsdhruvbhardwaj.picme.data.remote.StyleApiService
 import com.itsdhruvbhardwaj.picme.data.repository.AuthRepository
+import com.itsdhruvbhardwaj.picme.data.repository.GenerationRepository
 import com.itsdhruvbhardwaj.picme.data.repository.StyleRepository
 import com.itsdhruvbhardwaj.picme.navigation.NavGraph
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
+import com.itsdhruvbhardwaj.picme.ui.screens.create.GenerationViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.home.HomeViewModel
 import com.itsdhruvbhardwaj.picme.ui.theme.PicMeTheme
 import okhttp3.OkHttpClient
@@ -63,6 +65,7 @@ class MainActivity : ComponentActivity() {
         
         authRepository = AuthRepository(authApiService, tokenStorage)
         val styleRepository = StyleRepository(styleApiService)
+        val generationRepository = GenerationRepository(styleApiService, applicationContext.contentResolver)
         
         val viewModelFactory = object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -71,6 +74,8 @@ class MainActivity : ComponentActivity() {
                         AuthViewModel(authRepository) as T
                     modelClass.isAssignableFrom(HomeViewModel::class.java) -> 
                         HomeViewModel(styleRepository) as T
+                    modelClass.isAssignableFrom(GenerationViewModel::class.java) ->
+                        GenerationViewModel(generationRepository) as T
                     else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
                 }
             }
@@ -78,6 +83,7 @@ class MainActivity : ComponentActivity() {
 
         val authViewModel = ViewModelProvider(this, viewModelFactory)[AuthViewModel::class.java]
         val homeViewModel = ViewModelProvider(this, viewModelFactory)[HomeViewModel::class.java]
+        val generationViewModel = ViewModelProvider(this, viewModelFactory)[GenerationViewModel::class.java]
 
         setContent {
             PicMeTheme {
@@ -99,6 +105,7 @@ class MainActivity : ComponentActivity() {
                         navController = navController,
                         authViewModel = authViewModel,
                         homeViewModel = homeViewModel,
+                        generationViewModel = generationViewModel,
                         styleRepository = styleRepository
                     )
                 }

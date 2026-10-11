@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 sealed interface StylesGridUiState {
-    object Loading : StylesGridUiState
+    data object Loading : StylesGridUiState
     data class Success(
         val styles: List<Style>,
         val isNextPageLoading: Boolean = false,
@@ -21,7 +21,8 @@ sealed interface StylesGridUiState {
 
 class StylesGridViewModel(
     private val styleRepository: StyleRepository,
-    private val category: String?
+    private val category: String?,
+    private val collection: String?
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<StylesGridUiState>(StylesGridUiState.Loading)
@@ -41,7 +42,12 @@ class StylesGridViewModel(
         
         viewModelScope.launch {
             _uiState.value = StylesGridUiState.Loading
-            val result = styleRepository.getStyles(page = currentPage, limit = pageSize, category = category)
+            val result = styleRepository.getStyles(
+                page = currentPage, 
+                limit = pageSize, 
+                category = category,
+                collection = collection
+            )
             
             result.fold(
                 onSuccess = { response ->
@@ -67,7 +73,12 @@ class StylesGridViewModel(
         _uiState.value = currentState.copy(isNextPageLoading = true)
         
         viewModelScope.launch {
-            val result = styleRepository.getStyles(page = currentPage, limit = pageSize, category = category)
+            val result = styleRepository.getStyles(
+                page = currentPage, 
+                limit = pageSize, 
+                category = category,
+                collection = collection
+            )
             
             result.fold(
                 onSuccess = { response ->
@@ -80,7 +91,6 @@ class StylesGridViewModel(
                 },
                 onFailure = { error ->
                     _uiState.value = currentState.copy(isNextPageLoading = false)
-                    // We might want to show a toast or snackbar here instead of changing full state to error
                 }
             )
             isRequestInProgress = false

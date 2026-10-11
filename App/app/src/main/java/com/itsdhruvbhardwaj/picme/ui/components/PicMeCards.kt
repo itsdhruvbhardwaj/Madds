@@ -1,5 +1,6 @@
 package com.itsdhruvbhardwaj.picme.ui.components
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -172,15 +173,26 @@ fun EmptyPhotoSlot(
 
 @Composable
 fun SelectedPhotoCard(
+    uri: Uri,
     onRemove: () -> Unit,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
             .size(100.dp)
             .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
     ) {
-        PicMeImagePlaceholder(modifier = Modifier.fillMaxSize())
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(uri)
+                .crossfade(true)
+                .build(),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
+        )
         
         Surface(
             modifier = Modifier

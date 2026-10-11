@@ -3,10 +3,12 @@ package com.itsdhruvbhardwaj.picme.data.local
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.google.gson.Gson
+import com.itsdhruvbhardwaj.picme.data.model.User
 
 /**
- * Secure local storage for authentication tokens using EncryptedSharedPreferences.
- * Backed by the Android Keystore system.
+ * Secure local storage for authentication tokens and user profile cache.
+ * Uses EncryptedSharedPreferences backed by the Android Keystore system.
  */
 class AuthTokenStorage(context: Context) {
 
@@ -22,14 +24,16 @@ class AuthTokenStorage(context: Context) {
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
 
+    private val gson = Gson()
+
     companion object {
         private const val KEY_ACCESS_TOKEN = "access_token"
         private const val KEY_REFRESH_TOKEN = "refresh_token"
+        private const val KEY_USER_CACHE = "user_cache"
     }
 
     /**
      * Saves both access and refresh tokens.
-     * Used during initial login or during refresh token rotation.
      */
     fun saveTokens(accessToken: String, refreshToken: String) {
         sharedPreferences.edit()
@@ -45,6 +49,28 @@ class AuthTokenStorage(context: Context) {
         sharedPreferences.edit()
             .putString(KEY_ACCESS_TOKEN, accessToken)
             .apply()
+    }
+
+    /**
+     * Caches the user profile data.
+     */
+    fun saveUser(user: User) {
+        val json = gson.toJson(user)
+        sharedPreferences.edit()
+            .putString(KEY_USER_CACHE, json)
+            .apply()
+    }
+
+    /**
+     * Retrieves the cached user profile.
+     */
+    fun getUser(): User? {
+        val json = sharedPreferences.getString(KEY_USER_CACHE, null) ?: return null
+        return try {
+            gson.fromJson(json, User::class.java)
+        } catch (e: Exception) {
+            null
+        }
     }
 
     /**
@@ -69,12 +95,13 @@ class AuthTokenStorage(context: Context) {
     }
 
     /**
-     * Removes all authentication tokens.
+     * Removes all authentication tokens and cached user data.
      */
     fun clearTokens() {
         sharedPreferences.edit()
             .remove(KEY_ACCESS_TOKEN)
             .remove(KEY_REFRESH_TOKEN)
+            .remove(KEY_USER_CACHE)
             .apply()
     }
 }

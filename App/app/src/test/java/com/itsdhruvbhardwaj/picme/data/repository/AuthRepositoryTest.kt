@@ -52,7 +52,7 @@ class AuthRepositoryTest {
     }
 
     @Test
-    fun `refreshSession success saves both tokens`() {
+    fun `refreshSession success saves both tokens and preserves session`() {
         runBlocking {
             val refreshToken = "old_refresh_token"
             val newAccessToken = "new_access_token"
@@ -70,7 +70,7 @@ class AuthRepositoryTest {
     }
 
     @Test
-    fun `refreshSession 401 clears tokens`() {
+    fun `refreshSession 401 clears tokens and cache`() {
         runBlocking {
             val refreshToken = "expired_refresh_token"
             `when`(tokenStorage.getRefreshToken()).thenReturn(refreshToken)
@@ -87,7 +87,7 @@ class AuthRepositoryTest {
     }
 
     @Test
-    fun `refreshSession network failure does not clear tokens`() {
+    fun `refreshSession network failure does not clear tokens or cache`() {
         runBlocking {
             val refreshToken = "refresh_token"
             `when`(tokenStorage.getRefreshToken()).thenReturn(refreshToken)
@@ -123,9 +123,11 @@ class AuthRepositoryTest {
             var storageToken = initialToken
             
             `when`(tokenStorage.getRefreshToken()).thenAnswer { storageToken }
+            `when`(tokenStorage.saveTokens(any(), any())).thenAnswer { invocation ->
+                storageToken = invocation.arguments[1] as String
+            }
             `when`(apiService.refreshToken(any())).thenAnswer {
                 runBlocking { kotlinx.coroutines.delay(100) }
-                storageToken = "new_refresh_token"
                 Response.success(RefreshResponse(true, "new_access_token", "new_refresh_token"))
             }
 
@@ -137,7 +139,7 @@ class AuthRepositoryTest {
             }
             jobs.awaitAll()
 
-            // Verify API was called exactly once due to the "join" logic we will implement
+            // Verify API was called exactly once due to the "join" logic
             verify(apiService, times(1)).refreshToken(any())
         }
     }

@@ -138,9 +138,9 @@ fun ProfileScreen(
                                 modifier = Modifier.size(24.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            // Logic ready for real backend value. Using 0 for now.
+                            // Display actual balance from the user model
                             Text(
-                                text = "0",
+                                text = user?.credits?.toString() ?: "-",
                                 style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
                             )
                         }

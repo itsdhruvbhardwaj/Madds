@@ -29,19 +29,29 @@ class AuthViewModel(
     private val checkSessionMutex = Mutex()
 
     init {
-        checkSession()
+        // Optimistically initialize state from cache to speed up startup
+        val cachedUser = authRepository.getCachedUser()
+        if (cachedUser != null) {
+            _authState.value = AuthState.Authenticated(cachedUser)
+        }
+        
+        // Background validation
+        checkSession(isInitial = true)
     }
 
     /**
      * Checks for an existing session and attempts restoration if a refresh token exists.
      * Handles access token expiration by attempting a refresh automatically.
      */
-    fun checkSession() {
+    fun checkSession(isInitial: Boolean = false) {
         viewModelScope.launch {
             if (checkSessionMutex.isLocked) return@launch
             
             checkSessionMutex.withLock {
-                _authState.value = AuthState.CheckingSession
+                // Only show checking state if we don't have a cached user yet
+                if (!isInitial || _authState.value !is AuthState.Authenticated) {
+                    _authState.value = AuthState.CheckingSession
+                }
                 
                 val userResult = authRepository.getCurrentUser()
                 
@@ -50,9 +60,12 @@ class AuthViewModel(
                 } else {
                     val errorMessage = userResult.exceptionOrNull()?.message
                     
-                    // If it's a network or server error, don't log out. Preserve tokens.
+                    // If it's a network or server error, don't log out. Preserve tokens and cache.
                     if (errorMessage == "network_failure" || errorMessage == "server_failure") {
-                        _authState.value = AuthState.SessionCheckNetworkError
+                        // If we are already optimistically authenticated, stay that way.
+                        if (_authState.value !is AuthState.Authenticated) {
+                            _authState.value = AuthState.SessionCheckNetworkError
+                        }
                         return@withLock
                     }
 
@@ -64,24 +77,24 @@ class AuthViewModel(
                         if (retryUserResult.isSuccess) {
                             _authState.value = AuthState.Authenticated(retryUserResult.getOrThrow())
                         } else {
-                            val retryError = retryUserResult.exceptionOrNull()?.message
-                            if (retryError == "network_failure" || retryError == "server_failure") {
-                                _authState.value = AuthState.SessionCheckNetworkError
-                            } else {
-                                _authState.value = AuthState.Unauthenticated
-                            }
+                            handleSessionFailure(retryUserResult.exceptionOrNull()?.message)
                         }
                     } else {
-                        val refreshError = refreshResult.exceptionOrNull()?.message
-                        // Only log out if it's a definitive auth failure (401/403).
-                        if (refreshError == "network_failure" || refreshError == "server_failure") {
-                            _authState.value = AuthState.SessionCheckNetworkError
-                        } else {
-                            _authState.value = AuthState.Unauthenticated
-                        }
+                        handleSessionFailure(refreshResult.exceptionOrNull()?.message)
                     }
                 }
             }
+        }
+    }
+
+    private fun handleSessionFailure(error: String?) {
+        if (error == "network_failure" || error == "server_failure") {
+            if (_authState.value !is AuthState.Authenticated) {
+                _authState.value = AuthState.SessionCheckNetworkError
+            }
+        } else {
+            // Definitive auth failure (401/403/expired refresh token)
+            _authState.value = AuthState.Unauthenticated
         }
     }
 

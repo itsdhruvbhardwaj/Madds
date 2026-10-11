@@ -1,5 +1,6 @@
 package com.itsdhruvbhardwaj.picme.data.repository
 
+import com.itsdhruvbhardwaj.picme.data.model.HomeConfigResponse
 import com.itsdhruvbhardwaj.picme.data.model.Style
 import com.itsdhruvbhardwaj.picme.data.model.StyleResponse
 import com.itsdhruvbhardwaj.picme.data.remote.StyleApiService
@@ -24,11 +25,12 @@ class StyleRepository(
     suspend fun getStyles(
         page: Int,
         limit: Int,
-        category: String? = null
+        category: String? = null,
+        collection: String? = null
     ): Result<StyleResponse> = withContext(Dispatchers.IO) {
         retryIO {
             try {
-                val response = apiService.getStyles(page, limit, category)
+                val response = apiService.getStyles(page, limit, category, collection)
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
                     // Update cache with new styles
@@ -43,6 +45,25 @@ class StyleRepository(
                         else -> "failed_to_load_styles"
                     }
                     Result.failure(Exception(message))
+                }
+            } catch (e: SocketTimeoutException) {
+                Result.failure(Exception("timeout"))
+            } catch (e: IOException) {
+                Result.failure(Exception("network_error"))
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    suspend fun getHomeConfig(): Result<HomeConfigResponse> = withContext(Dispatchers.IO) {
+        retryIO {
+            try {
+                val response = apiService.getHomeConfig()
+                if (response.isSuccessful && response.body() != null) {
+                    Result.success(response.body()!!)
+                } else {
+                    Result.failure(Exception("failed_to_load_config"))
                 }
             } catch (e: SocketTimeoutException) {
                 Result.failure(Exception("timeout"))
