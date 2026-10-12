@@ -13,9 +13,63 @@ import {
   AdMobKeyFetchError,
   admobSsvVerifier,
   InvalidAdMobCallbackError,
+  type InvalidAdMobCallbackReason,
 } from "../services/rewardedAds/admobSsv.js";
 
 const router: Router = Router();
+const criticalParameterNames = [
+  "ad_network",
+  "ad_unit",
+  "custom_data",
+  "key_id",
+  "reward_amount",
+  "reward_item",
+  "signature",
+  "timestamp",
+  "transaction_id",
+] as const;
+
+function getCriticalParameterPresence(rawQuery: string): Record<string, boolean> {
+  const present = new Set<string>();
+
+  for (const parameter of rawQuery.split("&")) {
+    const separator = parameter.indexOf("=");
+    if (separator <= 0) {
+      continue;
+    }
+
+    try {
+      const name = decodeURIComponent(parameter.slice(0, separator));
+      if ((criticalParameterNames as readonly string[]).includes(name)) {
+        present.add(name);
+      }
+    } catch {
+      // Malformed names remain absent in this value-free diagnostic summary.
+    }
+  }
+
+  return Object.fromEntries(
+    criticalParameterNames.map((name) => [name, present.has(name)]),
+  );
+}
+
+function rejectCallback(
+  res: Response,
+  status: number,
+  code: string,
+  category: string,
+  rawQuery: string,
+): Response {
+  console.warn("AdMob SSV callback rejected.", {
+    category,
+    criticalParameterNamesPresent: getCriticalParameterPresence(rawQuery),
+  });
+  return res.status(status).json({
+    ok: false,
+    code,
+    error: "Invalid rewarded-ad callback.",
+  });
+}
 
 const attemptRateLimiter = rateLimit({
   windowMs: 60_000,
@@ -76,9 +130,19 @@ router.post(
 );
 
 router.get("/ads/admob/ssv", async (req: Request, res: Response) => {
+  const queryStart = req.originalUrl.indexOf("?");
+  const rawQuery = queryStart < 0 ? "" : req.originalUrl.slice(queryStart + 1);
+  const parameterPresence = getCriticalParameterPresence(rawQuery);
+  console.info("AdMob SSV callback received.", {
+    criticalParameterNamesPresent: parameterPresence,
+  });
+
   const configuration = getRewardedAdsConfiguration();
   if (!configuration) {
-    console.error("AdMob SSV processing is disabled by missing or invalid configuration.");
+    console.error("AdMob SSV callback unavailable.", {
+      category: "rewarded_ad_configuration_unavailable",
+      criticalParameterNamesPresent: parameterPresence,
+    });
     return res.status(503).json({
       ok: false,
       code: "REWARDED_ADS_UNAVAILABLE",
@@ -86,27 +150,30 @@ router.get("/ads/admob/ssv", async (req: Request, res: Response) => {
     });
   }
 
-  const queryStart = req.originalUrl.indexOf("?");
   if (queryStart < 0) {
-    return res.status(400).json({
-      ok: false,
-      code: "INVALID_REWARDED_AD_CALLBACK",
-      error: "Invalid rewarded-ad callback.",
-    });
+    return rejectCallback(
+      res,
+      400,
+      "INVALID_REWARDED_AD_CALLBACK",
+      "missing_query",
+      rawQuery,
+    );
   }
 
   try {
-    const callback = await admobSsvVerifier.verify(req.originalUrl.slice(queryStart + 1));
+    const callback = await admobSsvVerifier.verify(rawQuery);
     if (
       callback.adUnitId !== configuration.adUnitId ||
       callback.rewardItem !== configuration.admobRewardItem ||
       callback.rewardAmount !== String(configuration.admobRewardAmount)
     ) {
-      return res.status(400).json({
-        ok: false,
-        code: "INVALID_REWARDED_AD_CALLBACK",
-        error: "Invalid rewarded-ad callback.",
-      });
+      return rejectCallback(
+        res,
+        400,
+        "INVALID_REWARDED_AD_CALLBACK",
+        "reward_configuration_mismatch",
+        rawQuery,
+      );
     }
 
     const callbackTimeMs = callback.timestampMs;
@@ -115,19 +182,23 @@ router.get("/ads/admob/ssv", async (req: Request, res: Response) => {
       callbackTimeMs < now - configuration.callbackMaxAgeSeconds * 1000 ||
       callbackTimeMs > now + configuration.callbackFutureSkewSeconds * 1000
     ) {
-      return res.status(400).json({
-        ok: false,
-        code: "INVALID_REWARDED_AD_CALLBACK",
-        error: "Invalid rewarded-ad callback.",
-      });
+      return rejectCallback(
+        res,
+        400,
+        "INVALID_REWARDED_AD_CALLBACK",
+        "callback_timestamp_out_of_range",
+        rawQuery,
+      );
     }
 
     if (!/^[A-Za-z0-9_-]{43}$/.test(callback.customData)) {
-      return res.status(400).json({
-        ok: false,
-        code: "INVALID_REWARDED_AD_CALLBACK",
-        error: "Invalid rewarded-ad callback.",
-      });
+      return rejectCallback(
+        res,
+        400,
+        "INVALID_REWARDED_AD_CALLBACK",
+        "custom_data_format_invalid",
+        rawQuery,
+      );
     }
 
     const ticketHash = createHash("sha256").update(callback.customData).digest("hex");
@@ -144,27 +215,41 @@ router.get("/ads/admob/ssv", async (req: Request, res: Response) => {
       return res.status(200).json({ ok: true, status: "already_processed" });
     }
     if (result.status === "expired") {
+      console.warn("AdMob SSV callback rejected.", {
+        category: "attempt_expired_or_unavailable",
+        criticalParameterNamesPresent: parameterPresence,
+      });
       return res.status(410).json({
         ok: false,
         code: "REWARDED_AD_ATTEMPT_EXPIRED",
         error: "Rewarded-ad attempt is expired or unavailable.",
       });
     }
-    return res.status(400).json({
-      ok: false,
-      code: "INVALID_REWARDED_AD_CALLBACK",
-      error: "Invalid rewarded-ad callback.",
-    });
+    return rejectCallback(
+      res,
+      400,
+      "INVALID_REWARDED_AD_CALLBACK",
+      result.status === "transaction_conflict"
+        ? "attempt_or_transaction_conflict"
+        : "attempt_not_found",
+      rawQuery,
+    );
   } catch (error) {
     if (error instanceof InvalidAdMobCallbackError) {
-      return res.status(400).json({
-        ok: false,
-        code: "INVALID_REWARDED_AD_CALLBACK",
-        error: "Invalid rewarded-ad callback.",
-      });
+      const category: InvalidAdMobCallbackReason = error.reason;
+      return rejectCallback(
+        res,
+        400,
+        "INVALID_REWARDED_AD_CALLBACK",
+        category,
+        rawQuery,
+      );
     }
     if (error instanceof AdMobKeyFetchError) {
-      console.error("AdMob SSV public keys could not be obtained.");
+      console.error("AdMob SSV callback verification unavailable.", {
+        category: "public_key_retrieval_failed",
+        criticalParameterNamesPresent: parameterPresence,
+      });
       return res.status(503).json({
         ok: false,
         code: "REWARDED_AD_VERIFICATION_UNAVAILABLE",

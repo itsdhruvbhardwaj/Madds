@@ -24,8 +24,19 @@ export type VerifiedAdMobCallback = {
   transactionId: string;
 };
 
+export type InvalidAdMobCallbackReason =
+  | "malformed_signature_suffix"
+  | "malformed_parameter"
+  | "duplicate_parameter"
+  | "unexpected_parameter"
+  | "parameter_order"
+  | "required_parameter_missing"
+  | "malformed_signature"
+  | "signature_verification_failed"
+  | "malformed_callback_fields";
+
 export class InvalidAdMobCallbackError extends Error {
-  constructor() {
+  constructor(readonly reason: InvalidAdMobCallbackReason) {
     super("Invalid AdMob SSV callback.");
     this.name = "InvalidAdMobCallbackError";
   }
@@ -49,7 +60,7 @@ function parseSignedParameters(signedQuery: string): Map<string, string> {
   for (const part of signedQuery.split("&")) {
     const separator = part.indexOf("=");
     if (separator <= 0) {
-      throw new InvalidAdMobCallbackError();
+      throw new InvalidAdMobCallbackError("malformed_parameter");
     }
 
     let name: string;
@@ -58,11 +69,13 @@ function parseSignedParameters(signedQuery: string): Map<string, string> {
       name = decodeParameter(part.slice(0, separator));
       value = decodeParameter(part.slice(separator + 1));
     } catch {
-      throw new InvalidAdMobCallbackError();
+      throw new InvalidAdMobCallbackError("malformed_parameter");
     }
 
     if (part.slice(0, separator) !== name || parameters.has(name)) {
-      throw new InvalidAdMobCallbackError();
+      throw new InvalidAdMobCallbackError(
+        parameters.has(name) ? "duplicate_parameter" : "malformed_parameter",
+      );
     }
     parameters.set(name, value);
     names.push(name);
@@ -79,10 +92,12 @@ function parseSignedParameters(signedQuery: string): Map<string, string> {
     "user_id",
   ]);
   if (
-    names.some((name) => !allowedNames.has(name)) ||
-    names.some((name, index) => index > 0 && names[index - 1]! > name)
+    names.some((name) => !allowedNames.has(name))
   ) {
-    throw new InvalidAdMobCallbackError();
+    throw new InvalidAdMobCallbackError("unexpected_parameter");
+  }
+  if (names.some((name, index) => index > 0 && names[index - 1]! > name)) {
+    throw new InvalidAdMobCallbackError("parameter_order");
   }
 
   for (const required of [
@@ -95,11 +110,11 @@ function parseSignedParameters(signedQuery: string): Map<string, string> {
     "transaction_id",
   ]) {
     if (!parameters.get(required)) {
-      throw new InvalidAdMobCallbackError();
+      throw new InvalidAdMobCallbackError("required_parameter_missing");
     }
   }
   if (!/^\d+$/.test(parameters.get("ad_network")!)) {
-    throw new InvalidAdMobCallbackError();
+    throw new InvalidAdMobCallbackError("malformed_callback_fields");
   }
 
   return parameters;
@@ -112,13 +127,13 @@ function parseSignatureParts(rawQuery: string): {
 } {
   const suffix = /&signature=([A-Za-z0-9_-]+={0,2})&key_id=(\d+)$/.exec(rawQuery);
   if (!suffix || suffix.index <= 0 || rawQuery.indexOf("&signature=") !== suffix.index) {
-    throw new InvalidAdMobCallbackError();
+    throw new InvalidAdMobCallbackError("malformed_signature_suffix");
   }
 
   const signature = suffix[1]!;
   const keyId = Number(suffix[2]);
   if (!Number.isSafeInteger(keyId) || keyId <= 0) {
-    throw new InvalidAdMobCallbackError();
+    throw new InvalidAdMobCallbackError("malformed_signature_suffix");
   }
 
   return {
@@ -146,7 +161,7 @@ export class AdMobSsvVerifier {
     const signatureBytes = Buffer.from(signatureParts.signature, "base64url");
 
     if (signatureBytes.length === 0) {
-      throw new InvalidAdMobCallbackError();
+      throw new InvalidAdMobCallbackError("malformed_signature");
     }
 
     let key = (await this.getKeys()).get(signatureParts.keyId);
@@ -154,7 +169,7 @@ export class AdMobSsvVerifier {
       key = (await this.getKeys(true)).get(signatureParts.keyId);
     }
     if (!key) {
-      throw new InvalidAdMobCallbackError();
+      throw new InvalidAdMobCallbackError("malformed_signature");
     }
 
     let isValid: boolean;
@@ -166,10 +181,10 @@ export class AdMobSsvVerifier {
         signatureBytes,
       );
     } catch {
-      throw new InvalidAdMobCallbackError();
+      throw new InvalidAdMobCallbackError("malformed_signature");
     }
     if (!isValid) {
-      throw new InvalidAdMobCallbackError();
+      throw new InvalidAdMobCallbackError("signature_verification_failed");
     }
 
     const timestampValue = parameters.get("timestamp")!;
@@ -180,7 +195,7 @@ export class AdMobSsvVerifier {
       !Number.isSafeInteger(timestamp) ||
       !/^[a-fA-F0-9]{32}$/.test(transactionId)
     ) {
-      throw new InvalidAdMobCallbackError();
+      throw new InvalidAdMobCallbackError("malformed_callback_fields");
     }
 
     return {

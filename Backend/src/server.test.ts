@@ -75,7 +75,11 @@ vi.mock("./services/credits/creditService.js", () => {
 });
 
 vi.mock("./services/rewardedAds/admobSsv.js", () => {
-  class InvalidAdMobCallbackError extends Error {}
+  class InvalidAdMobCallbackError extends Error {
+    constructor(readonly reason: string) {
+      super("Invalid AdMob SSV callback.");
+    }
+  }
   class AdMobKeyFetchError extends Error {}
 
   return {
@@ -732,12 +736,68 @@ describe("rewarded-ad endpoints", () => {
   });
 
   it("rejects invalid signatures without invoking credit accounting", async () => {
-    admobMocks.verify.mockRejectedValueOnce(new InvalidAdMobCallbackError());
+    admobMocks.verify.mockRejectedValueOnce(
+      new InvalidAdMobCallbackError("signature_verification_failed"),
+    );
 
     const response = await request(app).get("/api/ads/admob/ssv?signed=callback");
 
     expect(response.status).toBe(400);
     expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
+  });
+
+  it("diagnoses an incomplete URL-verification request without granting credits", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    admobMocks.verify.mockRejectedValueOnce(
+      new InvalidAdMobCallbackError("malformed_signature_suffix"),
+    );
+
+    const response = await request(app).get("/api/ads/admob/ssv?ad_unit=secret-unit&custom_data=secret-ticket");
+
+    expect(response.status).toBe(400);
+    expect(admobSsvVerifier.verify).toHaveBeenCalledWith(
+      "ad_unit=secret-unit&custom_data=secret-ticket",
+    );
+    expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith("AdMob SSV callback rejected.", {
+      category: "malformed_signature_suffix",
+      criticalParameterNamesPresent: expect.objectContaining({
+        ad_unit: true,
+        custom_data: true,
+        signature: false,
+        key_id: false,
+        transaction_id: false,
+      }),
+    });
+    const loggedDiagnostics = JSON.stringify([
+      ...infoSpy.mock.calls,
+      ...warnSpy.mock.calls,
+    ]);
+    expect(loggedDiagnostics).not.toContain("secret-unit");
+    expect(loggedDiagnostics).not.toContain("secret-ticket");
+    warnSpy.mockRestore();
+    infoSpy.mockRestore();
+  });
+
+  it("rejects a callback with no query and records only absent parameter names", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const response = await request(app).get("/api/ads/admob/ssv");
+
+    expect(response.status).toBe(400);
+    expect(admobSsvVerifier.verify).not.toHaveBeenCalled();
+    expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith("AdMob SSV callback rejected.", {
+      category: "missing_query",
+      criticalParameterNamesPresent: expect.objectContaining({
+        ad_network: false,
+        ad_unit: false,
+        custom_data: false,
+        signature: false,
+        key_id: false,
+      }),
+    });
+    warnSpy.mockRestore();
   });
 
   it("fails closed on a reward mismatch", async () => {
