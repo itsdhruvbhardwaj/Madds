@@ -806,6 +806,29 @@ describe("rewarded-ad endpoints", () => {
     expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
   });
 
+  it("rejects an invalid signature before acknowledging a mismatched ad unit", async () => {
+    process.env.ADMOB_REWARDED_AD_UNIT_ID = "ca-app-pub-1234567890123456/1843520466";
+    admobMocks.verify.mockRejectedValueOnce(
+      new InvalidAdMobCallbackError("signature_verification_failed"),
+    );
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const response = await request(app).get("/api/ads/admob/ssv?signed=callback");
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({ ok: false, code: "INVALID_REWARDED_AD_CALLBACK" });
+    expect(admobSsvVerifier.verify).toHaveBeenCalledWith("signed=callback");
+    expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith("AdMob SSV callback rejected.", expect.objectContaining({
+      category: "signature_verification_failed",
+    }));
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      "AdMob SSV callback acknowledged without reward.",
+      expect.anything(),
+    );
+    warnSpy.mockRestore();
+  });
+
   it("diagnoses an incomplete URL-verification request without granting credits", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
@@ -859,7 +882,7 @@ describe("rewarded-ad endpoints", () => {
     infoSpy.mockRestore();
   });
 
-  it("diagnoses each reward configuration mismatch after signature verification and fails closed", async () => {
+  it("acknowledges signed ad-unit mismatches without reward and rejects reward mismatches", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const matchingCallback = {
       adUnitId: "1234567890",
@@ -872,6 +895,8 @@ describe("rewarded-ad endpoints", () => {
     const mismatchCases = [
       {
         callback: { ...matchingCallback, adUnitId: "9876543210" },
+        configuredAdUnitId: "ca-app-pub-1234567890123456/1234567890",
+        status: 200,
         diagnostics: {
           ad_unit_matches: false,
           reward_item_matches: true,
@@ -887,10 +912,30 @@ describe("rewarded-ad endpoints", () => {
         },
       },
       {
+        callback: { ...matchingCallback, adUnitId: "1234567890" },
+        configuredAdUnitId: "ca-app-pub-1111111111111111/1843520466",
+        status: 200,
+        diagnostics: {
+          ad_unit_matches: false,
+          reward_item_matches: true,
+          reward_amount_matches: true,
+          configured_id_format_valid: true,
+          expected_numeric_component_present: true,
+          callback_ad_unit_is_decimal: true,
+          callback_ad_unit_length: 10,
+          expected_numeric_component_length: 10,
+          callback_ad_unit_last_four: "7890",
+          configured_numeric_component_last_four: "0466",
+          exact_ad_unit_comparison_matches: false,
+        },
+      },
+      {
         callback: {
           ...matchingCallback,
           adUnitId: "ca-app-pub-1234567890123456/1234567890",
         },
+        configuredAdUnitId: "ca-app-pub-1234567890123456/1234567890",
+        status: 200,
         diagnostics: {
           ad_unit_matches: false,
           reward_item_matches: true,
@@ -907,6 +952,8 @@ describe("rewarded-ad endpoints", () => {
       },
       {
         callback: { ...matchingCallback, rewardItem: "wrong-item" },
+        configuredAdUnitId: "ca-app-pub-1234567890123456/1234567890",
+        status: 400,
         diagnostics: {
           ad_unit_matches: true,
           reward_item_matches: false,
@@ -923,6 +970,8 @@ describe("rewarded-ad endpoints", () => {
       },
       {
         callback: { ...matchingCallback, rewardAmount: "2" },
+        configuredAdUnitId: "ca-app-pub-1234567890123456/1234567890",
+        status: 400,
         diagnostics: {
           ad_unit_matches: true,
           reward_item_matches: true,
@@ -939,21 +988,35 @@ describe("rewarded-ad endpoints", () => {
       },
     ] as const;
 
-    for (const { callback, diagnostics } of mismatchCases) {
+    for (const { callback, diagnostics, configuredAdUnitId, status } of mismatchCases) {
+      process.env.ADMOB_REWARDED_AD_UNIT_ID =
+        configuredAdUnitId ?? "ca-app-pub-1234567890123456/1234567890";
       admobMocks.verify.mockResolvedValueOnce(callback);
       const response = await request(app).get("/api/ads/admob/ssv?signed=callback");
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(status);
       expect(admobSsvVerifier.verify).toHaveBeenCalledWith("signed=callback");
       expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
-      expect(warnSpy).toHaveBeenLastCalledWith("AdMob SSV callback rejected.", {
-        category: "reward_configuration_mismatch",
-        criticalParameterNamesPresent: expect.any(Object),
-        ...diagnostics,
-        runtime_configuration_present: true,
-        runtime_configuration_valid: true,
-        signature_verified: true,
-      });
+      expect(generationMocks.createRewardedAdAttempt).not.toHaveBeenCalled();
+      if (status === 200) {
+        expect(response.body).toEqual({ ok: true, rewardProcessed: false });
+        expect(warnSpy).toHaveBeenLastCalledWith(
+          "AdMob SSV callback acknowledged without reward.",
+          {
+            category: "signed_callback_ad_unit_mismatch_acknowledged_no_reward",
+            criticalParameterNamesPresent: expect.any(Object),
+          },
+        );
+      } else {
+        expect(warnSpy).toHaveBeenLastCalledWith("AdMob SSV callback rejected.", {
+          category: "reward_configuration_mismatch",
+          criticalParameterNamesPresent: expect.any(Object),
+          ...diagnostics,
+          runtime_configuration_present: true,
+          runtime_configuration_valid: true,
+          signature_verified: true,
+        });
+      }
     }
 
     const loggedDiagnostics = JSON.stringify(warnSpy.mock.calls);

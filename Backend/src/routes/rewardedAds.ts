@@ -174,6 +174,13 @@ router.get("/ads/admob/ssv", async (req: Request, res: Response) => {
     const rewardItemMatches = callback.rewardItem === configuration.admobRewardItem;
     const rewardAmountMatches =
       callback.rewardAmount === String(configuration.admobRewardAmount);
+    if (!adUnitMatches && rewardItemMatches && rewardAmountMatches) {
+      console.warn("AdMob SSV callback acknowledged without reward.", {
+        category: "signed_callback_ad_unit_mismatch_acknowledged_no_reward",
+        criticalParameterNamesPresent: parameterPresence,
+      });
+      return res.status(200).json({ ok: true, rewardProcessed: false });
+    }
     if (!adUnitMatches || !rewardItemMatches || !rewardAmountMatches) {
       const configuredIdFormatValid =
         /^ca-app-pub-\d+\/\d+$/.test(configuration.adUnitId);
