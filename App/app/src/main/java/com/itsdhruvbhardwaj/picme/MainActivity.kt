@@ -65,7 +65,7 @@ class MainActivity : ComponentActivity() {
         
         authRepository = AuthRepository(authApiService, tokenStorage)
         val styleRepository = StyleRepository(styleApiService)
-        val generationRepository = GenerationRepository(styleApiService, applicationContext.contentResolver)
+        val generationRepository = GenerationRepository(styleApiService, applicationContext.contentResolver, tokenStorage)
         
         val viewModelFactory = object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {

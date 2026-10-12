@@ -43,14 +43,14 @@ class GenerationViewModelTest {
         // Arrange
         val mockUri: Uri = mock()
         viewModel.setSelectedPhotos(listOf(mockUri))
-        `when`(repository.generateImage(any(), any())).thenReturn(
+        `when`(repository.generateImage(any(), any(), any())).thenReturn(
             Result.success(GenerationResponse(ok = true, image = "base64data"))
         )
 
         // Act
         viewModel.generateImage("style1")
         
-        // Initial state
+        // Advance time to pass the initial delay and processing
         advanceUntilIdle()
 
         // Assert
@@ -63,7 +63,7 @@ class GenerationViewModelTest {
         // Arrange
         val mockUri: Uri = mock()
         viewModel.setSelectedPhotos(listOf(mockUri))
-        `when`(repository.generateImage(any(), any())).thenReturn(
+        `when`(repository.generateImage(any(), any(), any())).thenReturn(
             Result.failure(Exception("API Error 500"))
         )
 

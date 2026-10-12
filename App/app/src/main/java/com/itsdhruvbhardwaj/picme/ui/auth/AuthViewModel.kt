@@ -33,6 +33,9 @@ class AuthViewModel(
         val cachedUser = authRepository.getCachedUser()
         if (cachedUser != null) {
             _authState.value = AuthState.Authenticated(cachedUser)
+        } else if (authRepository.hasRefreshToken()) {
+            // If tokens exist but profile isn't cached, show loading on Home instead of Splash
+            _authState.value = AuthState.RestoringSession
         }
         
         // Background validation
@@ -48,8 +51,9 @@ class AuthViewModel(
             if (checkSessionMutex.isLocked) return@launch
             
             checkSessionMutex.withLock {
-                // Only show checking state if we don't have a cached user yet
-                if (!isInitial || _authState.value !is AuthState.Authenticated) {
+                // Only show global checking state if we don't have a local session baseline
+                val currentState = _authState.value
+                if (!isInitial || (currentState !is AuthState.Authenticated && currentState !is AuthState.RestoringSession)) {
                     _authState.value = AuthState.CheckingSession
                 }
                 
@@ -61,8 +65,7 @@ class AuthViewModel(
                     val errorMessage = userResult.exceptionOrNull()?.message
                     
                     // If it's a network or server error, don't log out. Preserve tokens and cache.
-                    if (errorMessage == "network_failure" || errorMessage == "server_failure") {
-                        // If we are already optimistically authenticated, stay that way.
+                    if (errorMessage == "network_failure" || errorMessage == "server_failure" || errorMessage == "timeout") {
                         if (_authState.value !is AuthState.Authenticated) {
                             _authState.value = AuthState.SessionCheckNetworkError
                         }
@@ -88,7 +91,7 @@ class AuthViewModel(
     }
 
     private fun handleSessionFailure(error: String?) {
-        if (error == "network_failure" || error == "server_failure") {
+        if (error == "network_failure" || error == "server_failure" || error == "timeout") {
             if (_authState.value !is AuthState.Authenticated) {
                 _authState.value = AuthState.SessionCheckNetworkError
             }
@@ -223,6 +226,7 @@ class AuthViewModel(
             "invalid_token", "expired_token", "token_already_used" -> "This verification link is invalid or has expired. Request a new one."
             "network_failure" -> "Unable to connect. Check your internet connection and try again."
             "server_failure" -> "PicMe is temporarily unavailable. Please try again shortly."
+            "timeout" -> "Connection timed out. Please try again."
             else -> message ?: "An unexpected error occurred. Please try again."
         }
     }

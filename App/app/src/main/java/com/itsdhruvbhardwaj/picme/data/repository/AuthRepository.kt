@@ -4,10 +4,12 @@ import com.google.gson.Gson
 import com.itsdhruvbhardwaj.picme.data.local.AuthTokenStorage
 import com.itsdhruvbhardwaj.picme.data.model.*
 import com.itsdhruvbhardwaj.picme.data.remote.AuthApiService
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import retrofit2.Response
 import java.io.IOException
+import java.net.SocketTimeoutException
 
 /**
  * Repository responsible for managing authenticated sessions for PicMe.
@@ -101,42 +103,47 @@ class AuthRepository(
 
     /**
      * Synchronized refresh operation to prevent concurrent refresh-token rotation conflicts.
-     * If multiple calls occur simultaneously, they queue and the subsequent calls check if
-     * a new token was already obtained by the first call.
+     * Uses retry logic to handle Render cold starts.
      */
     suspend fun refreshSession(): Result<Unit> {
         val initialRefreshToken = tokenStorage.getRefreshToken()
             ?: return Result.failure(Exception("No refresh token available"))
 
-        refreshMutex.withLock {
-            // Check if another thread already rotated the tokens while we were waiting for the lock
+        return refreshMutex.withLock {
             val currentRefreshToken = tokenStorage.getRefreshToken()
             if (currentRefreshToken != initialRefreshToken && !currentRefreshToken.isNullOrEmpty()) {
                 return Result.success(Unit)
             }
 
-            return try {
-                val response = apiService.refreshToken(RefreshTokenRequest(initialRefreshToken))
-                if (response.isSuccessful && response.body()?.ok == true) {
-                    val newAccessToken = response.body()?.accessToken
-                    val newRefreshToken = response.body()?.refreshToken
-                    if (newAccessToken != null && newRefreshToken != null) {
-                        tokenStorage.saveTokens(newAccessToken, newRefreshToken)
-                        Result.success(Unit)
+            retryIO {
+                try {
+                    val response = apiService.refreshToken(RefreshTokenRequest(initialRefreshToken))
+                    if (response.isSuccessful && response.body()?.ok == true) {
+                        val body = response.body()!!
+                        val newAccessToken = body.accessToken
+                        val newRefreshToken = body.refreshToken
+                        if (newAccessToken != null && newRefreshToken != null) {
+                            tokenStorage.saveTokens(newAccessToken, newRefreshToken)
+                            Result.success(Unit)
+                        } else {
+                            Result.failure(Exception("refresh_failed"))
+                        }
                     } else {
-                        Result.failure(Exception("Failed to rotate tokens"))
+                        val code = response.code()
+                        if (code == 401 || code == 403) {
+                            tokenStorage.clearTokens()
+                            Result.failure(Exception("session_expired"))
+                        } else {
+                            Result.failure(Exception("refresh_failed"))
+                        }
                     }
-                } else {
-                    val code = response.code()
-                    if (code == 401 || code == 403) {
-                        tokenStorage.clearTokens()
-                        Result.failure(Exception("session_expired"))
-                    } else {
-                        Result.failure(Exception("refresh_failed"))
-                    }
+                } catch (e: SocketTimeoutException) {
+                    Result.failure(Exception("timeout"))
+                } catch (e: IOException) {
+                    Result.failure(Exception("network_failure"))
+                } catch (e: Exception) {
+                    Result.failure(e)
                 }
-            } catch (e: Exception) {
-                Result.failure(e)
             }
         }
     }
@@ -145,17 +152,23 @@ class AuthRepository(
         val accessToken = tokenStorage.getAccessToken()
             ?: return Result.failure(Exception("No access token available"))
 
-        return safeApiCall(
-            call = { apiService.getCurrentUser("Bearer $accessToken") },
-            onSuccess = { response ->
-                tokenStorage.saveUser(response.user)
-                Result.success(response.user)
-            }
-        )
+        return retryIO {
+            safeApiCall(
+                call = { apiService.getCurrentUser("Bearer $accessToken") },
+                onSuccess = { response ->
+                    tokenStorage.saveUser(response.user)
+                    Result.success(response.user)
+                }
+            )
+        }
     }
 
     fun getCachedUser(): User? {
         return tokenStorage.getUser()
+    }
+
+    fun hasRefreshToken(): Boolean {
+        return tokenStorage.hasRefreshToken()
     }
 
     suspend fun logout(): Result<Unit> {
@@ -209,7 +222,6 @@ class AuthRepository(
                 val errorCode = response.code()
                 val errorBodyString = response.errorBody()?.string() ?: ""
                 
-                // Attempt to parse structured error response
                 val errorResponse = try {
                     Gson().fromJson(errorBodyString, ErrorResponse::class.java)
                 } catch (e: Exception) {
@@ -231,10 +243,32 @@ class AuthRepository(
                 }
                 Result.failure(Exception(mappedMessage))
             }
+        } catch (e: SocketTimeoutException) {
+            Result.failure(Exception("timeout"))
         } catch (e: IOException) {
             Result.failure(Exception("network_failure"))
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    private suspend fun <T> retryIO(
+        times: Int = 3,
+        initialDelay: Long = 1000,
+        maxDelay: Long = 5000,
+        factor: Double = 2.0,
+        block: suspend () -> Result<T>
+    ): Result<T> {
+        var currentDelay = initialDelay
+        repeat(times - 1) {
+            val result = block()
+            val exception = result.exceptionOrNull()
+            if (result.isSuccess || (exception != null && exception.message !in listOf("timeout", "network_failure", "server_failure"))) {
+                return result
+            }
+            delay(currentDelay)
+            currentDelay = (currentDelay * factor).toLong().coerceAtMost(maxDelay)
+        }
+        return block()
     }
 }

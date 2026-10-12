@@ -2,6 +2,7 @@ package com.itsdhruvbhardwaj.picme.data.repository
 
 import android.content.ContentResolver
 import android.net.Uri
+import com.itsdhruvbhardwaj.picme.data.local.AuthTokenStorage
 import com.itsdhruvbhardwaj.picme.data.model.GenerationResponse
 import com.itsdhruvbhardwaj.picme.data.remote.StyleApiService
 import kotlinx.coroutines.runBlocking
@@ -15,7 +16,10 @@ import org.mockito.Mock
 import org.mockito.Mockito.`when`
 import org.mockito.MockitoAnnotations
 import org.mockito.kotlin.any
+import org.mockito.kotlin.mock
 import retrofit2.Response
+import java.io.IOException
+import java.net.SocketTimeoutException
 
 class GenerationRepositoryTest {
 
@@ -24,48 +28,91 @@ class GenerationRepositoryTest {
 
     @Mock
     private lateinit var contentResolver: ContentResolver
+    
+    @Mock
+    private lateinit var tokenStorage: AuthTokenStorage
 
     private lateinit var repository: GenerationRepository
 
     @Before
     fun setup() {
         MockitoAnnotations.openMocks(this)
-        repository = GenerationRepository(apiService, contentResolver)
+        repository = GenerationRepository(apiService, contentResolver, tokenStorage)
     }
 
     @Test
     fun `generateImage with empty URIs returns failure`() = runBlocking {
-        val result = repository.generateImage("style1", emptyList())
+        `when`(tokenStorage.getAccessToken()).thenReturn("test-token")
+        val result = repository.generateImage("style1", emptyList(), "test-key")
         assertTrue(result.isFailure)
         assertEquals("No images selected", result.exceptionOrNull()?.message)
     }
 
     @Test
-    fun `generateImage success returns image data`() = runBlocking {
-        // Note: Mocking FileUtils or ContentResolver behavior for a full integration-style 
-        // unit test here is complex because FileUtils is an object.
-        // For this task, we focus on the repository's response handling logic.
-        
-        // However, since generateImage calls FileUtils.uriToMultipartPart internally,
-        // which uses contentResolver.getType and openInputStream, we would need to mock those.
-        
-        // This test might fail if FileUtils returns null for the mock URI.
-        // In a real project, we might use a wrapper for FileUtils to make it more testable.
-        // For now, let's test the error cases we can easily trigger.
+    fun `generateImage with no token returns failure`() = runBlocking {
+        `when`(tokenStorage.getAccessToken()).thenReturn(null)
+        val mockUri: Uri = mock()
+        val result = repository.generateImage("style1", listOf(mockUri), "test-key")
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message?.contains("401") == true)
     }
 
     @Test
-    fun `generateImage API error returns failure with message`() = runBlocking {
-        // We'll skip the successful path in this simple unit test because of the 
-        // static FileUtils dependency, but we can verify the API failure handling 
-        // if we could get past the image processing part.
+    fun `generateImage with 402 returns InsufficientCreditsException`() = runBlocking {
+        `when`(tokenStorage.getAccessToken()).thenReturn("token")
+        val mockUri: Uri = mock()
         
-        // Instead, let's verify how it handles an empty list which we already did.
+        // Mock ContentResolver to satisfy FileUtils.uriToMultipartPart
+        `when`(contentResolver.getType(any())).thenReturn("image/jpeg")
+        
+        val errorJson = "{\"ok\":false, \"code\":\"INSUFFICIENT_CREDITS\", \"error\":\"Not enough credits.\", \"requiredCredits\":10, \"availableCredits\":4}"
+        val errorResponseBody = errorJson.toResponseBody("application/json".toMediaTypeOrNull())
+        
+        `when`(apiService.generateImage(any(), any(), any(), any())).thenReturn(
+            Response.error(402, errorResponseBody)
+        )
+
+        val result = repository.generateImage("style1", listOf(mockUri), "key")
+        
+        assertTrue("Expected failure", result.isFailure)
+        val exception = result.exceptionOrNull()
+        assertTrue("Expected InsufficientCreditsException but got $exception", exception is InsufficientCreditsException)
+        val creditsException = exception as InsufficientCreditsException
+        assertEquals(10, creditsException.required)
+        assertEquals(4, creditsException.available)
     }
-    
+
     @Test
-    fun `parsing successful generation response works`() {
-        val json = "{\"ok\": true, \"image\": \"data:image/jpeg;base64,abc\"}"
-        // This would be tested in a separate Model/Gson test if needed.
+    fun `generateImage with 409 returns DuplicateOperationException`() = runBlocking {
+        `when`(tokenStorage.getAccessToken()).thenReturn("token")
+        val mockUri: Uri = mock()
+        `when`(contentResolver.getType(any())).thenReturn("image/jpeg")
+        
+        val errorResponseBody = "{\"ok\":false, \"message\":\"Duplicate\"}".toResponseBody("application/json".toMediaTypeOrNull())
+        
+        `when`(apiService.generateImage(any(), any(), any(), any())).thenReturn(
+            Response.error(409, errorResponseBody)
+        )
+
+        val result = repository.generateImage("style1", listOf(mockUri), "key")
+        
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is DuplicateOperationException)
+    }
+
+    @Test
+    fun `generateImage with SocketTimeoutException returns AmbiguousOutcomeException`() = runBlocking {
+        `when`(tokenStorage.getAccessToken()).thenReturn("token")
+        val mockUri: Uri = mock()
+        `when`(contentResolver.getType(any())).thenReturn("image/jpeg")
+        
+        `when`(apiService.generateImage(any(), any(), any(), any())).thenAnswer {
+            throw SocketTimeoutException("Timeout")
+        }
+
+        val result = repository.generateImage("style1", listOf(mockUri), "key")
+        
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is AmbiguousOutcomeException)
     }
 }

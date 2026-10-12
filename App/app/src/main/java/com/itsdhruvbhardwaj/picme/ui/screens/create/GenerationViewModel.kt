@@ -4,8 +4,12 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.itsdhruvbhardwaj.picme.data.repository.AmbiguousOutcomeException
+import com.itsdhruvbhardwaj.picme.data.repository.DuplicateOperationException
 import com.itsdhruvbhardwaj.picme.data.repository.GenerationRepository
+import com.itsdhruvbhardwaj.picme.data.repository.InsufficientCreditsException
 import com.itsdhruvbhardwaj.picme.utils.ImageUtils
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,13 +18,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 sealed interface GenerationUiState {
     data object Idle : GenerationUiState
     data object Uploading : GenerationUiState
     data object Processing : GenerationUiState
     data class Success(val imageBase64: String) : GenerationUiState
-    data class Error(val message: String) : GenerationUiState
+    data class Error(
+        val message: String,
+        val canRetryWithNewKey: Boolean = true,
+        val isAmbiguous: Boolean = false
+    ) : GenerationUiState
 }
 
 sealed interface GenerationEvent {
@@ -46,11 +55,16 @@ class GenerationViewModel(
     private val _eventFlow = MutableSharedFlow<GenerationEvent>()
     val eventFlow: SharedFlow<GenerationEvent> = _eventFlow.asSharedFlow()
 
+    private var currentIdempotencyKey: String? = null
+    var onProfileRefreshRequested: (() -> Unit)? = null
+    
+    private var statusJob: Job? = null
+
     fun setSelectedPhotos(uris: List<Uri>) {
         _selectedPhotos.value = uris
     }
 
-    fun generateImage(styleId: String) {
+    fun generateImage(styleId: String, isRetry: Boolean = false) {
         val uris = _selectedPhotos.value
         if (uris.isEmpty()) {
             _uiState.value = GenerationUiState.Error("No photos selected. Please go back and select your photos.")
@@ -59,38 +73,90 @@ class GenerationViewModel(
 
         if (_uiState.value is GenerationUiState.Uploading || _uiState.value is GenerationUiState.Processing) return
 
+        if (!isRetry || currentIdempotencyKey == null) {
+            currentIdempotencyKey = UUID.randomUUID().toString()
+        }
+
         viewModelScope.launch {
             _uiState.value = GenerationUiState.Uploading
-            _statusMessage.value = "Preparing your photo..."
             
-            // Artificial delay to show initial state
-            delay(1000)
-            _statusMessage.value = "Uploading your photos..."
+            // Start background status cycling immediately
+            startStatusCycle()
 
-            val result = generationRepository.generateImage(styleId, uris)
+            val result = generationRepository.generateImage(styleId, uris, currentIdempotencyKey!!)
             
             result.fold(
                 onSuccess = { response ->
+                    statusJob?.cancel()
                     _uiState.value = GenerationUiState.Processing
-                    startProcessingMessages()
+                    _statusMessage.value = "Your masterpiece is ready!"
                     
                     if (response.image != null) {
+                        // Success! The ResultScreen will handle navigation
                         _uiState.value = GenerationUiState.Success(response.image)
+                        onProfileRefreshRequested?.invoke()
                     } else {
                         _uiState.value = GenerationUiState.Error("The AI couldn't generate an image. Please try again.")
                     }
                 },
                 onFailure = { error ->
-                    val friendlyMessage = when {
-                        error.message?.contains("401") == true -> "Session expired. Please sign in again."
-                        error.message?.contains("402") == true -> "Insufficient credits. Please top up."
-                        error.message?.contains("429") == true -> "AI server is busy. Please try again in a few moments."
-                        error.message?.contains("timeout") == true -> "Connection timed out. Our AI engine is warming up, please retry."
-                        else -> error.message ?: "Failed to generate image. Please check your connection."
-                    }
-                    _uiState.value = GenerationUiState.Error(friendlyMessage)
+                    statusJob?.cancel()
+                    handleGenerationFailure(error)
                 }
             )
+        }
+    }
+
+    private fun startStatusCycle() {
+        statusJob?.cancel()
+        val messages = listOf(
+            "Preparing your photo...",
+            "Applying your chosen style...",
+            "Adding the finishing touches...",
+            "Your masterpiece is almost ready..."
+        )
+        statusJob = viewModelScope.launch {
+            for (msg in messages) {
+                _statusMessage.value = msg
+                // Adaptive delay for smooth feel
+                delay(if (msg.contains("Preparing")) 2000 else 5000)
+            }
+        }
+    }
+
+    private fun handleGenerationFailure(error: Throwable) {
+        when (error) {
+            is InsufficientCreditsException -> {
+                _uiState.value = GenerationUiState.Error(
+                    message = "You need ${error.required} credits for this style, but you have ${error.available}.",
+                    canRetryWithNewKey = true
+                )
+                onProfileRefreshRequested?.invoke()
+            }
+            is AmbiguousOutcomeException -> {
+                _uiState.value = GenerationUiState.Error(
+                    message = error.message ?: "Connection lost. Status unconfirmed.",
+                    canRetryWithNewKey = false,
+                    isAmbiguous = true
+                )
+            }
+            is DuplicateOperationException -> {
+                _uiState.value = GenerationUiState.Error(
+                    message = "This generation is already in progress or has been registered. Please check your history.",
+                    canRetryWithNewKey = false
+                )
+            }
+            else -> {
+                val friendlyMessage = when {
+                    error.message?.contains("401") == true -> "Session expired. Please sign in again."
+                    error.message?.contains("429") == true -> "AI server is busy. Please try again in a few moments."
+                    else -> error.message ?: "Failed to generate image. Please check your connection."
+                }
+                _uiState.value = GenerationUiState.Error(
+                    message = friendlyMessage,
+                    canRetryWithNewKey = true
+                )
+            }
         }
     }
 
@@ -133,25 +199,16 @@ class GenerationViewModel(
             _isActionLoading.value = false
         }
     }
-
-    private fun startProcessingMessages() {
-        val messages = listOf(
-            "Applying your chosen style...",
-            "Adding the finishing touches...",
-            "Your masterpiece is almost ready..."
-        )
-        viewModelScope.launch {
-            for (msg in messages) {
-                if (_uiState.value !is GenerationUiState.Processing) break
-                _statusMessage.value = msg
-                delay(4000)
-            }
-        }
-    }
     
     fun resetState() {
+        statusJob?.cancel()
         _uiState.value = GenerationUiState.Idle
         _statusMessage.value = "Preparing your photo..."
         _isActionLoading.value = false
+        currentIdempotencyKey = null
+    }
+
+    override fun onCleared() {
+        statusJob?.cancel()
     }
 }

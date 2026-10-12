@@ -12,6 +12,12 @@ sealed interface AuthState {
     data object CheckingSession : AuthState
 
     /**
+     * The app has valid tokens and is restoring the user profile in the background.
+     * Allows the Home screen to show its skeleton state.
+     */
+    data object RestoringSession : AuthState
+
+    /**
      * The user is not logged in.
      */
     data object Unauthenticated : AuthState

@@ -1,6 +1,9 @@
 package com.itsdhruvbhardwaj.picme.navigation
 
 import android.content.Context
+import androidx.compose.animation.*
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -39,8 +42,6 @@ import com.itsdhruvbhardwaj.picme.ui.screens.home.StylesGridViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.onboarding.OnboardingScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.profile.ProfileScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.splash.SplashScreen
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
 
 @Composable
 fun NavGraph(
@@ -57,6 +58,13 @@ fun NavGraph(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
+    // Synchronize credits balance with generation lifecycle using silent refresh
+    LaunchedEffect(Unit) {
+        generationViewModel.onProfileRefreshRequested = {
+            authViewModel.checkSession(isInitial = true)
+        }
+    }
+
     val bottomBarScreens = listOf(
         Screen.Home.route,
         Screen.Explore.route,
@@ -64,15 +72,30 @@ fun NavGraph(
         Screen.History.route,
         Screen.Profile.route
     )
+    
+    val isBottomBarVisible = currentRoute in bottomBarScreens
 
     Scaffold(
         bottomBar = {
-            if (currentRoute in bottomBarScreens) {
+            AnimatedVisibility(
+                visible = isBottomBarVisible,
+                enter = slideInVertically(
+                    initialOffsetY = { it },
+                    animationSpec = tween(durationMillis = 300)
+                ) + fadeIn(animationSpec = tween(durationMillis = 300)),
+                exit = slideOutVertically(
+                    targetOffsetY = { it },
+                    animationSpec = tween(durationMillis = 300)
+                ) + fadeOut(animationSpec = tween(durationMillis = 300))
+            ) {
                 PicMeBottomNavigationBar(
                     currentRoute = currentRoute,
                     onNavigate = { route ->
                         navController.navigate(route) {
-                            popUpTo(Screen.Home.route) { saveState = true }
+                            // Standard top-level navigation behavior
+                            popUpTo(Screen.Home.route) { 
+                                saveState = true 
+                            }
                             launchSingleTop = true
                             restoreState = true
                         }
@@ -81,7 +104,14 @@ fun NavGraph(
             }
         }
     ) { innerPadding ->
-        Box(modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())) {
+        // Animate bottom padding to avoid abrupt height changes when showing/hiding bottom bar
+        val animatedBottomPadding by animateDpAsState(
+            targetValue = if (isBottomBarVisible) innerPadding.calculateBottomPadding() else 0.dp,
+            animationSpec = tween(durationMillis = 300),
+            label = "bottomPaddingAnimation"
+        )
+        
+        Box(modifier = Modifier.padding(bottom = animatedBottomPadding)) {
             NavHost(
                 navController = navController,
                 startDestination = Screen.Splash.route
@@ -89,7 +119,7 @@ fun NavGraph(
                 composable(Screen.Splash.route) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         SplashScreen(onSplashFinished = {
-                            if (authState is AuthState.Authenticated || authState is AuthState.Unauthenticated) {
+                            if (canNavigateFromSplash(authState)) {
                                 navigateFromSplash(navController, authState, prefs)
                             }
                         })
@@ -127,8 +157,7 @@ fun NavGraph(
                     }
 
                     LaunchedEffect(authState) {
-                        if ((authState is AuthState.Authenticated || authState is AuthState.Unauthenticated) && 
-                            currentRoute == Screen.Splash.route) {
+                        if (canNavigateFromSplash(authState) && currentRoute == Screen.Splash.route) {
                             navigateFromSplash(navController, authState, prefs)
                         }
                     }
@@ -264,8 +293,23 @@ fun NavGraph(
                         onSeeAllClick = { category, collection ->
                             navController.navigate(Screen.StylesGrid.createRoute(category, collection))
                         },
-                        onProfileClick = { navController.navigate(Screen.Profile.route) }
+                        onProfileClick = { 
+                            // Standardize Profile navigation to match bottom bar behavior
+                            navController.navigate(Screen.Profile.route) {
+                                popUpTo(Screen.Home.route) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
                     )
+
+                    LaunchedEffect(authState) {
+                        if (authState is AuthState.Unauthenticated) {
+                            navController.navigate(Screen.Login.route) {
+                                popUpTo(Screen.Home.route) { inclusive = true }
+                            }
+                        }
+                    }
                 }
 
                 composable(
@@ -316,6 +360,7 @@ fun NavGraph(
                         }
                     )
                     StyleDetailsScreen(
+                        authViewModel = authViewModel,
                         viewModel = detailsViewModel,
                         onBackClick = { navController.popBackStack() },
                         onTryStyleClick = { id -> 
@@ -365,7 +410,14 @@ fun NavGraph(
                             generationViewModel.resetState()
                             navController.popBackStack() 
                         },
-                        onRetryClick = { generationViewModel.generateImage(styleId) },
+                        onRetryClick = { 
+                            val state = generationViewModel.uiState.value
+                            if (state is GenerationUiState.Error) {
+                                generationViewModel.generateImage(styleId, isRetry = state.isAmbiguous)
+                            } else {
+                                generationViewModel.generateImage(styleId)
+                            }
+                        },
                         onSuccess = { imageBase64 ->
                             navController.navigate(Screen.Result.route) {
                                 popUpTo(Screen.Generation.route) { inclusive = true }
@@ -425,6 +477,12 @@ fun NavGraph(
     }
 }
 
+private fun canNavigateFromSplash(authState: AuthState): Boolean {
+    return authState is AuthState.Authenticated || 
+           authState is AuthState.Unauthenticated || 
+           authState is AuthState.RestoringSession
+}
+
 private fun navigateFromSplash(
     navController: NavHostController,
     authState: AuthState,
@@ -432,7 +490,7 @@ private fun navigateFromSplash(
 ) {
     val isOnboardingCompleted = prefs.getBoolean("onboarding_completed", false)
     val destination = when {
-        authState is AuthState.Authenticated -> Screen.Home.route
+        authState is AuthState.Authenticated || authState is AuthState.RestoringSession -> Screen.Home.route
         !isOnboardingCompleted -> Screen.Onboarding.route
         else -> Screen.Login.route
     }

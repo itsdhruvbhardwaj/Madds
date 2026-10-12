@@ -7,6 +7,7 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.GET
+import retrofit2.http.Header
 import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.Part
@@ -27,6 +28,8 @@ interface StyleApiService {
     @Multipart
     @POST("api/generate")
     suspend fun generateImage(
+        @Header("Authorization") authorization: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
         @Part("styleId") styleId: RequestBody,
         @Part images: List<MultipartBody.Part>
     ): Response<GenerationResponse>

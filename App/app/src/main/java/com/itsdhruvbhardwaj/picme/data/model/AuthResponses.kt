@@ -33,3 +33,14 @@ data class ErrorResponse(
     val ok: Boolean,
     val message: String
 )
+
+/**
+ * Response for HTTP 402 Insufficient Credits.
+ */
+data class InsufficientCreditsResponse(
+    val ok: Boolean,
+    val code: String,
+    val error: String,
+    val requiredCredits: Int,
+    val availableCredits: Int
+)
