@@ -3,7 +3,10 @@ import { createHash } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 
-import { getRewardedAdsConfiguration } from "../config/rewardedAds.js";
+import {
+  getRewardedAdsConfiguration,
+  getRewardedAdsConfigurationStatus,
+} from "../config/rewardedAds.js";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth.js";
 import {
   createRewardedAdAttempt,
@@ -59,10 +62,12 @@ function rejectCallback(
   code: string,
   category: string,
   rawQuery: string,
+  diagnostics?: Record<string, boolean>,
 ): Response {
   console.warn("AdMob SSV callback rejected.", {
     category,
     criticalParameterNamesPresent: getCriticalParameterPresence(rawQuery),
+    ...diagnostics,
   });
   return res.status(status).json({
     ok: false,
@@ -146,11 +151,15 @@ router.get("/ads/admob/ssv", async (req: Request, res: Response) => {
     });
   }
 
+  const configurationStatus = getRewardedAdsConfigurationStatus();
   const configuration = getRewardedAdsConfiguration();
   if (!configuration) {
     console.error("AdMob SSV callback unavailable.", {
       category: "rewarded_ad_configuration_unavailable",
       criticalParameterNamesPresent: parameterPresence,
+      runtime_configuration_present: configurationStatus.present,
+      runtime_configuration_valid: configurationStatus.valid,
+      signature_verified: false,
     });
     return res.status(503).json({
       ok: false,
@@ -161,17 +170,25 @@ router.get("/ads/admob/ssv", async (req: Request, res: Response) => {
 
   try {
     const callback = await admobSsvVerifier.verify(rawQuery);
-    if (
-      callback.adUnitId !== configuration.adUnitId ||
-      callback.rewardItem !== configuration.admobRewardItem ||
-      callback.rewardAmount !== String(configuration.admobRewardAmount)
-    ) {
+    const adUnitMatches = callback.adUnitId === configuration.adUnitId;
+    const rewardItemMatches = callback.rewardItem === configuration.admobRewardItem;
+    const rewardAmountMatches =
+      callback.rewardAmount === String(configuration.admobRewardAmount);
+    if (!adUnitMatches || !rewardItemMatches || !rewardAmountMatches) {
       return rejectCallback(
         res,
         400,
         "INVALID_REWARDED_AD_CALLBACK",
         "reward_configuration_mismatch",
         rawQuery,
+        {
+          ad_unit_matches: adUnitMatches,
+          reward_item_matches: rewardItemMatches,
+          reward_amount_matches: rewardAmountMatches,
+          runtime_configuration_present: configurationStatus.present,
+          runtime_configuration_valid: configurationStatus.valid,
+          signature_verified: true,
+        },
       );
     }
 

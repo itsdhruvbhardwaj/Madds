@@ -8,6 +8,16 @@ export type RewardedAdsConfiguration = {
   callbackFutureSkewSeconds: number;
 };
 
+const requiredConfigurationKeys = [
+  "ADMOB_REWARDED_AD_UNIT_ID",
+  "ADMOB_REWARDED_AD_REWARD_ITEM",
+  "ADMOB_REWARDED_AD_REWARD_AMOUNT",
+  "REWARDED_AD_CREDITS",
+  "REWARDED_AD_ATTEMPT_TTL_SECONDS",
+  "ADMOB_SSV_MAX_CALLBACK_AGE_SECONDS",
+  "ADMOB_SSV_MAX_FUTURE_SKEW_SECONDS",
+] as const;
+
 function positiveInteger(
   name: string,
   minimum: number,
@@ -56,5 +66,17 @@ export function getRewardedAdsConfiguration(): RewardedAdsConfiguration | null {
     attemptTtlSeconds,
     callbackMaxAgeSeconds,
     callbackFutureSkewSeconds,
+  };
+}
+
+export function getRewardedAdsConfigurationStatus(): {
+  present: boolean;
+  valid: boolean;
+} {
+  return {
+    present: requiredConfigurationKeys.every(
+      (key) => (process.env[key]?.trim() ?? "").length > 0,
+    ),
+    valid: getRewardedAdsConfiguration() !== null,
   };
 }

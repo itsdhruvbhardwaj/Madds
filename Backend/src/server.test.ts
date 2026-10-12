@@ -671,6 +671,7 @@ describe("rewarded-ad endpoints", () => {
   });
 
   it("does not verify or credit callbacks when server configuration is missing", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     delete process.env.ADMOB_REWARDED_AD_UNIT_ID;
 
     const response = await request(app).get("/api/ads/admob/ssv?signed=callback");
@@ -678,6 +679,12 @@ describe("rewarded-ad endpoints", () => {
     expect(response.status).toBe(503);
     expect(admobSsvVerifier.verify).not.toHaveBeenCalled();
     expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith("AdMob SSV callback unavailable.", expect.objectContaining({
+      runtime_configuration_present: false,
+      runtime_configuration_valid: false,
+      signature_verified: false,
+    }));
+    errorSpy.mockRestore();
   });
 
   it("returns a retryable error when attempt persistence fails", async () => {
@@ -842,20 +849,68 @@ describe("rewarded-ad endpoints", () => {
     infoSpy.mockRestore();
   });
 
-  it("fails closed on a reward mismatch", async () => {
-    admobMocks.verify.mockResolvedValueOnce({
-      adUnitId: "ca-app-pub-wrong/123",
+  it("diagnoses each reward configuration mismatch after signature verification and fails closed", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const matchingCallback = {
+      adUnitId: "ca-app-pub-1234567890123456/1234567890",
       customData: "A".repeat(43),
       rewardAmount: "1",
       rewardItem: "credits",
       timestampMs: Date.now(),
       transactionId: "b".repeat(32),
-    });
+    };
+    const mismatchCases = [
+      {
+        callback: { ...matchingCallback, adUnitId: "ca-app-pub-wrong/123" },
+        diagnostics: {
+          ad_unit_matches: false,
+          reward_item_matches: true,
+          reward_amount_matches: true,
+        },
+      },
+      {
+        callback: { ...matchingCallback, rewardItem: "wrong-item" },
+        diagnostics: {
+          ad_unit_matches: true,
+          reward_item_matches: false,
+          reward_amount_matches: true,
+        },
+      },
+      {
+        callback: { ...matchingCallback, rewardAmount: "2" },
+        diagnostics: {
+          ad_unit_matches: true,
+          reward_item_matches: true,
+          reward_amount_matches: false,
+        },
+      },
+    ] as const;
 
-    const response = await request(app).get("/api/ads/admob/ssv?signed=callback");
+    for (const { callback, diagnostics } of mismatchCases) {
+      admobMocks.verify.mockResolvedValueOnce(callback);
+      const response = await request(app).get("/api/ads/admob/ssv?signed=callback");
 
-    expect(response.status).toBe(400);
-    expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
+      expect(response.status).toBe(400);
+      expect(admobSsvVerifier.verify).toHaveBeenCalledWith("signed=callback");
+      expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenLastCalledWith("AdMob SSV callback rejected.", {
+        category: "reward_configuration_mismatch",
+        criticalParameterNamesPresent: expect.any(Object),
+        ...diagnostics,
+        runtime_configuration_present: true,
+        runtime_configuration_valid: true,
+        signature_verified: true,
+      });
+    }
+
+    const loggedDiagnostics = JSON.stringify(warnSpy.mock.calls);
+    expect(loggedDiagnostics).not.toContain("ca-app-pub-wrong");
+    expect(loggedDiagnostics).not.toContain("ca-app-pub-1234567890123456/1234567890");
+    expect(loggedDiagnostics).not.toContain("wrong-item");
+    expect(loggedDiagnostics).not.toContain("credits");
+    expect(loggedDiagnostics).not.toContain("A".repeat(43));
+    expect(loggedDiagnostics).not.toContain("b".repeat(32));
+    warnSpy.mockRestore();
   });
 
   it("rejects callbacks outside the configured age window", async () => {
