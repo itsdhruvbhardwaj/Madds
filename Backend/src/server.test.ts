@@ -726,14 +726,56 @@ describe("rewarded-ad endpoints", () => {
     );
   });
 
-  it("acknowledges duplicate callbacks without crediting twice", async () => {
-    generationMocks.grantRewardedAdCredits.mockResolvedValueOnce({ status: "duplicate" });
+  it("acknowledges a repeated valid callback without granting it twice", async () => {
+    generationMocks.grantRewardedAdCredits
+      .mockResolvedValueOnce({ status: "granted" })
+      .mockResolvedValueOnce({ status: "duplicate" });
 
-    const response = await request(app).get("/api/ads/admob/ssv?signed=callback");
+    const firstResponse = await request(app).get("/api/ads/admob/ssv?signed=callback");
+    const duplicateResponse = await request(app).get("/api/ads/admob/ssv?signed=callback");
 
-    expect(response.status).toBe(200);
-    expect(response.body.status).toBe("already_processed");
-    expect(generationMocks.grantRewardedAdCredits).toHaveBeenCalledTimes(1);
+    expect(firstResponse.status).toBe(200);
+    expect(firstResponse.body.status).toBe("credited");
+    expect(duplicateResponse.status).toBe(200);
+    expect(duplicateResponse.body.status).toBe("already_processed");
+    expect(generationMocks.grantRewardedAdCredits).toHaveBeenCalledTimes(2);
+    expect(generationMocks.grantRewardedAdCredits).toHaveBeenNthCalledWith(1, {
+      ticketHash: createHash("sha256").update("A".repeat(43)).digest("hex"),
+      transactionId: "a".repeat(32),
+      credits: 1,
+    });
+    expect(generationMocks.grantRewardedAdCredits).toHaveBeenNthCalledWith(2, {
+      ticketHash: createHash("sha256").update("A".repeat(43)).digest("hex"),
+      transactionId: "a".repeat(32),
+      credits: 1,
+    });
+  });
+
+  it("logs distinct malformed-field categories without granting credits", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const malformedCases = [
+      ["malformed_ad_network", "ad_network=x"],
+      ["malformed_timestamp", "timestamp=x"],
+      ["timestamp_not_safe_integer", "timestamp=x"],
+      ["malformed_transaction_id", "transaction_id=x"],
+    ] as const;
+
+    for (const [category, query] of malformedCases) {
+      admobMocks.verify.mockRejectedValueOnce(new InvalidAdMobCallbackError(category));
+      const response = await request(app).get(`/api/ads/admob/ssv?${query}`);
+
+      expect(response.status).toBe(400);
+      expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
+    }
+
+    expect(warnSpy.mock.calls.map(([, details]) => details)).toEqual(
+      malformedCases.map(([category]) => expect.objectContaining({
+        category,
+        criticalParameterNamesPresent: expect.any(Object),
+      })),
+    );
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toMatch(/ad_network=x|timestamp=x|transaction_id=x/);
+    warnSpy.mockRestore();
   });
 
   it("rejects invalid signatures without invoking credit accounting", async () => {

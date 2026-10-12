@@ -33,7 +33,10 @@ export type InvalidAdMobCallbackReason =
   | "required_parameter_missing"
   | "malformed_signature"
   | "signature_verification_failed"
-  | "malformed_callback_fields";
+  | "malformed_ad_network"
+  | "malformed_timestamp"
+  | "timestamp_not_safe_integer"
+  | "malformed_transaction_id";
 
 export class InvalidAdMobCallbackError extends Error {
   constructor(readonly reason: InvalidAdMobCallbackReason) {
@@ -114,7 +117,7 @@ function parseSignedParameters(signedQuery: string): Map<string, string> {
     }
   }
   if (!/^\d+$/.test(parameters.get("ad_network")!)) {
-    throw new InvalidAdMobCallbackError("malformed_callback_fields");
+    throw new InvalidAdMobCallbackError("malformed_ad_network");
   }
 
   return parameters;
@@ -190,12 +193,14 @@ export class AdMobSsvVerifier {
     const timestampValue = parameters.get("timestamp")!;
     const timestamp = Number(timestampValue);
     const transactionId = parameters.get("transaction_id")!;
-    if (
-      !/^(?:\d{13}|\d{16})$/.test(timestampValue) ||
-      !Number.isSafeInteger(timestamp) ||
-      !/^[a-fA-F0-9]{32}$/.test(transactionId)
-    ) {
-      throw new InvalidAdMobCallbackError("malformed_callback_fields");
+    if (!/^(?:\d{13}|\d{16})$/.test(timestampValue)) {
+      throw new InvalidAdMobCallbackError("malformed_timestamp");
+    }
+    if (!Number.isSafeInteger(timestamp)) {
+      throw new InvalidAdMobCallbackError("timestamp_not_safe_integer");
+    }
+    if (!/^[a-fA-F0-9]{32}$/.test(transactionId)) {
+      throw new InvalidAdMobCallbackError("malformed_transaction_id");
     }
 
     return {

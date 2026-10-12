@@ -17,17 +17,20 @@ const publicPem = publicKey.export({ type: "spki", format: "pem" }).toString();
 function signedCallback(input: {
   keyId?: number;
   customData?: string;
+  adNetwork?: string;
   rewardItem?: string;
+  timestamp?: string;
+  transactionId?: string;
   suffix?: string;
 } = {}): string {
   const signedQuery = [
-    "ad_network=123",
+    `ad_network=${input.adNetwork ?? "123"}`,
     "ad_unit=ca-app-pub-1234567890123456%2F1234567890",
     `custom_data=${input.customData ?? "opaque-ticket"}`,
     "reward_amount=1",
     `reward_item=${input.rewardItem ?? "credits"}`,
-    `timestamp=${Date.now() * 1000}`,
-    `transaction_id=${"a".repeat(32)}`,
+    `timestamp=${input.timestamp ?? Date.now() * 1000}`,
+    `transaction_id=${input.transactionId ?? "a".repeat(32)}`,
   ].join("&");
   const signature = sign("sha256", Buffer.from(signedQuery, "utf8"), privateKey)
     .toString("base64url");
@@ -91,6 +94,33 @@ describe("AdMob SSV verification", () => {
     const callback = signedCallback().replace(/signature=([A-Za-z0-9_-])/, "signature=x$1");
 
     await expect(verifier.verify(callback)).rejects.toBeInstanceOf(InvalidAdMobCallbackError);
+  });
+
+  it("identifies malformed ad_network before fetching keys", async () => {
+    const fetcher = vi.fn().mockResolvedValue(keyResponse());
+    const verifier = new AdMobSsvVerifier(fetcher);
+
+    await expect(verifier.verify(signedCallback({ adNetwork: "not-numeric" })))
+      .rejects.toMatchObject({ reason: "malformed_ad_network" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("distinguishes malformed timestamp format from an unsafe timestamp value", async () => {
+    const verifier = new AdMobSsvVerifier(vi.fn().mockResolvedValue(keyResponse()));
+
+    await expect(verifier.verify(signedCallback({ timestamp: "123456789012" })))
+      .rejects.toMatchObject({ reason: "malformed_timestamp" });
+    await expect(verifier.verify(signedCallback({ timestamp: "9999999999999999" })))
+      .rejects.toMatchObject({ reason: "timestamp_not_safe_integer" });
+  });
+
+  it("identifies a malformed transaction_id after signature verification", async () => {
+    const fetcher = vi.fn().mockResolvedValue(keyResponse());
+    const verifier = new AdMobSsvVerifier(fetcher);
+
+    await expect(verifier.verify(signedCallback({ transactionId: "not-a-transaction-id" })))
+      .rejects.toMatchObject({ reason: "malformed_transaction_id" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it("rejects missing, repeated, malformed, and out-of-order critical parameters", async () => {
