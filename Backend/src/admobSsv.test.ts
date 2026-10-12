@@ -48,7 +48,7 @@ function keyResponse(cacheControl = "public, max-age=3600") {
 }
 
 describe("AdMob SSV verification", () => {
-  it("accepts a valid ECDSA signature and decodes percent-escaped custom_data", async () => {
+  it("accepts a valid ECDSA signature, 32-character transaction ID, and escaped custom_data", async () => {
     const verifier = new AdMobSsvVerifier(vi.fn().mockResolvedValue(keyResponse()));
 
     await expect(verifier.verify(signedCallback({
@@ -93,7 +93,8 @@ describe("AdMob SSV verification", () => {
     const verifier = new AdMobSsvVerifier(vi.fn().mockResolvedValue(keyResponse()));
     const callback = signedCallback().replace(/signature=([A-Za-z0-9_-])/, "signature=x$1");
 
-    await expect(verifier.verify(callback)).rejects.toBeInstanceOf(InvalidAdMobCallbackError);
+    await expect(verifier.verify(callback))
+      .rejects.toMatchObject({ reason: "signature_verification_failed" });
   });
 
   it("identifies malformed ad_network before fetching keys", async () => {
@@ -114,11 +115,24 @@ describe("AdMob SSV verification", () => {
       .rejects.toMatchObject({ reason: "timestamp_not_safe_integer" });
   });
 
-  it("identifies a malformed transaction_id after signature verification", async () => {
+  it("accepts hexadecimal transaction IDs of different lengths", async () => {
+    const verifier = new AdMobSsvVerifier(vi.fn().mockResolvedValue(keyResponse()));
+
+    await expect(verifier.verify(signedCallback({ transactionId: "b".repeat(24) })))
+      .resolves.toMatchObject({ transactionId: "b".repeat(24) });
+    await expect(verifier.verify(signedCallback({ transactionId: "c".repeat(128) })))
+      .resolves.toMatchObject({ transactionId: "c".repeat(128) });
+  });
+
+  it.each([
+    ["empty", ""],
+    ["non-hexadecimal", "g".repeat(32)],
+    ["over the maximum supported length", "d".repeat(129)],
+  ])("rejects a %s transaction_id after signature verification", async (_case, transactionId) => {
     const fetcher = vi.fn().mockResolvedValue(keyResponse());
     const verifier = new AdMobSsvVerifier(fetcher);
 
-    await expect(verifier.verify(signedCallback({ transactionId: "not-a-transaction-id" })))
+    await expect(verifier.verify(signedCallback({ transactionId })))
       .rejects.toMatchObject({ reason: "malformed_transaction_id" });
     expect(fetcher).toHaveBeenCalledTimes(1);
   });

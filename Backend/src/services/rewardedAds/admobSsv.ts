@@ -3,6 +3,7 @@ import { createPublicKey, verify as verifySignature } from "node:crypto";
 const ADMOB_KEYS_URL = "https://www.gstatic.com/admob/reward/verifier-keys.json";
 const MAX_KEY_CACHE_MS = 24 * 60 * 60 * 1000;
 const UNKNOWN_KEY_REFRESH_COOLDOWN_MS = 30_000;
+const MAX_TRANSACTION_ID_LENGTH = 128;
 
 type AdMobPublicKey = {
   key: ReturnType<typeof createPublicKey>;
@@ -112,7 +113,10 @@ function parseSignedParameters(signedQuery: string): Map<string, string> {
     "timestamp",
     "transaction_id",
   ]) {
-    if (!parameters.get(required)) {
+    if (
+      parameters.get(required) === undefined ||
+      (required !== "transaction_id" && !parameters.get(required))
+    ) {
       throw new InvalidAdMobCallbackError("required_parameter_missing");
     }
   }
@@ -199,7 +203,11 @@ export class AdMobSsvVerifier {
     if (!Number.isSafeInteger(timestamp)) {
       throw new InvalidAdMobCallbackError("timestamp_not_safe_integer");
     }
-    if (!/^[a-fA-F0-9]{32}$/.test(transactionId)) {
+    if (
+      transactionId.length === 0 ||
+      transactionId.length > MAX_TRANSACTION_ID_LENGTH ||
+      !/^[a-fA-F0-9]+$/.test(transactionId)
+    ) {
       throw new InvalidAdMobCallbackError("malformed_transaction_id");
     }
 

@@ -66,6 +66,11 @@ signature over the untouched query substring preceding `&signature=`.
 The callback timestamp is accepted in the 13-digit millisecond form or the
 16-digit microsecond form used by AdMob callback examples, then normalized
 before enforcing the configured age window.
+`transaction_id` must be a non-empty hexadecimal string of at most 128
+characters. Google describes it as a unique hexadecimal identifier and shows
+a 32-character example; the backend does not require that example length, but
+applies the 128-character limit as a defensive bound. Database uniqueness
+continues to enforce replay protection for accepted transaction IDs.
 
 ## Required Render environment variables
 
