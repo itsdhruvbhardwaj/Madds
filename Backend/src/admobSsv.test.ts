@@ -16,6 +16,7 @@ const publicPem = publicKey.export({ type: "spki", format: "pem" }).toString();
 
 function signedCallback(input: {
   keyId?: number;
+  adUnit?: string;
   customData?: string;
   adNetwork?: string;
   rewardItem?: string;
@@ -25,7 +26,7 @@ function signedCallback(input: {
 } = {}): string {
   const signedQuery = [
     `ad_network=${input.adNetwork ?? "123"}`,
-    "ad_unit=ca-app-pub-1234567890123456%2F1234567890",
+    `ad_unit=${input.adUnit ?? "1234567890"}`,
     `custom_data=${input.customData ?? "opaque-ticket"}`,
     "reward_amount=1",
     `reward_item=${input.rewardItem ?? "credits"}`,
@@ -54,11 +55,21 @@ describe("AdMob SSV verification", () => {
     await expect(verifier.verify(signedCallback({
       customData: "opaque%2Fticket",
     }))).resolves.toMatchObject({
-      adUnitId: "ca-app-pub-1234567890123456/1234567890",
+      adUnitId: "1234567890",
       customData: "opaque/ticket",
       rewardAmount: "1",
       rewardItem: "credits",
       transactionId: "a".repeat(32),
+    });
+  });
+
+  it("preserves a decoded callback ad_unit without normalizing it to the configured ID", async () => {
+    const verifier = new AdMobSsvVerifier(vi.fn().mockResolvedValue(keyResponse()));
+
+    await expect(verifier.verify(signedCallback({
+      adUnit: "ca-app-pub-1234567890123456%2F1234567890",
+    }))).resolves.toMatchObject({
+      adUnitId: "ca-app-pub-1234567890123456/1234567890",
     });
   });
 

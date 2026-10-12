@@ -876,6 +876,27 @@ describe("rewarded-ad endpoints", () => {
           ad_unit_matches: false,
           reward_item_matches: true,
           reward_amount_matches: true,
+          configured_id_format_valid: true,
+          expected_numeric_component_present: true,
+          callback_ad_unit_is_decimal: true,
+          callback_ad_unit_length: 10,
+          expected_numeric_component_length: 10,
+        },
+      },
+      {
+        callback: {
+          ...matchingCallback,
+          adUnitId: "ca-app-pub-1234567890123456/1234567890",
+        },
+        diagnostics: {
+          ad_unit_matches: false,
+          reward_item_matches: true,
+          reward_amount_matches: true,
+          configured_id_format_valid: true,
+          expected_numeric_component_present: true,
+          callback_ad_unit_is_decimal: false,
+          callback_ad_unit_length: 38,
+          expected_numeric_component_length: 10,
         },
       },
       {
@@ -884,6 +905,11 @@ describe("rewarded-ad endpoints", () => {
           ad_unit_matches: true,
           reward_item_matches: false,
           reward_amount_matches: true,
+          configured_id_format_valid: true,
+          expected_numeric_component_present: true,
+          callback_ad_unit_is_decimal: true,
+          callback_ad_unit_length: 10,
+          expected_numeric_component_length: 10,
         },
       },
       {
@@ -892,6 +918,11 @@ describe("rewarded-ad endpoints", () => {
           ad_unit_matches: true,
           reward_item_matches: true,
           reward_amount_matches: false,
+          configured_id_format_valid: true,
+          expected_numeric_component_present: true,
+          callback_ad_unit_is_decimal: true,
+          callback_ad_unit_length: 10,
+          expected_numeric_component_length: 10,
         },
       },
     ] as const;
@@ -916,6 +947,7 @@ describe("rewarded-ad endpoints", () => {
     const loggedDiagnostics = JSON.stringify(warnSpy.mock.calls);
     expect(loggedDiagnostics).not.toContain("9876543210");
     expect(loggedDiagnostics).not.toContain("1234567890");
+    expect(loggedDiagnostics).not.toContain("ca-app-pub-1234567890123456/1234567890");
     expect(loggedDiagnostics).not.toContain("wrong-item");
     expect(loggedDiagnostics).not.toContain("credits");
     expect(loggedDiagnostics).not.toContain("A".repeat(43));
