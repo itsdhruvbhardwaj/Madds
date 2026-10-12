@@ -41,6 +41,16 @@ const CreditTransactionSchema = new Schema(
 );
 
 CreditTransactionSchema.index({ userId: 1, createdAt: -1 });
+CreditTransactionSchema.index(
+  { type: 1, referenceId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      type: "REWARDED_AD",
+      referenceId: { $type: "string", $gt: "" },
+    },
+  },
+);
 
 export const CreditTransaction =
   mongoose.models.CreditTransaction ||

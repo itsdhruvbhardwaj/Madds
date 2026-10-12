@@ -1,9 +1,10 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 import mongoose, { type ClientSession } from "mongoose";
 
 import { CreditTransaction } from "../../models/CreditTransaction.js";
 import { Generation } from "../../models/Generation.js";
+import { RewardedAdAttempt } from "../../models/RewardedAdAttempt.js";
 import { User } from "../../models/User.js";
 
 export const WELCOME_CREDITS = 100;
@@ -66,8 +67,171 @@ export class UserNotFoundError extends Error {
   }
 }
 
+export type RewardedAdCreditResult =
+  | { status: "granted" }
+  | { status: "duplicate" }
+  | { status: "invalid_attempt" }
+  | { status: "expired" }
+  | { status: "transaction_conflict" };
+
 function isDuplicateKeyError(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === 11000;
+}
+
+export async function createRewardedAdAttempt(
+  userId: string,
+  expiresAt: Date,
+): Promise<{ customData: string; expiresAt: Date }> {
+  const customData = randomBytes(32).toString("base64url");
+  const ticketHash = createHash("sha256").update(customData).digest("hex");
+
+  await RewardedAdAttempt.create({
+    userId,
+    ticketHash,
+    status: "pending",
+    expiresAt,
+  });
+
+  return { customData, expiresAt };
+}
+
+export async function grantRewardedAdCredits(input: {
+  ticketHash: string;
+  transactionId: string;
+  credits: number;
+  now?: Date;
+}): Promise<RewardedAdCreditResult> {
+  if (!Number.isSafeInteger(input.credits) || input.credits <= 0) {
+    throw new Error("Rewarded-ad credit amount must be a positive integer.");
+  }
+
+  const now = input.now ?? new Date();
+  const session: ClientSession = await mongoose.startSession();
+
+  try {
+    try {
+      const result = await session.withTransaction(async () => {
+        const existingTransaction = await RewardedAdAttempt.findOne({
+          transactionId: input.transactionId,
+        }).session(session).lean();
+
+        if (existingTransaction) {
+          return existingTransaction.ticketHash === input.ticketHash &&
+            existingTransaction.status === "redeemed"
+            ? { status: "duplicate" as const }
+            : { status: "transaction_conflict" as const };
+        }
+
+        const attempt = await RewardedAdAttempt.findOne({
+          ticketHash: input.ticketHash,
+        }).session(session).lean();
+
+        if (!attempt) {
+          return { status: "invalid_attempt" as const };
+        }
+        if (attempt.status === "redeemed") {
+          return attempt.transactionId === input.transactionId
+            ? { status: "duplicate" as const }
+            : { status: "transaction_conflict" as const };
+        }
+        if (attempt.status !== "pending") {
+          return { status: "expired" as const };
+        }
+        if (new Date(attempt.expiresAt).getTime() <= now.getTime()) {
+          await RewardedAdAttempt.updateOne(
+            { _id: attempt._id, status: "pending", expiresAt: { $lte: now } },
+            { $set: { status: "expired" } },
+            { session },
+          );
+          return { status: "expired" as const };
+        }
+
+        const claimedAttempt = await RewardedAdAttempt.findOneAndUpdate(
+          {
+            _id: attempt._id,
+            ticketHash: input.ticketHash,
+            status: "pending",
+            expiresAt: { $gt: now },
+            transactionId: { $exists: false },
+          },
+          {
+            $set: {
+              status: "redeemed",
+              transactionId: input.transactionId,
+              redeemedAt: now,
+            },
+          },
+          { new: true, session },
+        ).lean();
+
+        if (!claimedAttempt) {
+          const latestAttempt = await RewardedAdAttempt.findOne({
+            ticketHash: input.ticketHash,
+          }).session(session).lean();
+          if (latestAttempt?.status === "redeemed") {
+            return latestAttempt.transactionId === input.transactionId
+              ? { status: "duplicate" as const }
+              : { status: "transaction_conflict" as const };
+          }
+          return { status: "expired" as const };
+        }
+
+        const user = await User.findByIdAndUpdate(
+          attempt.userId,
+          { $inc: { credits: input.credits } },
+          { new: true, session },
+        );
+        if (!user) {
+          throw new UserNotFoundError();
+        }
+
+        await CreditTransaction.create(
+          [{
+            userId: attempt.userId,
+            amount: input.credits,
+            type: "REWARDED_AD",
+            balanceAfter: user.credits,
+            referenceId: input.transactionId,
+            description: "Verified AdMob rewarded ad",
+          }],
+          { session },
+        );
+
+        return { status: "granted" as const };
+      });
+
+      if (!result) {
+        throw new Error("Rewarded-ad credit transaction did not complete.");
+      }
+      return result;
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) {
+        throw error;
+      }
+
+      const existingTransaction = await RewardedAdAttempt.findOne({
+        transactionId: input.transactionId,
+      }).lean();
+      if (existingTransaction) {
+        return existingTransaction.ticketHash === input.ticketHash &&
+          existingTransaction.status === "redeemed"
+          ? { status: "duplicate" }
+          : { status: "transaction_conflict" };
+      }
+
+      const attempt = await RewardedAdAttempt.findOne({
+        ticketHash: input.ticketHash,
+      }).lean();
+      if (attempt?.status === "redeemed") {
+        return attempt.transactionId === input.transactionId
+          ? { status: "duplicate" }
+          : { status: "transaction_conflict" };
+      }
+      throw error;
+    }
+  } finally {
+    await session.endSession();
+  }
 }
 
 function generationConflict(

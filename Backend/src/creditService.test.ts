@@ -21,6 +21,10 @@ const creditMocks = vi.hoisted(() => {
     generationCreate: vi.fn(),
     generationFindOneAndUpdate: vi.fn(),
     generationUpdateOne: vi.fn(),
+    rewardedAdAttemptCreate: vi.fn(),
+    rewardedAdAttemptFindOne: vi.fn(),
+    rewardedAdAttemptFindOneAndUpdate: vi.fn(),
+    rewardedAdAttemptUpdateOne: vi.fn(),
   };
 });
 
@@ -54,8 +58,19 @@ vi.mock("./models/Generation.js", () => ({
   },
 }));
 
+vi.mock("./models/RewardedAdAttempt.js", () => ({
+  RewardedAdAttempt: {
+    create: creditMocks.rewardedAdAttemptCreate,
+    findOne: creditMocks.rewardedAdAttemptFindOne,
+    findOneAndUpdate: creditMocks.rewardedAdAttemptFindOneAndUpdate,
+    updateOne: creditMocks.rewardedAdAttemptUpdateOne,
+  },
+}));
+
 import {
   createUserWithWelcomeCredits,
+  createRewardedAdAttempt,
+  grantRewardedAdCredits,
   IdempotencyConflictError,
   InsufficientCreditsError,
   refundGeneration,
@@ -72,6 +87,13 @@ function generationQuery(result: unknown) {
 function currentUserQuery(result: unknown) {
   return {
     select: vi.fn().mockReturnThis(),
+    session: vi.fn().mockReturnThis(),
+    lean: vi.fn().mockResolvedValue(result),
+  };
+}
+
+function rewardedAdAttemptQuery(result: unknown) {
+  return {
     session: vi.fn().mockReturnThis(),
     lean: vi.fn().mockResolvedValue(result),
   };
@@ -101,6 +123,12 @@ describe("credit accounting transactions", () => {
     });
     creditMocks.userFindByIdAndUpdate.mockResolvedValue({ credits: 100 });
     creditMocks.generationUpdateOne.mockResolvedValue({ modifiedCount: 1 });
+    creditMocks.rewardedAdAttemptCreate.mockResolvedValue({ _id: "attempt-new" });
+    creditMocks.rewardedAdAttemptFindOne.mockImplementation(() => rewardedAdAttemptQuery(null));
+    creditMocks.rewardedAdAttemptFindOneAndUpdate.mockReturnValue({
+      lean: vi.fn().mockResolvedValue({ _id: "attempt-1" }),
+    });
+    creditMocks.rewardedAdAttemptUpdateOne.mockResolvedValue({ modifiedCount: 1 });
   });
 
   it("creates the new user and one initial-grant ledger record in the same transaction", async () => {
@@ -280,5 +308,193 @@ describe("credit accounting transactions", () => {
     creditMocks.generationFindOneAndUpdate.mockResolvedValueOnce(null);
     expect(await refundGeneration("generation-1", "PROVIDER_REJECTED")).toBe(false);
     expect(creditMocks.userFindByIdAndUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("stores a hash of a random attempt ticket without granting credits", async () => {
+    const expiresAt = new Date("2026-10-12T12:00:00.000Z");
+    const first = await createRewardedAdAttempt("user-1", expiresAt);
+    const second = await createRewardedAdAttempt("user-1", expiresAt);
+
+    expect(first.customData).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(second.customData).not.toBe(first.customData);
+    expect(creditMocks.rewardedAdAttemptCreate).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        userId: "user-1",
+        ticketHash: expect.not.stringContaining(first.customData),
+        status: "pending",
+        expiresAt,
+      }),
+    );
+    expect(creditMocks.userFindByIdAndUpdate).not.toHaveBeenCalled();
+    expect(creditMocks.transactionCreate).not.toHaveBeenCalled();
+  });
+
+  it("credits a verified rewarded ad and redeems its attempt in one transaction", async () => {
+    const now = new Date("2026-10-12T11:00:00.000Z");
+    const attempt = {
+      _id: "attempt-1",
+      userId: "user-1",
+      ticketHash: "ticket-hash",
+      status: "pending",
+      expiresAt: new Date(now.getTime() + 60_000),
+    };
+    creditMocks.rewardedAdAttemptFindOne.mockImplementation(
+      (filter: { transactionId?: string }) =>
+        rewardedAdAttemptQuery(filter.transactionId ? null : attempt),
+    );
+    creditMocks.rewardedAdAttemptFindOneAndUpdate.mockReturnValue({
+      lean: vi.fn().mockResolvedValue(attempt),
+    });
+    creditMocks.userFindByIdAndUpdate.mockResolvedValue({ credits: 11 });
+
+    await expect(grantRewardedAdCredits({
+      ticketHash: "ticket-hash",
+      transactionId: "a".repeat(32),
+      credits: 1,
+      now,
+    })).resolves.toEqual({ status: "granted" });
+
+    expect(creditMocks.rewardedAdAttemptFindOneAndUpdate).toHaveBeenCalledWith(
+      {
+        _id: "attempt-1",
+        ticketHash: "ticket-hash",
+        status: "pending",
+        expiresAt: { $gt: now },
+        transactionId: { $exists: false },
+      },
+      {
+        $set: {
+          status: "redeemed",
+          transactionId: "a".repeat(32),
+          redeemedAt: now,
+        },
+      },
+      { new: true, session: creditMocks.session },
+    );
+    expect(creditMocks.userFindByIdAndUpdate).toHaveBeenCalledWith(
+      "user-1",
+      { $inc: { credits: 1 } },
+      { new: true, session: creditMocks.session },
+    );
+    expect(creditMocks.transactionCreate).toHaveBeenCalledWith(
+      [expect.objectContaining({
+        userId: "user-1",
+        amount: 1,
+        type: "REWARDED_AD",
+        balanceAfter: 11,
+        referenceId: "a".repeat(32),
+      })],
+      { session: creditMocks.session },
+    );
+    expect(creditMocks.session.withTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats an already-redeemed matching transaction as an idempotent duplicate", async () => {
+    creditMocks.rewardedAdAttemptFindOne.mockImplementation(() =>
+      rewardedAdAttemptQuery({
+        ticketHash: "ticket-hash",
+        status: "redeemed",
+      }),
+    );
+
+    await expect(grantRewardedAdCredits({
+      ticketHash: "ticket-hash",
+      transactionId: "b".repeat(32),
+      credits: 1,
+    })).resolves.toEqual({ status: "duplicate" });
+    expect(creditMocks.userFindByIdAndUpdate).not.toHaveBeenCalled();
+    expect(creditMocks.transactionCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects a transaction ID already attached to another attempt", async () => {
+    creditMocks.rewardedAdAttemptFindOne.mockImplementation(() =>
+      rewardedAdAttemptQuery({
+        ticketHash: "another-ticket",
+        status: "redeemed",
+      }),
+    );
+
+    await expect(grantRewardedAdCredits({
+      ticketHash: "ticket-hash",
+      transactionId: "c".repeat(32),
+      credits: 1,
+    })).resolves.toEqual({ status: "transaction_conflict" });
+    expect(creditMocks.userFindByIdAndUpdate).not.toHaveBeenCalled();
+    expect(creditMocks.transactionCreate).not.toHaveBeenCalled();
+  });
+
+  it("does not let a different AdMob transaction redeem an already-used ticket", async () => {
+    creditMocks.rewardedAdAttemptFindOne.mockImplementation(
+      (filter: { transactionId?: string }) =>
+        rewardedAdAttemptQuery(filter.transactionId ? null : {
+          ticketHash: "ticket-hash",
+          status: "redeemed",
+          transactionId: "f".repeat(32),
+        }),
+    );
+
+    await expect(grantRewardedAdCredits({
+      ticketHash: "ticket-hash",
+      transactionId: "0".repeat(32),
+      credits: 1,
+    })).resolves.toEqual({ status: "transaction_conflict" });
+    expect(creditMocks.userFindByIdAndUpdate).not.toHaveBeenCalled();
+    expect(creditMocks.transactionCreate).not.toHaveBeenCalled();
+  });
+
+  it("expires stale pending attempts without crediting the user", async () => {
+    const now = new Date("2026-10-12T11:00:00.000Z");
+    creditMocks.rewardedAdAttemptFindOne.mockImplementation(
+      (filter: { transactionId?: string }) =>
+        rewardedAdAttemptQuery(filter.transactionId ? null : {
+        _id: "attempt-old",
+        userId: "user-1",
+        status: "pending",
+        expiresAt: new Date(now.getTime() - 1),
+        }),
+    );
+
+    await expect(grantRewardedAdCredits({
+      ticketHash: "ticket-hash",
+      transactionId: "d".repeat(32),
+      credits: 1,
+      now,
+    })).resolves.toEqual({ status: "expired" });
+    expect(creditMocks.rewardedAdAttemptUpdateOne).toHaveBeenCalledWith(
+      { _id: "attempt-old", status: "pending", expiresAt: { $lte: now } },
+      { $set: { status: "expired" } },
+      { session: creditMocks.session },
+    );
+    expect(creditMocks.userFindByIdAndUpdate).not.toHaveBeenCalled();
+    expect(creditMocks.transactionCreate).not.toHaveBeenCalled();
+  });
+
+  it("does not report success when a rewarded-ad ledger write fails", async () => {
+    const now = new Date("2026-10-12T11:00:00.000Z");
+    const attempt = {
+      _id: "attempt-1",
+      userId: "user-1",
+      status: "pending",
+      expiresAt: new Date(now.getTime() + 60_000),
+    };
+    creditMocks.rewardedAdAttemptFindOne.mockImplementation(
+      (filter: { transactionId?: string }) =>
+        rewardedAdAttemptQuery(filter.transactionId ? null : attempt),
+    );
+    creditMocks.rewardedAdAttemptFindOneAndUpdate.mockReturnValue({
+      lean: vi.fn().mockResolvedValue(attempt),
+    });
+    creditMocks.userFindByIdAndUpdate.mockResolvedValue({ credits: 11 });
+    creditMocks.transactionCreate.mockRejectedValue(new Error("ledger unavailable"));
+
+    await expect(grantRewardedAdCredits({
+      ticketHash: "ticket-hash",
+      transactionId: "e".repeat(32),
+      credits: 1,
+      now,
+    })).rejects.toThrow("ledger unavailable");
+    expect(creditMocks.session.withTransaction).toHaveBeenCalledTimes(1);
+    expect(creditMocks.session.endSession).toHaveBeenCalledTimes(1);
   });
 });

@@ -5,5 +5,6 @@ export { EmailVerificationToken } from "./EmailVerificationToken.js";
 export { Generation } from "./Generation.js";
 export { PasswordResetToken } from "./PasswordResetToken.js";
 export { Purchase } from "./Purchase.js";
+export { RewardedAdAttempt } from "./RewardedAdAttempt.js";
 export { Session } from "./Session.js";
 export { User } from "./User.js";

@@ -10,8 +10,11 @@ import { fileTypeFromBuffer } from "file-type";
 import { connectToDatabase } from "./config/database.js";
 import { env } from "./config/env.js";
 import { requireAuth, type AuthenticatedRequest } from "./middleware/auth.js";
+import { CreditTransaction } from "./models/CreditTransaction.js";
 import { Generation } from "./models/Generation.js";
+import { RewardedAdAttempt } from "./models/RewardedAdAttempt.js";
 import { authRouter } from "./routes/auth.js";
+import { rewardedAdsRouter } from "./routes/rewardedAds.js";
 import { homeSections } from "./services/home/homeConfig.js";
 import {
   completeGeneration,
@@ -93,6 +96,7 @@ app.use(
     max: 20,
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => req.path === "/api/ads/admob/ssv",
   }),
 );
 
@@ -166,6 +170,7 @@ app.get("/api/styles", (req: Request, res: Response) => {
 });
 
 app.use("/api/auth", authRouter);
+app.use("/api", rewardedAdsRouter);
 
 app.post(
   "/api/generate",
@@ -395,7 +400,11 @@ if (isDirectExecution) {
   void connectToDatabase()
     .then(async (database) => {
       if (database) {
-        await Generation.init();
+        await Promise.all([
+          Generation.init(),
+          CreditTransaction.init(),
+          RewardedAdAttempt.init(),
+        ]);
       }
       app.listen(env.port, () => {
         console.log(`Server listening on port ${env.port}`);

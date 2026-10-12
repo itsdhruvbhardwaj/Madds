@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 
@@ -13,6 +15,12 @@ const generationMocks = vi.hoisted(() => ({
   completeGeneration: vi.fn(),
   markGenerationOutcomeUnknown: vi.fn(),
   refundGeneration: vi.fn(),
+  createRewardedAdAttempt: vi.fn(),
+  grantRewardedAdCredits: vi.fn(),
+}));
+
+const admobMocks = vi.hoisted(() => ({
+  verify: vi.fn(),
 }));
 
 vi.mock("express-rate-limit", () => ({
@@ -58,14 +66,28 @@ vi.mock("./services/credits/creditService.js", () => {
     completeGeneration: generationMocks.completeGeneration,
     markGenerationOutcomeUnknown: generationMocks.markGenerationOutcomeUnknown,
     refundGeneration: generationMocks.refundGeneration,
+    createRewardedAdAttempt: generationMocks.createRewardedAdAttempt,
+    grantRewardedAdCredits: generationMocks.grantRewardedAdCredits,
     InsufficientCreditsError,
     IdempotencyConflictError,
     UserNotFoundError,
   };
 });
 
+vi.mock("./services/rewardedAds/admobSsv.js", () => {
+  class InvalidAdMobCallbackError extends Error {}
+  class AdMobKeyFetchError extends Error {}
+
+  return {
+    admobSsvVerifier: { verify: admobMocks.verify },
+    InvalidAdMobCallbackError,
+    AdMobKeyFetchError,
+  };
+});
+
 import { app } from "./server.js";
 import { OpenAIImageGenerator } from "./services/openai/generation.js";
+import { AdMobKeyFetchError, admobSsvVerifier, InvalidAdMobCallbackError } from "./services/rewardedAds/admobSsv.js";
 import { styles } from "./services/styles/styles.js";
 
 vi.mock("openai", () => {
@@ -552,6 +574,226 @@ describe("generation endpoint", () => {
       "generation-123",
       "PROVIDER_OUTCOME_UNKNOWN",
     );
+  });
+});
+
+describe("rewarded-ad endpoints", () => {
+  const envKeys = [
+    "ADMOB_REWARDED_AD_UNIT_ID",
+    "ADMOB_REWARDED_AD_REWARD_ITEM",
+    "ADMOB_REWARDED_AD_REWARD_AMOUNT",
+    "REWARDED_AD_CREDITS",
+    "REWARDED_AD_ATTEMPT_TTL_SECONDS",
+    "ADMOB_SSV_MAX_CALLBACK_AGE_SECONDS",
+    "ADMOB_SSV_MAX_FUTURE_SKEW_SECONDS",
+  ];
+  let previousEnv: Record<string, string | undefined>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    previousEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
+    process.env.ADMOB_REWARDED_AD_UNIT_ID = "ca-app-pub-1234567890123456/1234567890";
+    process.env.ADMOB_REWARDED_AD_REWARD_ITEM = "credits";
+    process.env.ADMOB_REWARDED_AD_REWARD_AMOUNT = "1";
+    process.env.REWARDED_AD_CREDITS = "1";
+    process.env.REWARDED_AD_ATTEMPT_TTL_SECONDS = "3600";
+    process.env.ADMOB_SSV_MAX_CALLBACK_AGE_SECONDS = "86400";
+    process.env.ADMOB_SSV_MAX_FUTURE_SKEW_SECONDS = "300";
+    generationMocks.createRewardedAdAttempt.mockResolvedValue({
+      customData: "A".repeat(43),
+      expiresAt: new Date("2026-10-12T12:00:00.000Z"),
+    });
+    generationMocks.grantRewardedAdCredits.mockResolvedValue({ status: "granted" });
+    admobMocks.verify.mockResolvedValue({
+      adUnitId: "ca-app-pub-1234567890123456/1234567890",
+      customData: "A".repeat(43),
+      rewardAmount: "1",
+      rewardItem: "credits",
+      timestampMs: Date.now(),
+      transactionId: "a".repeat(32),
+    });
+  });
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  });
+
+  it("rejects unauthenticated attempt creation", async () => {
+    const response = await request(app).post("/api/rewarded-ads/attempts");
+
+    expect(response.status).toBe(401);
+    expect(generationMocks.createRewardedAdAttempt).not.toHaveBeenCalled();
+  });
+
+  it("creates an opaque ticket for the authenticated user without granting credits", async () => {
+    const response = await request(app)
+      .post("/api/rewarded-ads/attempts")
+      .set("Authorization", "******")
+      .send({
+        credits: 50000,
+        rewardAmount: 50000,
+        rewardItem: "untrusted",
+        userId: "another-user",
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({
+      ok: true,
+      customData: "A".repeat(43),
+      expiresAt: "2026-10-12T12:00:00.000Z",
+    });
+    expect(generationMocks.createRewardedAdAttempt).toHaveBeenCalledWith(
+      "test-user",
+      expect.any(Date),
+    );
+    expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
+  });
+
+  it("does not create attempts when required server configuration is invalid", async () => {
+    delete process.env.ADMOB_REWARDED_AD_UNIT_ID;
+
+    const response = await request(app)
+      .post("/api/rewarded-ads/attempts")
+      .set("Authorization", "******");
+
+    expect(response.status).toBe(503);
+    expect(generationMocks.createRewardedAdAttempt).not.toHaveBeenCalled();
+  });
+
+  it("does not verify or credit callbacks when server configuration is missing", async () => {
+    delete process.env.ADMOB_REWARDED_AD_UNIT_ID;
+
+    const response = await request(app).get("/api/ads/admob/ssv?signed=callback");
+
+    expect(response.status).toBe(503);
+    expect(admobSsvVerifier.verify).not.toHaveBeenCalled();
+    expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
+  });
+
+  it("returns a retryable error when attempt persistence fails", async () => {
+    generationMocks.createRewardedAdAttempt.mockRejectedValueOnce(new Error("database unavailable"));
+
+    const response = await request(app)
+      .post("/api/rewarded-ads/attempts")
+      .set("Authorization", "******");
+
+    expect(response.status).toBe(503);
+    expect(response.body.code).toBe("REWARDED_AD_ATTEMPT_FAILED");
+  });
+
+  it("credits only a verified callback using the server-configured PicMe amount", async () => {
+    const rawQuery = "opaque%2Fcallback";
+
+    const response = await request(app).get(`/api/ads/admob/ssv?${rawQuery}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ ok: true, status: "credited" });
+    expect(admobSsvVerifier.verify).toHaveBeenCalledWith(rawQuery);
+    expect(generationMocks.grantRewardedAdCredits).toHaveBeenCalledWith({
+      ticketHash: createHash("sha256").update("A".repeat(43)).digest("hex"),
+      transactionId: "a".repeat(32),
+      credits: 1,
+    });
+  });
+
+  it("keeps PicMe credits independent from AdMob reward amount", async () => {
+    process.env.ADMOB_REWARDED_AD_REWARD_AMOUNT = "3";
+    process.env.REWARDED_AD_CREDITS = "7";
+    admobMocks.verify.mockResolvedValueOnce({
+      adUnitId: "ca-app-pub-1234567890123456/1234567890",
+      customData: "A".repeat(43),
+      rewardAmount: "3",
+      rewardItem: "credits",
+      timestampMs: Date.now(),
+      transactionId: "c".repeat(32),
+    });
+
+    const response = await request(app).get("/api/ads/admob/ssv?signed=callback");
+
+    expect(response.status).toBe(200);
+    expect(generationMocks.grantRewardedAdCredits).toHaveBeenCalledWith(
+      expect.objectContaining({ credits: 7 }),
+    );
+  });
+
+  it("acknowledges duplicate callbacks without crediting twice", async () => {
+    generationMocks.grantRewardedAdCredits.mockResolvedValueOnce({ status: "duplicate" });
+
+    const response = await request(app).get("/api/ads/admob/ssv?signed=callback");
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe("already_processed");
+  });
+
+  it("rejects invalid signatures without invoking credit accounting", async () => {
+    admobMocks.verify.mockRejectedValueOnce(new InvalidAdMobCallbackError());
+
+    const response = await request(app).get("/api/ads/admob/ssv?signed=callback");
+
+    expect(response.status).toBe(400);
+    expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
+  });
+
+  it("fails closed on a reward mismatch", async () => {
+    admobMocks.verify.mockResolvedValueOnce({
+      adUnitId: "ca-app-pub-wrong/123",
+      customData: "A".repeat(43),
+      rewardAmount: "1",
+      rewardItem: "credits",
+      timestampMs: Date.now(),
+      transactionId: "b".repeat(32),
+    });
+
+    const response = await request(app).get("/api/ads/admob/ssv?signed=callback");
+
+    expect(response.status).toBe(400);
+    expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
+  });
+
+  it("rejects callbacks outside the configured age window", async () => {
+    admobMocks.verify.mockResolvedValueOnce({
+      adUnitId: "ca-app-pub-1234567890123456/1234567890",
+      customData: "A".repeat(43),
+      rewardAmount: "1",
+      rewardItem: "credits",
+      timestampMs: Date.now() - 90_000_000,
+      transactionId: "d".repeat(32),
+    });
+
+    const response = await request(app).get("/api/ads/admob/ssv?signed=callback");
+
+    expect(response.status).toBe(400);
+    expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
+  });
+
+  it("returns a retryable error when key verification is unavailable", async () => {
+    admobMocks.verify.mockRejectedValueOnce(new AdMobKeyFetchError());
+
+    const response = await request(app).get("/api/ads/admob/ssv?signed=callback");
+
+    expect(response.status).toBe(503);
+    expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
+  });
+
+  it("does not acknowledge a failed persistence operation as a grant", async () => {
+    generationMocks.grantRewardedAdCredits.mockRejectedValueOnce(new Error("database unavailable"));
+
+    const response = await request(app).get("/api/ads/admob/ssv?signed=callback");
+
+    expect(response.status).toBe(503);
+    expect(response.body.code).toBe("REWARDED_AD_PROCESSING_FAILED");
+  });
+
+  it("exempts AdMob callbacks from the restrictive global application rate limit", async () => {
+    const response = await request(app).get("/api/ads/admob/ssv?signed=callback");
+
+    expect(response.status).toBe(200);
   });
 });
 
