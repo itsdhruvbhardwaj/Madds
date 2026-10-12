@@ -609,7 +609,7 @@ describe("rewarded-ad endpoints", () => {
     });
     generationMocks.grantRewardedAdCredits.mockResolvedValue({ status: "granted" });
     admobMocks.verify.mockResolvedValue({
-      adUnitId: "ca-app-pub-1234567890123456/1234567890",
+      adUnitId: "1234567890",
       customData: "A".repeat(43),
       rewardAmount: "1",
       rewardItem: "credits",
@@ -687,6 +687,16 @@ describe("rewarded-ad endpoints", () => {
     errorSpy.mockRestore();
   });
 
+  it("fails closed on a malformed configured AdMob ad-unit ID", async () => {
+    process.env.ADMOB_REWARDED_AD_UNIT_ID = "1234567890";
+
+    const response = await request(app).get("/api/ads/admob/ssv?signed=callback");
+
+    expect(response.status).toBe(503);
+    expect(admobSsvVerifier.verify).not.toHaveBeenCalled();
+    expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
+  });
+
   it("returns a retryable error when attempt persistence fails", async () => {
     generationMocks.createRewardedAdAttempt.mockRejectedValueOnce(new Error("database unavailable"));
 
@@ -717,7 +727,7 @@ describe("rewarded-ad endpoints", () => {
     process.env.ADMOB_REWARDED_AD_REWARD_AMOUNT = "3";
     process.env.REWARDED_AD_CREDITS = "7";
     admobMocks.verify.mockResolvedValueOnce({
-      adUnitId: "ca-app-pub-1234567890123456/1234567890",
+      adUnitId: "1234567890",
       customData: "A".repeat(43),
       rewardAmount: "3",
       rewardItem: "credits",
@@ -852,7 +862,7 @@ describe("rewarded-ad endpoints", () => {
   it("diagnoses each reward configuration mismatch after signature verification and fails closed", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const matchingCallback = {
-      adUnitId: "ca-app-pub-1234567890123456/1234567890",
+      adUnitId: "1234567890",
       customData: "A".repeat(43),
       rewardAmount: "1",
       rewardItem: "credits",
@@ -861,7 +871,7 @@ describe("rewarded-ad endpoints", () => {
     };
     const mismatchCases = [
       {
-        callback: { ...matchingCallback, adUnitId: "ca-app-pub-wrong/123" },
+        callback: { ...matchingCallback, adUnitId: "9876543210" },
         diagnostics: {
           ad_unit_matches: false,
           reward_item_matches: true,
@@ -904,8 +914,8 @@ describe("rewarded-ad endpoints", () => {
     }
 
     const loggedDiagnostics = JSON.stringify(warnSpy.mock.calls);
-    expect(loggedDiagnostics).not.toContain("ca-app-pub-wrong");
-    expect(loggedDiagnostics).not.toContain("ca-app-pub-1234567890123456/1234567890");
+    expect(loggedDiagnostics).not.toContain("9876543210");
+    expect(loggedDiagnostics).not.toContain("1234567890");
     expect(loggedDiagnostics).not.toContain("wrong-item");
     expect(loggedDiagnostics).not.toContain("credits");
     expect(loggedDiagnostics).not.toContain("A".repeat(43));
@@ -915,7 +925,7 @@ describe("rewarded-ad endpoints", () => {
 
   it("rejects callbacks outside the configured age window", async () => {
     admobMocks.verify.mockResolvedValueOnce({
-      adUnitId: "ca-app-pub-1234567890123456/1234567890",
+      adUnitId: "1234567890",
       customData: "A".repeat(43),
       rewardAmount: "1",
       rewardItem: "credits",

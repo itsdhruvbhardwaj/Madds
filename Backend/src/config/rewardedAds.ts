@@ -1,5 +1,6 @@
 export type RewardedAdsConfiguration = {
   adUnitId: string;
+  admobAdUnitId: string;
   admobRewardItem: string;
   admobRewardAmount: number;
   picMeCreditAmount: number;
@@ -37,8 +38,9 @@ function positiveInteger(
 export function getRewardedAdsConfiguration(): RewardedAdsConfiguration | null {
   const adUnitId = process.env.ADMOB_REWARDED_AD_UNIT_ID?.trim() ?? "";
   const admobRewardItem = process.env.ADMOB_REWARDED_AD_REWARD_ITEM?.trim() ?? "";
+  const adUnitMatch = /^ca-app-pub-\d+\/(\d+)$/.exec(adUnitId);
 
-  if (!/^ca-app-pub-\d+\/\d+$/.test(adUnitId) || !admobRewardItem || admobRewardItem.length > 100) {
+  if (!adUnitMatch || !admobRewardItem || admobRewardItem.length > 100) {
     return null;
   }
 
@@ -60,6 +62,7 @@ export function getRewardedAdsConfiguration(): RewardedAdsConfiguration | null {
 
   return {
     adUnitId,
+    admobAdUnitId: adUnitMatch[1]!,
     admobRewardItem,
     admobRewardAmount,
     picMeCreditAmount,

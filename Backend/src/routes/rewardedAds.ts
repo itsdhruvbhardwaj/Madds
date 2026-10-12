@@ -170,7 +170,7 @@ router.get("/ads/admob/ssv", async (req: Request, res: Response) => {
 
   try {
     const callback = await admobSsvVerifier.verify(rawQuery);
-    const adUnitMatches = callback.adUnitId === configuration.adUnitId;
+    const adUnitMatches = callback.adUnitId === configuration.admobAdUnitId;
     const rewardItemMatches = callback.rewardItem === configuration.admobRewardItem;
     const rewardAmountMatches =
       callback.rewardAmount === String(configuration.admobRewardAmount);
