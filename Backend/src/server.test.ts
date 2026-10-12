@@ -881,6 +881,9 @@ describe("rewarded-ad endpoints", () => {
           callback_ad_unit_is_decimal: true,
           callback_ad_unit_length: 10,
           expected_numeric_component_length: 10,
+          callback_ad_unit_last_four: "3210",
+          configured_numeric_component_last_four: "7890",
+          exact_ad_unit_comparison_matches: false,
         },
       },
       {
@@ -897,6 +900,9 @@ describe("rewarded-ad endpoints", () => {
           callback_ad_unit_is_decimal: false,
           callback_ad_unit_length: 38,
           expected_numeric_component_length: 10,
+          callback_ad_unit_last_four: null,
+          configured_numeric_component_last_four: "7890",
+          exact_ad_unit_comparison_matches: false,
         },
       },
       {
@@ -910,6 +916,9 @@ describe("rewarded-ad endpoints", () => {
           callback_ad_unit_is_decimal: true,
           callback_ad_unit_length: 10,
           expected_numeric_component_length: 10,
+          callback_ad_unit_last_four: "7890",
+          configured_numeric_component_last_four: "7890",
+          exact_ad_unit_comparison_matches: true,
         },
       },
       {
@@ -923,6 +932,9 @@ describe("rewarded-ad endpoints", () => {
           callback_ad_unit_is_decimal: true,
           callback_ad_unit_length: 10,
           expected_numeric_component_length: 10,
+          callback_ad_unit_last_four: "7890",
+          configured_numeric_component_last_four: "7890",
+          exact_ad_unit_comparison_matches: true,
         },
       },
     ] as const;

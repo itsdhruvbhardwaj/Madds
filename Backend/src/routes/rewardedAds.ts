@@ -62,7 +62,7 @@ function rejectCallback(
   code: string,
   category: string,
   rawQuery: string,
-  diagnostics?: Record<string, boolean | number>,
+  diagnostics?: Record<string, boolean | number | string | null>,
 ): Response {
   console.warn("AdMob SSV callback rejected.", {
     category,
@@ -177,6 +177,9 @@ router.get("/ads/admob/ssv", async (req: Request, res: Response) => {
     if (!adUnitMatches || !rewardItemMatches || !rewardAmountMatches) {
       const configuredIdFormatValid =
         /^ca-app-pub-\d+\/\d+$/.test(configuration.adUnitId);
+      const callbackAdUnitIsDecimal = /^\d+$/.test(callback.adUnitId);
+      const expectedNumericComponentIsDecimal =
+        /^\d+$/.test(configuration.admobAdUnitId);
       return rejectCallback(
         res,
         400,
@@ -189,9 +192,16 @@ router.get("/ads/admob/ssv", async (req: Request, res: Response) => {
           reward_amount_matches: rewardAmountMatches,
           configured_id_format_valid: configuredIdFormatValid,
           expected_numeric_component_present: configuration.admobAdUnitId.length > 0,
-          callback_ad_unit_is_decimal: /^\d+$/.test(callback.adUnitId),
+          callback_ad_unit_is_decimal: callbackAdUnitIsDecimal,
           callback_ad_unit_length: callback.adUnitId.length,
           expected_numeric_component_length: configuration.admobAdUnitId.length,
+          callback_ad_unit_last_four: callbackAdUnitIsDecimal
+            ? callback.adUnitId.slice(-4)
+            : null,
+          configured_numeric_component_last_four: expectedNumericComponentIsDecimal
+            ? configuration.admobAdUnitId.slice(-4)
+            : null,
+          exact_ad_unit_comparison_matches: adUnitMatches,
           runtime_configuration_present: configurationStatus.present,
           runtime_configuration_valid: configurationStatus.valid,
           signature_verified: true,
