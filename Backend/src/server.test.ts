@@ -733,6 +733,7 @@ describe("rewarded-ad endpoints", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.status).toBe("already_processed");
+    expect(generationMocks.grantRewardedAdCredits).toHaveBeenCalledTimes(1);
   });
 
   it("rejects invalid signatures without invoking credit accounting", async () => {
@@ -780,24 +781,23 @@ describe("rewarded-ad endpoints", () => {
     infoSpy.mockRestore();
   });
 
-  it("rejects a callback with no query and records only absent parameter names", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  it("acknowledges a bare reachability request without processing a reward", async () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const response = await request(app).get("/api/ads/admob/ssv");
 
-    expect(response.status).toBe(400);
-    expect(admobSsvVerifier.verify).not.toHaveBeenCalled();
-    expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
-    expect(warnSpy).toHaveBeenCalledWith("AdMob SSV callback rejected.", {
-      category: "missing_query",
-      criticalParameterNamesPresent: expect.objectContaining({
-        ad_network: false,
-        ad_unit: false,
-        custom_data: false,
-        signature: false,
-        key_id: false,
-      }),
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      ok: true,
+      status: "endpoint_reachable",
+      rewardProcessed: false,
     });
-    warnSpy.mockRestore();
+    expect(admobSsvVerifier.verify).not.toHaveBeenCalled();
+    expect(generationMocks.createRewardedAdAttempt).not.toHaveBeenCalled();
+    expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
+    expect(infoSpy).toHaveBeenCalledWith(
+      "AdMob SSV endpoint reachability request acknowledged; no reward processed.",
+    );
+    infoSpy.mockRestore();
   });
 
   it("fails closed on a reward mismatch", async () => {

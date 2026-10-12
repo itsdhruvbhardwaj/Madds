@@ -137,6 +137,15 @@ router.get("/ads/admob/ssv", async (req: Request, res: Response) => {
     criticalParameterNamesPresent: parameterPresence,
   });
 
+  if (queryStart < 0) {
+    console.info("AdMob SSV endpoint reachability request acknowledged; no reward processed.");
+    return res.status(200).json({
+      ok: true,
+      status: "endpoint_reachable",
+      rewardProcessed: false,
+    });
+  }
+
   const configuration = getRewardedAdsConfiguration();
   if (!configuration) {
     console.error("AdMob SSV callback unavailable.", {
@@ -148,16 +157,6 @@ router.get("/ads/admob/ssv", async (req: Request, res: Response) => {
       code: "REWARDED_ADS_UNAVAILABLE",
       error: "Reward verification is temporarily unavailable.",
     });
-  }
-
-  if (queryStart < 0) {
-    return rejectCallback(
-      res,
-      400,
-      "INVALID_REWARDED_AD_CALLBACK",
-      "missing_query",
-      rawQuery,
-    );
   }
 
   try {
