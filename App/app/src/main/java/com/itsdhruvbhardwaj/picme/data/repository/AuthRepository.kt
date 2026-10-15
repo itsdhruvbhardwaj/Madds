@@ -202,6 +202,25 @@ class AuthRepository(
     }
 
     /**
+     * Requests a reward attempt ticket from the backend.
+     */
+    suspend fun requestRewardAttempt(): Result<RewardAttemptResponse> {
+        val accessToken = tokenStorage.getAccessToken()
+            ?: return Result.failure(Exception("No access token available"))
+
+        return safeApiCall(
+            call = { apiService.requestRewardAttempt("Bearer $accessToken") },
+            onSuccess = { response ->
+                if (response.ok && response.ticket != null) {
+                    Result.success(response)
+                } else {
+                    Result.failure(Exception(response.message ?: "Failed to get reward ticket"))
+                }
+            }
+        )
+    }
+
+    /**
      * Helper to safely execute API calls and map responses to [Result].
      */
     private suspend fun <T, R> safeApiCall(
@@ -239,7 +258,7 @@ class AuthRepository(
                     errorCode == 401 -> "invalid_credentials"
                     errorCode == 403 -> "forbidden"
                     errorCode >= 500 -> "server_failure"
-                    else -> "server_failure"
+                    else -> serverMessage.ifEmpty { "server_failure" }
                 }
                 Result.failure(Exception(mappedMessage))
             }

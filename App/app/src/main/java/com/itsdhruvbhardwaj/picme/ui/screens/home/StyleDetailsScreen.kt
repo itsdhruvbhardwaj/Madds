@@ -252,6 +252,7 @@ fun StyleDetailsScreen(
     if (showInsufficientCreditsSheet && uiState is StyleDetailsUiState.Success) {
         val style = (uiState as StyleDetailsUiState.Success).style
         InsufficientCreditsBottomSheet(
+            viewModel = authViewModel,
             requiredCredits = style.tokensRequired,
             availableCredits = user?.credits ?: 0,
             onDismiss = { showInsufficientCreditsSheet = false }

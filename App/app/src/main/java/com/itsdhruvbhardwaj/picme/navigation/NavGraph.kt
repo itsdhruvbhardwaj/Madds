@@ -24,6 +24,7 @@ import androidx.navigation.navDeepLink
 import com.itsdhruvbhardwaj.picme.data.repository.StyleRepository
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
+import com.itsdhruvbhardwaj.picme.ui.components.BannerAdView
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeBottomNavigationBar
 import com.itsdhruvbhardwaj.picme.ui.screens.auth.LoginScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.auth.SignupScreen
@@ -77,36 +78,46 @@ fun NavGraph(
 
     Scaffold(
         bottomBar = {
-            AnimatedVisibility(
-                visible = isBottomBarVisible,
-                enter = slideInVertically(
-                    initialOffsetY = { it },
-                    animationSpec = tween(durationMillis = 300)
-                ) + fadeIn(animationSpec = tween(durationMillis = 300)),
-                exit = slideOutVertically(
-                    targetOffsetY = { it },
-                    animationSpec = tween(durationMillis = 300)
-                ) + fadeOut(animationSpec = tween(durationMillis = 300))
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                PicMeBottomNavigationBar(
-                    currentRoute = currentRoute,
-                    onNavigate = { route ->
-                        navController.navigate(route) {
-                            // Standard top-level navigation behavior
-                            popUpTo(Screen.Home.route) { 
-                                saveState = true 
+                // Shared Banner Ad - Always present in the hierarchy, but hides itself if no ad is loaded
+                BannerAdView(modifier = Modifier.fillMaxWidth())
+
+                AnimatedVisibility(
+                    visible = isBottomBarVisible,
+                    enter = slideInVertically(
+                        initialOffsetY = { it },
+                        animationSpec = tween(durationMillis = 300)
+                    ) + fadeIn(animationSpec = tween(durationMillis = 300)),
+                    exit = slideOutVertically(
+                        targetOffsetY = { it },
+                        animationSpec = tween(durationMillis = 300)
+                    ) + fadeOut(animationSpec = tween(durationMillis = 300))
+                ) {
+                    PicMeBottomNavigationBar(
+                        currentRoute = currentRoute,
+                        onNavigate = { route ->
+                            navController.navigate(route) {
+                                // Standard top-level navigation behavior
+                                popUpTo(Screen.Home.route) { 
+                                    saveState = true 
+                                }
+                                launchSingleTop = true
+                                restoreState = true
                             }
-                            launchSingleTop = true
-                            restoreState = true
                         }
-                    }
-                )
+                    )
+                }
             }
         }
     ) { innerPadding ->
-        // Animate bottom padding to avoid abrupt height changes when showing/hiding bottom bar
+        // Animate bottom padding to avoid abrupt height changes when showing/hiding bottom bar or banner
+        // We use innerPadding.calculateBottomPadding() to automatically account for the banner height
+        // and the bottom navigation bar when visible.
         val animatedBottomPadding by animateDpAsState(
-            targetValue = if (isBottomBarVisible) innerPadding.calculateBottomPadding() else 0.dp,
+            targetValue = innerPadding.calculateBottomPadding(),
             animationSpec = tween(durationMillis = 300),
             label = "bottomPaddingAnimation"
         )
@@ -397,6 +408,7 @@ fun NavGraph(
                     val genState by generationViewModel.uiState.collectAsState()
                     val statusMsg by generationViewModel.statusMessage.collectAsState()
                     val selectedPhotos by generationViewModel.selectedPhotos.collectAsState()
+                    val isInterstitialVisible by generationViewModel.isInterstitialVisible.collectAsState()
 
                     LaunchedEffect(Unit) {
                         generationViewModel.generateImage(styleId)
@@ -406,6 +418,9 @@ fun NavGraph(
                         state = genState,
                         statusMessage = statusMsg,
                         selectedPhotos = selectedPhotos,
+                        isInterstitialVisible = isInterstitialVisible,
+                        onAdShow = { generationViewModel.setInterstitialVisible(true) },
+                        onAdDismiss = { generationViewModel.setInterstitialVisible(false) },
                         onCancelClick = { 
                             generationViewModel.resetState()
                             navController.popBackStack() 

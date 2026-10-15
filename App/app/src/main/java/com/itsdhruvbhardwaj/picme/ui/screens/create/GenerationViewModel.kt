@@ -52,6 +52,9 @@ class GenerationViewModel(
     private val _isActionLoading = MutableStateFlow(false)
     val isActionLoading: StateFlow<Boolean> = _isActionLoading.asStateFlow()
 
+    private val _isInterstitialVisible = MutableStateFlow(false)
+    val isInterstitialVisible: StateFlow<Boolean> = _isInterstitialVisible.asStateFlow()
+
     private val _eventFlow = MutableSharedFlow<GenerationEvent>()
     val eventFlow: SharedFlow<GenerationEvent> = _eventFlow.asSharedFlow()
 
@@ -62,6 +65,10 @@ class GenerationViewModel(
 
     fun setSelectedPhotos(uris: List<Uri>) {
         _selectedPhotos.value = uris
+    }
+
+    fun setInterstitialVisible(visible: Boolean) {
+        _isInterstitialVisible.value = visible
     }
 
     fun generateImage(styleId: String, isRetry: Boolean = false) {
@@ -205,6 +212,7 @@ class GenerationViewModel(
         _uiState.value = GenerationUiState.Idle
         _statusMessage.value = "Preparing your photo..."
         _isActionLoading.value = false
+        _isInterstitialVisible.value = false
         currentIdempotencyKey = null
     }
 

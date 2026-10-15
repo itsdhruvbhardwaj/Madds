@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.rememberNavController
+import com.google.android.gms.ads.MobileAds
 import com.itsdhruvbhardwaj.picme.data.local.AuthTokenStorage
 import com.itsdhruvbhardwaj.picme.data.remote.AuthApiService
 import com.itsdhruvbhardwaj.picme.data.remote.AuthAuthenticator
@@ -28,6 +29,7 @@ import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.create.GenerationViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.home.HomeViewModel
 import com.itsdhruvbhardwaj.picme.ui.theme.PicMeTheme
+import com.itsdhruvbhardwaj.picme.utils.AdManager
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -40,6 +42,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Initialize Google Mobile Ads SDK
+        MobileAds.initialize(this) {
+            // Preload ads once SDK is initialized
+            AdManager.loadInterstitial(this)
+            AdManager.loadRewardedAd(this)
+        }
 
         val tokenStorage = AuthTokenStorage(applicationContext)
         

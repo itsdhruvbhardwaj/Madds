@@ -26,6 +26,14 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            buildConfigField("String", "AD_UNIT_ID_BANNER", "\"ca-app-pub-7668637948120420/8612192994\"") // Placeholder production ID
+            buildConfigField("String", "AD_UNIT_ID_INTERSTITIAL", "\"ca-app-pub-7668637948120420/5567540939\"") // Placeholder production ID
+            buildConfigField("String", "AD_UNIT_ID_REWARDED", "\"ca-app-pub-7668637948120420/1843520466\"")
+        }
+        debug {
+            buildConfigField("String", "AD_UNIT_ID_BANNER", "\"ca-app-pub-3940256099942544/9214589741\"")
+            buildConfigField("String", "AD_UNIT_ID_INTERSTITIAL", "\"ca-app-pub-3940256099942544/1033173712\"")
+            buildConfigField("String", "AD_UNIT_ID_REWARDED", "\"ca-app-pub-3940256099942544/5224354917\"")
         }
     }
     compileOptions {
@@ -61,6 +69,9 @@ dependencies {
 
     // Coil
     implementation(libs.coil.compose)
+
+    // Google Mobile Ads
+    implementation(libs.google.play.services.ads)
 
     testImplementation(libs.junit)
     testImplementation(libs.mockito.core)

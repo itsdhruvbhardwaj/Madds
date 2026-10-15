@@ -4,6 +4,8 @@ import com.google.gson.annotations.SerializedName
 
 /**
  * Data model representing a generation style in PicMe.
+ * 
+ * Includes flexible mapping to support various backend naming conventions.
  */
 data class Style(
     @SerializedName("id")
@@ -24,7 +26,7 @@ data class Style(
     @SerializedName("previewImages", alternate = ["preview_images", "previews", "sample_images", "images", "preview_image_urls"])
     val previewImages: List<String>? = emptyList(),
     
-    @SerializedName("imageCount", alternate = ["image_count"])
+    @SerializedName("imageCount", alternate = ["image_count", "required_images"])
     val imageCount: Int = 1,
     
     @SerializedName("tokensRequired", alternate = ["tokens_required", "price", "cost", "tokens", "credit_cost"])

@@ -1,5 +1,6 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.create
 
+import android.app.Activity
 import android.net.Uri
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -33,6 +34,7 @@ import coil.request.ImageRequest
 import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 import com.itsdhruvbhardwaj.picme.ui.theme.Secondary
 import com.itsdhruvbhardwaj.picme.ui.theme.TextSecondary
+import com.itsdhruvbhardwaj.picme.utils.AdManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,12 +42,30 @@ fun GenerationScreen(
     state: GenerationUiState,
     statusMessage: String,
     selectedPhotos: List<Uri>,
+    isInterstitialVisible: Boolean,
+    onAdShow: () -> Unit,
+    onAdDismiss: () -> Unit,
     onCancelClick: () -> Unit,
     onRetryClick: () -> Unit,
     onSuccess: (String) -> Unit
 ) {
-    LaunchedEffect(state) {
-        if (state is GenerationUiState.Success) {
+    val context = LocalContext.current
+
+    // Trigger interstitial ad once when the generation process starts
+    // Only shows if the ad is already preloaded
+    LaunchedEffect(Unit) {
+        val activity = context as? Activity
+        if (activity != null && AdManager.isInterstitialReady()) {
+            onAdShow()
+            AdManager.showInterstitial(activity) {
+                onAdDismiss()
+            }
+        }
+    }
+
+    // Wait for BOTH generation success and ad dismissal before navigating
+    LaunchedEffect(state, isInterstitialVisible) {
+        if (state is GenerationUiState.Success && !isInterstitialVisible) {
             onSuccess(state.imageBase64)
         }
     }
@@ -215,7 +235,7 @@ fun PhotoComposition(selectedPhotos: List<Uri>) {
                 )
             }
         } else if (selectedPhotos.isNotEmpty()) {
-            // Prominent studio-style display for 1 photo
+            // Prominent studio-style display for 1 photo Studio style display for 1 photo
             AsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(selectedPhotos[0])

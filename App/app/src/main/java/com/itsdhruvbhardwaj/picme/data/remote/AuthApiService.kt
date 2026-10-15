@@ -63,4 +63,13 @@ interface AuthApiService {
     suspend fun resetPassword(
         @Body request: ResetPasswordRequest
     ): Response<MessageResponse>
+
+    /**
+     * Requests a one-time ticket for a rewarded ad attempt.
+     * The ticket should be passed to AdMob SSV custom data.
+     */
+    @POST("api/rewarded-ads/attempts")
+    suspend fun requestRewardAttempt(
+        @Header("Authorization") authorization: String
+    ): Response<RewardAttemptResponse>
 }

@@ -1,9 +1,12 @@
 package com.itsdhruvbhardwaj.picme.ui.auth
 
+import android.app.Activity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.itsdhruvbhardwaj.picme.data.model.User
 import com.itsdhruvbhardwaj.picme.data.repository.AuthRepository
+import com.itsdhruvbhardwaj.picme.utils.AdManager
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,6 +28,9 @@ class AuthViewModel(
      * Observable stream of the current authentication state.
      */
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
+
+    private val _isRewardedAdLoading = MutableStateFlow(false)
+    val isRewardedAdLoading: StateFlow<Boolean> = _isRewardedAdLoading.asStateFlow()
 
     private val checkSessionMutex = Mutex()
 
@@ -204,6 +210,50 @@ class AuthViewModel(
         viewModelScope.launch {
             authRepository.logoutAll()
             _authState.value = AuthState.Unauthenticated
+        }
+    }
+
+    /**
+     * Initiates the rewarded ad flow: fetches a ticket, shows the ad, and refreshes the balance.
+     */
+    fun startRewardedAdFlow(activity: Activity) {
+        if (_isRewardedAdLoading.value) return
+
+        viewModelScope.launch {
+            _isRewardedAdLoading.value = true
+            
+            val result = authRepository.requestRewardAttempt()
+            
+            result.fold(
+                onSuccess = { response ->
+                    val ticket = response.ticket
+                    if (ticket != null) {
+                        AdManager.showRewardedAd(
+                            activity = activity,
+                            customData = ticket,
+                            onRewardEarned = {
+                                viewModelScope.launch {
+                                    // Give the backend a moment to process the SSV callback
+                                    delay(2000)
+                                    checkSession()
+                                }
+                            },
+                            onAdDismissed = {
+                                _isRewardedAdLoading.value = false
+                                // Preload next one
+                                AdManager.loadRewardedAd(activity)
+                            }
+                        )
+                    } else {
+                        _isRewardedAdLoading.value = false
+                        _authState.value = AuthState.Error("Failed to prepare reward attempt.")
+                    }
+                },
+                onFailure = { error ->
+                    _isRewardedAdLoading.value = false
+                    _authState.value = AuthState.Error(mapError(error.message))
+                }
+            )
         }
     }
 

@@ -1,6 +1,6 @@
 package com.itsdhruvbhardwaj.picme.ui.components
 
-import android.widget.Toast
+import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -9,6 +9,8 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -18,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
 import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 import com.itsdhruvbhardwaj.picme.ui.theme.Secondary
 import com.itsdhruvbhardwaj.picme.ui.theme.TextSecondary
@@ -25,12 +28,14 @@ import com.itsdhruvbhardwaj.picme.ui.theme.TextSecondary
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InsufficientCreditsBottomSheet(
+    viewModel: AuthViewModel,
     requiredCredits: Int,
     availableCredits: Int,
     onDismiss: () -> Unit,
     sheetState: SheetState = rememberModalBottomSheetState()
 ) {
     val context = LocalContext.current
+    val isLoading by viewModel.isRewardedAdLoading.collectAsState()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -68,8 +73,12 @@ fun InsufficientCreditsBottomSheet(
             // Watch Ad Button
             Button(
                 onClick = { 
-                    Toast.makeText(context, "Coming soon", Toast.LENGTH_SHORT).show()
+                    val activity = context as? Activity
+                    if (activity != null) {
+                        viewModel.startRewardedAdFlow(activity)
+                    }
                 },
+                enabled = !isLoading,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
@@ -85,15 +94,23 @@ fun InsufficientCreditsBottomSheet(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayCircle,
-                        contentDescription = null,
-                        tint = Color(0xFF6366F1),
-                        modifier = Modifier.size(24.dp)
-                    )
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = Color(0xFF6366F1),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.PlayCircle,
+                            contentDescription = null,
+                            tint = Color(0xFF6366F1),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = "Watch an Ad & Earn Credits",
+                        text = if (isLoading) "Preparing Ad..." else "Watch an Ad & Earn Credits",
                         style = MaterialTheme.typography.labelLarge.copy(
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
@@ -107,7 +124,7 @@ fun InsufficientCreditsBottomSheet(
             // Buy Credits Button (Premium Gradient)
             Button(
                 onClick = { 
-                    Toast.makeText(context, "Coming soon", Toast.LENGTH_SHORT).show()
+                    // Handle payment logic in a future task
                 },
                 modifier = Modifier
                     .fillMaxWidth()
