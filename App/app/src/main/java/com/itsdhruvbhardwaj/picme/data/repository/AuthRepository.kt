@@ -211,10 +211,11 @@ class AuthRepository(
         return safeApiCall(
             call = { apiService.requestRewardAttempt("Bearer $accessToken") },
             onSuccess = { response ->
-                if (response.ok && response.ticket != null) {
+                if (response.ok && !response.customData.isNullOrBlank()) {
                     Result.success(response)
                 } else {
-                    Result.failure(Exception(response.message ?: "Failed to get reward ticket"))
+                    val errorMessage = response.message ?: response.error ?: "Failed to get reward ticket"
+                    Result.failure(Exception(errorMessage))
                 }
             }
         )
@@ -257,8 +258,8 @@ class AuthRepository(
                     serverMessage.contains("already been used", ignoreCase = true) -> "token_already_used"
                     errorCode == 401 -> "invalid_credentials"
                     errorCode == 403 -> "forbidden"
-                    errorCode >= 500 -> "server_failure"
-                    else -> serverMessage.ifEmpty { "server_failure" }
+                    errorCode >= 500 -> "server_failure ($errorCode)"
+                    else -> if (serverMessage.isNotEmpty()) "$serverMessage ($errorCode)" else "server_failure ($errorCode)"
                 }
                 Result.failure(Exception(mappedMessage))
             }

@@ -6,9 +6,13 @@ import androidx.lifecycle.viewModelScope
 import com.itsdhruvbhardwaj.picme.data.model.User
 import com.itsdhruvbhardwaj.picme.data.repository.AuthRepository
 import com.itsdhruvbhardwaj.picme.utils.AdManager
+import com.itsdhruvbhardwaj.picme.utils.RewardedAdLoadState
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -31,6 +35,10 @@ class AuthViewModel(
 
     private val _isRewardedAdLoading = MutableStateFlow(false)
     val isRewardedAdLoading: StateFlow<Boolean> = _isRewardedAdLoading.asStateFlow()
+
+    // SharedFlow for transient UI events (like ad errors) that shouldn't disrupt the main auth state.
+    private val _uiEvent = MutableSharedFlow<String>()
+    val uiEvent: SharedFlow<String> = _uiEvent.asSharedFlow()
 
     private val checkSessionMutex = Mutex()
 
@@ -57,9 +65,11 @@ class AuthViewModel(
             if (checkSessionMutex.isLocked) return@launch
             
             checkSessionMutex.withLock {
-                // Only show global checking state if we don't have a local session baseline
                 val currentState = _authState.value
-                if (!isInitial || (currentState !is AuthState.Authenticated && currentState !is AuthState.RestoringSession)) {
+                
+                // Only show global checking state if we don't have a valid session context to preserve.
+                // This ensures a "silent refresh" for already authenticated users.
+                if (currentState !is AuthState.Authenticated && currentState !is AuthState.RestoringSession) {
                     _authState.value = AuthState.CheckingSession
                 }
                 
@@ -222,15 +232,38 @@ class AuthViewModel(
         viewModelScope.launch {
             _isRewardedAdLoading.value = true
             
+            val adState = AdManager.rewardedAdState.value
+            
+            // Check current load state
+            when (adState) {
+                is RewardedAdLoadState.Error -> {
+                    // Expose the actual error details for diagnostics
+                    _uiEvent.emit("Ad failed: ${adState.message} (Code: ${adState.code})")
+                    AdManager.loadRewardedAd(activity) // Attempt to reload
+                    _isRewardedAdLoading.value = false
+                    return@launch
+                }
+                is RewardedAdLoadState.Ready -> {
+                    // Ad is ready, proceed to request ticket
+                }
+                else -> {
+                    // Idle or Loading
+                    AdManager.loadRewardedAd(activity)
+                    _uiEvent.emit("Ad is loading. Please try again shortly.")
+                    _isRewardedAdLoading.value = false
+                    return@launch
+                }
+            }
+
             val result = authRepository.requestRewardAttempt()
             
             result.fold(
                 onSuccess = { response ->
-                    val ticket = response.ticket
-                    if (ticket != null) {
+                    val customData = response.customData
+                    if (!customData.isNullOrBlank()) {
                         AdManager.showRewardedAd(
                             activity = activity,
-                            customData = ticket,
+                            customData = customData,
                             onRewardEarned = {
                                 viewModelScope.launch {
                                     // Give the backend a moment to process the SSV callback
@@ -246,12 +279,12 @@ class AuthViewModel(
                         )
                     } else {
                         _isRewardedAdLoading.value = false
-                        _authState.value = AuthState.Error("Failed to prepare reward attempt.")
+                        _uiEvent.emit("Failed to prepare reward attempt.")
                     }
                 },
                 onFailure = { error ->
                     _isRewardedAdLoading.value = false
-                    _authState.value = AuthState.Error(mapError(error.message))
+                    _uiEvent.emit(mapError(error.message))
                 }
             )
         }

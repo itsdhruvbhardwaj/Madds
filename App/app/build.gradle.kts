@@ -33,7 +33,8 @@ android {
         debug {
             buildConfigField("String", "AD_UNIT_ID_BANNER", "\"ca-app-pub-3940256099942544/9214589741\"")
             buildConfigField("String", "AD_UNIT_ID_INTERSTITIAL", "\"ca-app-pub-3940256099942544/1033173712\"")
-            buildConfigField("String", "AD_UNIT_ID_REWARDED", "\"ca-app-pub-3940256099942544/5224354917\"")
+            //buildConfigField("String", "AD_UNIT_ID_REWARDED", "\"ca-app-pub-3940256099942544/5224354917\"")
+            buildConfigField("String", "AD_UNIT_ID_REWARDED", "\"ca-app-pub-7668637948120420/1843520466\"")
         }
     }
     compileOptions {

@@ -13,6 +13,19 @@ import com.google.android.gms.ads.rewarded.RewardedAd
 import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
 import com.google.android.gms.ads.rewarded.ServerSideVerificationOptions
 import com.itsdhruvbhardwaj.picme.BuildConfig
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+/**
+ * States for rewarded ad loading.
+ */
+sealed interface RewardedAdLoadState {
+    data object Idle : RewardedAdLoadState
+    data object Loading : RewardedAdLoadState
+    data object Ready : RewardedAdLoadState
+    data class Error(val message: String, val code: Int) : RewardedAdLoadState
+}
 
 /**
  * Singleton manager to handle preloading and showing interstitial and rewarded ads.
@@ -26,7 +39,8 @@ object AdManager {
 
     // Rewarded Ad
     private var mRewardedAd: RewardedAd? = null
-    private var isRewardedLoading = false
+    private val _rewardedAdState = MutableStateFlow<RewardedAdLoadState>(RewardedAdLoadState.Idle)
+    val rewardedAdState: StateFlow<RewardedAdLoadState> = _rewardedAdState.asStateFlow()
 
     /**
      * Preloads an interstitial ad.
@@ -88,9 +102,9 @@ object AdManager {
      * Preloads a rewarded ad.
      */
     fun loadRewardedAd(context: Context) {
-        if (mRewardedAd != null || isRewardedLoading) return
+        if (mRewardedAd != null || _rewardedAdState.value is RewardedAdLoadState.Loading) return
 
-        isRewardedLoading = true
+        _rewardedAdState.value = RewardedAdLoadState.Loading
         val adRequest = AdRequest.Builder().build()
         RewardedAd.load(
             context,
@@ -98,15 +112,16 @@ object AdManager {
             adRequest,
             object : RewardedAdLoadCallback() {
                 override fun onAdFailedToLoad(adError: LoadAdError) {
-                    Log.d(TAG, "Rewarded ad failed to load: ${adError.message}")
+                    // Log the full diagnostic information
+                    Log.e(TAG, "Rewarded ad failed to load: $adError")
                     mRewardedAd = null
-                    isRewardedLoading = false
+                    _rewardedAdState.value = RewardedAdLoadState.Error(adError.message, adError.code)
                 }
 
                 override fun onAdLoaded(rewardedAd: RewardedAd) {
                     Log.d(TAG, "Rewarded ad was loaded.")
                     mRewardedAd = rewardedAd
-                    isRewardedLoading = false
+                    _rewardedAdState.value = RewardedAdLoadState.Ready
                 }
             }
         )
@@ -131,13 +146,15 @@ object AdManager {
                 override fun onAdDismissedFullScreenContent() {
                     Log.d(TAG, "Rewarded ad was dismissed.")
                     mRewardedAd = null
+                    _rewardedAdState.value = RewardedAdLoadState.Idle
                     loadRewardedAd(activity)
                     onAdDismissed()
                 }
 
                 override fun onAdFailedToShowFullScreenContent(adError: com.google.android.gms.ads.AdError) {
-                    Log.d(TAG, "Rewarded ad failed to show.")
+                    Log.e(TAG, "Rewarded ad failed to show: $adError")
                     mRewardedAd = null
+                    _rewardedAdState.value = RewardedAdLoadState.Error(adError.message, adError.code)
                     onAdDismissed()
                 }
             }

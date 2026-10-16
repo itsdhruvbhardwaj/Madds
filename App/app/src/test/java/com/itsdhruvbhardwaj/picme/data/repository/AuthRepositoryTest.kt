@@ -143,4 +143,76 @@ class AuthRepositoryTest {
             verify(apiService, times(1)).refreshToken(any())
         }
     }
+
+    @Test
+    fun `requestRewardAttempt with valid customData returns success`() = runBlocking {
+        `when`(tokenStorage.getAccessToken()).thenReturn("test_access_token")
+        val mockResponse = RewardAttemptResponse(
+            ok = true,
+            customData = "test_custom_data",
+            expiresAt = 123456789L,
+            message = null,
+            error = null
+        )
+        `when`(apiService.requestRewardAttempt(any())).thenReturn(Response.success(mockResponse))
+
+        val result = repository.requestRewardAttempt()
+
+        assertTrue(result.isSuccess)
+        assertEquals("test_custom_data", result.getOrNull()?.customData)
+    }
+
+    @Test
+    fun `requestRewardAttempt with ok false returns failure`() = runBlocking {
+        `when`(tokenStorage.getAccessToken()).thenReturn("test_access_token")
+        val mockResponse = RewardAttemptResponse(
+            ok = false,
+            customData = null,
+            expiresAt = null,
+            message = "Limit reached",
+            error = null
+        )
+        `when`(apiService.requestRewardAttempt(any())).thenReturn(Response.success(mockResponse))
+
+        val result = repository.requestRewardAttempt()
+
+        assertTrue(result.isFailure)
+        assertEquals("Limit reached", result.exceptionOrNull()?.message)
+    }
+
+    @Test
+    fun `requestRewardAttempt with null customData returns failure`() = runBlocking {
+        `when`(tokenStorage.getAccessToken()).thenReturn("test_access_token")
+        val mockResponse = RewardAttemptResponse(
+            ok = true,
+            customData = null,
+            expiresAt = null,
+            message = null,
+            error = null
+        )
+        `when`(apiService.requestRewardAttempt(any())).thenReturn(Response.success(mockResponse))
+
+        val result = repository.requestRewardAttempt()
+
+        assertTrue(result.isFailure)
+        assertEquals("Failed to get reward ticket", result.exceptionOrNull()?.message)
+    }
+
+    @Test
+    fun `requestRewardAttempt with blank customData returns failure`() = runBlocking {
+        `when`(tokenStorage.getAccessToken()).thenReturn("test_access_token")
+        val mockResponse = RewardAttemptResponse(
+            ok = true,
+            customData = "   ",
+            expiresAt = null,
+            message = null,
+            error = null
+        )
+        `when`(apiService.requestRewardAttempt(any())).thenReturn(Response.success(mockResponse))
+
+        val result = repository.requestRewardAttempt()
+
+        assertTrue(result.isFailure)
+        assertEquals("Failed to get reward ticket", result.exceptionOrNull()?.message)
+    }
 }

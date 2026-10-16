@@ -1,6 +1,7 @@
 package com.itsdhruvbhardwaj.picme.ui.components
 
 import android.app.Activity
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -9,6 +10,7 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -24,6 +26,7 @@ import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
 import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 import com.itsdhruvbhardwaj.picme.ui.theme.Secondary
 import com.itsdhruvbhardwaj.picme.ui.theme.TextSecondary
+import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,6 +39,13 @@ fun InsufficientCreditsBottomSheet(
 ) {
     val context = LocalContext.current
     val isLoading by viewModel.isRewardedAdLoading.collectAsState()
+
+    // Collect transient UI events like "Ad not ready" and show them as Toasts
+    LaunchedEffect(viewModel) {
+        viewModel.uiEvent.collectLatest { message ->
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -81,18 +91,17 @@ fun InsufficientCreditsBottomSheet(
                 enabled = !isLoading,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(28.dp),
+                    .height(64.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFFF3F4F6),
                     contentColor = Color.Black
                 ),
-                contentPadding = PaddingValues(0.dp)
+                contentPadding = PaddingValues(horizontal = 20.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxSize(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (isLoading) {
                         CircularProgressIndicator(
@@ -105,17 +114,24 @@ fun InsufficientCreditsBottomSheet(
                             imageVector = Icons.Default.PlayCircle,
                             contentDescription = null,
                             tint = Color(0xFF6366F1),
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = if (isLoading) "Preparing Ad..." else "Watch an Ad & Earn Credits",
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (isLoading) "Preparing Ad..." else "Watch an Ad to Earn",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
                         )
-                    )
+                        Text(
+                            text = "1 Ad = 1 Credit",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary
+                        )
+                    }
                 }
             }
             
@@ -124,12 +140,12 @@ fun InsufficientCreditsBottomSheet(
             // Buy Credits Button (Premium Gradient)
             Button(
                 onClick = { 
-                    // Handle payment logic in a future task
+                    Toast.makeText(context, "Purchase flow coming soon", Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(28.dp),
+                    .height(64.dp),
+                shape = RoundedCornerShape(16.dp),
                 contentPadding = PaddingValues(0.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent)
             ) {
@@ -140,30 +156,38 @@ fun InsufficientCreditsBottomSheet(
                             brush = Brush.horizontalGradient(
                                 colors = listOf(Primary, Secondary)
                             )
-                        ),
-                    contentAlignment = Alignment.Center
+                        )
+                        .padding(horizontal = 20.dp),
+                    contentAlignment = Alignment.CenterStart
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.ShoppingCart,
                             contentDescription = null,
                             tint = Color.White,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(24.dp)
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = "Buy Credits",
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                text = "Buy Credits",
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                )
                             )
-                        )
+                            Text(
+                                text = "Secure purchase via Google Play",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White.copy(alpha = 0.8f)
+                            )
+                        }
                     }
                 }
             }
             
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(32.dp))
             
             TextButton(onClick = onDismiss) {
                 Text(

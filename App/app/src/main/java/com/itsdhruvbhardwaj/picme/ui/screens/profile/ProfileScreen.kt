@@ -11,9 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,6 +27,7 @@ import coil.request.ImageRequest
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
 import com.itsdhruvbhardwaj.picme.ui.components.CreditBadge
+import com.itsdhruvbhardwaj.picme.ui.components.CreditsOptionsBottomSheet
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeButton
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeImagePlaceholder
 import com.itsdhruvbhardwaj.picme.ui.theme.Primary
@@ -43,7 +42,13 @@ fun ProfileScreen(
     onNavigateToMyGenerations: () -> Unit
 ) {
     val authState by authViewModel.authState.collectAsState()
+    
+    // Extract user data from Authenticated state. 
+    // This will persist during silent refreshes because AuthViewModel no longer 
+    // resets the state to CheckingSession if it's already Authenticated.
     val user = (authState as? AuthState.Authenticated)?.user
+    
+    var showCreditsOptions by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -138,7 +143,6 @@ fun ProfileScreen(
                                 modifier = Modifier.size(24.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            // Display actual balance from the user model
                             Text(
                                 text = user?.credits?.toString() ?: "-",
                                 style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
@@ -151,7 +155,7 @@ fun ProfileScreen(
                         )
                     }
                     Button(
-                        onClick = { /* Buy Credits */ },
+                        onClick = { showCreditsOptions = true },
                         shape = RoundedCornerShape(20.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Primary)
                     ) {
@@ -205,6 +209,13 @@ fun ProfileScreen(
             
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+    
+    if (showCreditsOptions) {
+        CreditsOptionsBottomSheet(
+            viewModel = authViewModel,
+            onDismiss = { showCreditsOptions = false }
+        )
     }
 }
 

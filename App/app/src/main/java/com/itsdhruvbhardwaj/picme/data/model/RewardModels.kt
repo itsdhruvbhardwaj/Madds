@@ -4,11 +4,13 @@ import com.google.gson.annotations.SerializedName
 
 /**
  * Response for a rewarded ad attempt request.
- * Contains the custom data ticket to be sent with the SSV callback.
+ * Contains the custom data to be sent with the SSV callback.
+ * Matches backend POST /api/rewarded-ads/attempts response exactly.
  */
 data class RewardAttemptResponse(
     @SerializedName("ok") val ok: Boolean,
-    @SerializedName("ticket") val ticket: String?,
-    @SerializedName("expiry") val expiry: Long?,
-    @SerializedName("message") val message: String?
+    @SerializedName("customData") val customData: String?,
+    @SerializedName("expiresAt") val expiresAt: String?,
+    @SerializedName("message") val message: String? = null,
+    @SerializedName("error") val error: String? = null
 )

@@ -3,7 +3,6 @@ package com.itsdhruvbhardwaj.picme.data.repository
 import android.content.ContentResolver
 import android.net.Uri
 import com.itsdhruvbhardwaj.picme.data.local.AuthTokenStorage
-import com.itsdhruvbhardwaj.picme.data.model.GenerationResponse
 import com.itsdhruvbhardwaj.picme.data.remote.StyleApiService
 import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -18,7 +17,6 @@ import org.mockito.MockitoAnnotations
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import retrofit2.Response
-import java.io.IOException
 import java.net.SocketTimeoutException
 
 class GenerationRepositoryTest {
