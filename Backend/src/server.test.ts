@@ -23,6 +23,12 @@ const admobMocks = vi.hoisted(() => ({
   verify: vi.fn(),
 }));
 
+const favoriteStyleMocks = vi.hoisted(() => ({
+  find: vi.fn(),
+  updateOne: vi.fn(),
+  deleteOne: vi.fn(),
+}));
+
 vi.mock("express-rate-limit", () => ({
   default: () => (_req: any, _res: any, next: any) => next(),
 }));
@@ -36,6 +42,10 @@ vi.mock("./middleware/auth.js", () => ({
     req.user = { id: "test-user", credits: 100 };
     next();
   },
+}));
+
+vi.mock("./models/FavoriteStyle.js", () => ({
+  FavoriteStyle: favoriteStyleMocks,
 }));
 
 vi.mock("./services/credits/creditService.js", () => {
@@ -261,6 +271,7 @@ describe("styles endpoint", () => {
     };
     for (const style of response.body.styles) {
       expect(style).toHaveProperty("id");
+      expect(style.isFavorite).toBe(false);
       expect(style).toHaveProperty("name");
       expect(style).toHaveProperty("description");
       expect(style).toHaveProperty("prompt");
@@ -275,6 +286,25 @@ describe("styles endpoint", () => {
       );
       expect([1, 2]).toContain(style.imageCount);
     }
+  });
+
+  it("returns favorite state for an authenticated user", async () => {
+    favoriteStyleMocks.find.mockReturnValue({
+      select: () => ({
+        lean: async () => [{ styleId: "90s-bollywood" }],
+      }),
+    });
+
+    const response = await request(app)
+      .get("/api/styles")
+      .set("Authorization", "Bearer test-token");
+
+    expect(response.status).toBe(200);
+    expect(response.body.styles.find((style: { id: string }) => style.id === "90s-bollywood").isFavorite)
+      .toBe(true);
+    expect(response.body.styles.find((style: { id: string }) => style.id === "wedding").isFavorite)
+      .toBe(false);
+    expect(favoriteStyleMocks.find).toHaveBeenCalledWith({ userId: "test-user" });
   });
 
   it("filters styles by category case-insensitively", async () => {
@@ -360,6 +390,86 @@ describe("styles endpoint", () => {
       totalCount: 0,
       hasNextPage: false,
     });
+  });
+});
+
+describe("style favorites endpoints", () => {
+  beforeEach(() => {
+    favoriteStyleMocks.find.mockReset();
+    favoriteStyleMocks.updateOne.mockReset().mockResolvedValue({ acknowledged: true });
+    favoriteStyleMocks.deleteOne.mockReset().mockResolvedValue({ acknowledged: true });
+  });
+
+  it("requires authentication to fetch favorites", async () => {
+    const response = await request(app).get("/api/me/favorites");
+
+    expect(response.status).toBe(401);
+  });
+
+  it("returns catalog records for the authenticated user's favorites", async () => {
+    favoriteStyleMocks.find.mockReturnValue({
+      select: () => ({
+        lean: async () => [
+          { styleId: "professional-portrait" },
+          { styleId: "vintage-film" },
+        ],
+      }),
+    });
+
+    const response = await request(app)
+      .get("/api/me/favorites")
+      .set("Authorization", "Bearer test-token");
+
+    expect(response.status).toBe(200);
+    expect(response.body.favorites.map((style: { id: string }) => style.id)).toEqual([
+      "vintage-film",
+      "professional-portrait",
+    ]);
+    expect(favoriteStyleMocks.find).toHaveBeenCalledWith({ userId: "test-user" });
+  });
+
+  it("adds a validated favorite idempotently for the authenticated user", async () => {
+    const response = await request(app)
+      .put("/api/me/favorites/vintage-film")
+      .set("Authorization", "Bearer test-token");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      ok: true,
+      styleId: "vintage-film",
+      isFavorite: true,
+    });
+    expect(favoriteStyleMocks.updateOne).toHaveBeenCalledWith(
+      { userId: "test-user", styleId: "vintage-film" },
+      { $setOnInsert: { userId: "test-user", styleId: "vintage-film" } },
+      { upsert: true },
+    );
+  });
+
+  it("removes only the authenticated user's validated favorite", async () => {
+    const response = await request(app)
+      .delete("/api/me/favorites/vintage-film")
+      .set("Authorization", "Bearer test-token");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      ok: true,
+      styleId: "vintage-film",
+      isFavorite: false,
+    });
+    expect(favoriteStyleMocks.deleteOne).toHaveBeenCalledWith({
+      userId: "test-user",
+      styleId: "vintage-film",
+    });
+  });
+
+  it("rejects unknown style IDs", async () => {
+    const response = await request(app)
+      .put("/api/me/favorites/not-a-style")
+      .set("Authorization", "Bearer test-token");
+
+    expect(response.status).toBe(404);
+    expect(favoriteStyleMocks.updateOne).not.toHaveBeenCalled();
   });
 });
 

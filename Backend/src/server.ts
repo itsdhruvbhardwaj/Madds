@@ -11,9 +11,11 @@ import { connectToDatabase } from "./config/database.js";
 import { env } from "./config/env.js";
 import { requireAuth, type AuthenticatedRequest } from "./middleware/auth.js";
 import { CreditTransaction } from "./models/CreditTransaction.js";
+import { FavoriteStyle } from "./models/FavoriteStyle.js";
 import { Generation } from "./models/Generation.js";
 import { RewardedAdAttempt } from "./models/RewardedAdAttempt.js";
 import { authRouter } from "./routes/auth.js";
+import { favoritesRouter } from "./routes/favorites.js";
 import { rewardedAdsRouter } from "./routes/rewardedAds.js";
 import { homeSections } from "./services/home/homeConfig.js";
 import {
@@ -78,6 +80,15 @@ function isConfirmedProviderFailure(error: unknown): boolean {
   return typeof status === "number" && status >= 400 && status < 500 && status !== 408;
 }
 
+function optionalAuth(req: Request, res: Response, next: NextFunction): void {
+  if (!req.headers.authorization) {
+    next();
+    return;
+  }
+
+  void requireAuth(req as AuthenticatedRequest, res, next);
+}
+
 const app = express();
 
 app.set("trust proxy", 1);
@@ -123,7 +134,7 @@ app.get("/api/home/config", (_req: Request, res: Response) => {
   res.json({ sections: homeSections });
 });
 
-app.get("/api/styles", (req: Request, res: Response) => {
+app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   // Parse query parameters with defaults and safety limits
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 18));
@@ -157,9 +168,19 @@ app.get("/api/styles", (req: Request, res: Response) => {
 
   // Slice styles for the requested page
   const paginatedStyles = filteredStyles.slice(startIndex, endIndex);
+  const userId = req.user?.id;
+  const favoriteIds = userId
+    ? new Set(
+        (await FavoriteStyle.find({ userId }).select("styleId -_id").lean())
+          .map(({ styleId }) => styleId),
+      )
+    : new Set<string>();
 
   res.json({
-    styles: paginatedStyles,
+    styles: paginatedStyles.map((style) => ({
+      ...style,
+      isFavorite: favoriteIds.has(style.id),
+    })),
     pagination: {
       currentPage: page,
       totalPages: totalPages,
@@ -170,6 +191,7 @@ app.get("/api/styles", (req: Request, res: Response) => {
 });
 
 app.use("/api/auth", authRouter);
+app.use("/api/me", favoritesRouter);
 app.use("/api", rewardedAdsRouter);
 
 app.post(
@@ -403,6 +425,7 @@ if (isDirectExecution) {
         await Promise.all([
           Generation.init(),
           CreditTransaction.init(),
+          FavoriteStyle.init(),
           RewardedAdAttempt.init(),
         ]);
       }
