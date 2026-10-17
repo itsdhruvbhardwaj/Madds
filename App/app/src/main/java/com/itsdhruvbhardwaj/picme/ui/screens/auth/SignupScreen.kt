@@ -40,9 +40,9 @@ import com.itsdhruvbhardwaj.picme.utils.ValidationUtils
 fun SignupScreen(
     authState: AuthState,
     onSignupClick: (String, String, String) -> Unit,
-    onGoogleClick: () -> Unit,
     onSignInClick: () -> Unit,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onGoogleClick: () -> Unit = {}
 ) {
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }

@@ -23,9 +23,11 @@ import com.itsdhruvbhardwaj.picme.ui.theme.PurpleAccent
 fun PicMeLogo(
     modifier: Modifier = Modifier,
     showTagline: Boolean = false,
-    fontSize: Int = 48
+    fontSize: Int = 48,
+    tint: Color? = null
 ) {
-    val navyColor = Color(0xFF0F172A) // Deep Navy Typography
+    val navyColor = Color(0xFF0F172A)
+    val baseColor = tint ?: navyColor
     
     Column(
         modifier = modifier,
@@ -33,28 +35,42 @@ fun PicMeLogo(
     ) {
         Text(
             text = buildAnnotatedString {
+                // "Pic" part
                 withStyle(
                     style = SpanStyle(
-                        color = navyColor,
+                        color = baseColor,
                         fontWeight = FontWeight.Black
                     )
                 ) {
                     append("Pic")
                 }
-                withStyle(
-                    style = SpanStyle(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(PurpleAccent, BlueAccent)
-                        ),
-                        fontWeight = FontWeight.Black
-                    )
-                ) {
-                    append("Me")
+                
+                // "Me" part - with gradient if no tint, otherwise solid tint
+                if (tint != null) {
+                    withStyle(
+                        style = SpanStyle(
+                            color = tint,
+                            fontWeight = FontWeight.Black
+                        )
+                    ) {
+                        append("Me")
+                    }
+                } else {
+                    withStyle(
+                        style = SpanStyle(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(PurpleAccent, BlueAccent)
+                            ),
+                            fontWeight = FontWeight.Black
+                        )
+                    ) {
+                        append("Me")
+                    }
                 }
             },
             style = MaterialTheme.typography.displayLarge.copy(
                 fontSize = fontSize.sp,
-                letterSpacing = (-2.5).sp, // Tight spacing
+                letterSpacing = (-2.5).sp,
                 textAlign = TextAlign.Center
             )
         )
@@ -63,10 +79,10 @@ fun PicMeLogo(
                 text = "Turn Your Photos\nInto Amazing Creations",
                 style = MaterialTheme.typography.bodyLarge.copy(
                     lineHeight = 22.sp,
-                    fontWeight = FontWeight.Bold, // Bold modern typography
+                    fontWeight = FontWeight.Bold,
                     fontSize = 18.sp
                 ),
-                color = navyColor.copy(alpha = 0.8f),
+                color = baseColor.copy(alpha = 0.8f),
                 modifier = Modifier.padding(top = 12.dp),
                 textAlign = TextAlign.Center
             )

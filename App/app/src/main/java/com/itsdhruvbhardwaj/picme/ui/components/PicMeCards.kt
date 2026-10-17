@@ -1,6 +1,7 @@
 package com.itsdhruvbhardwaj.picme.ui.components
 
 import android.net.Uri
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,14 +23,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 import com.itsdhruvbhardwaj.picme.ui.theme.PrimaryLight
-import com.itsdhruvbhardwaj.picme.ui.theme.Secondary
-import com.itsdhruvbhardwaj.picme.ui.theme.TextPrimary
 import com.itsdhruvbhardwaj.picme.ui.theme.TextSecondary
 
 @Composable
@@ -37,24 +37,29 @@ fun StyleCard(
     name: String,
     thumbnailUrl: String?,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    width: Dp = 168.dp,
+    height: Dp = 236.dp,
+    internalPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
+    actionButtonPadding: Dp = 12.dp,
+    actionButtonSize: Dp = 32.dp
 ) {
     Surface(
         modifier = modifier
-            .width(160.dp)
-            .height(220.dp)
+            .width(width)
+            .height(height)
             .shadow(
-                elevation = 8.dp,
-                shape = RoundedCornerShape(24.dp),
-                ambientColor = Color.Black.copy(alpha = 0.1f),
-                spotColor = Color.Black.copy(alpha = 0.1f)
+                elevation = 12.dp,
+                shape = RoundedCornerShape(28.dp),
+                ambientColor = Color.Black.copy(alpha = 0.15f),
+                spotColor = Color.Black.copy(alpha = 0.2f)
             )
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(24.dp),
-        color = Color.White
+        shape = RoundedCornerShape(28.dp),
+        color = Color.White,
+        border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.5f))
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // AsyncImage with soft gradient placeholder
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(thumbnailUrl)
@@ -68,33 +73,63 @@ fun StyleCard(
                             colors = listOf(Color(0xFFF3F4F6), Color(0xFFE5E7EB))
                         )
                     ),
-                contentScale = ContentScale.Crop,
-                error = null, // Falls back to background gradient
-                onLoading = { /* Show nothing extra, let the background be the placeholder */ }
+                contentScale = ContentScale.Crop
             )
             
-            // Name Overlay at the bottom
+            // Premium Gradient Overlay
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomStart)
+                    // Clip to bottom corners to prevent square edges from leaking outside the parent Surface shape
+                    .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
                     .background(
                         brush = Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)),
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)),
                             startY = 0f
                         )
                     )
-                    .padding(horizontal = 16.dp, vertical = 16.dp)
+                    .padding(internalPadding)
             ) {
-                Text(
-                    text = name,
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = Color.White
-                    ),
-                    maxLines = 1
-                )
+                Column {
+                    Text(
+                        text = name,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 16.sp,
+                            color = Color.White,
+                            letterSpacing = 0.5.sp
+                        ),
+                        maxLines = 1
+                    )
+                    Text(
+                        text = "Try now",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = Color.White.copy(alpha = 0.8f),
+                            fontWeight = FontWeight.Medium
+                        )
+                    )
+                }
+            }
+            
+            // Action button circle overlay
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(actionButtonPadding)
+                    .size(actionButtonSize),
+                shape = CircleShape,
+                color = Color.White.copy(alpha = 0.25f),
+                border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.4f))
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = Color.White
+                    )
+                }
             }
         }
     }
@@ -107,35 +142,35 @@ fun TipsCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = PrimaryLight.copy(alpha = 0.5f))
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = PrimaryLight.copy(alpha = 0.6f)),
+        border = BorderStroke(1.dp, Primary.copy(alpha = 0.1f))
     ) {
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = Icons.Default.Info,
                     contentDescription = null,
                     tint = Primary,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(22.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(10.dp))
                 Text(
                     text = "Tips for better results:",
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontSize = 16.sp,
+                    style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold
                     ),
                     color = Primary
                 )
             }
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
             tips.forEach { tip ->
-                Row(modifier = Modifier.padding(vertical = 4.dp)) {
+                Row(modifier = Modifier.padding(vertical = 5.dp)) {
                     Text(
                         text = "•",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextSecondary,
-                        modifier = Modifier.padding(end = 8.dp)
+                        modifier = Modifier.padding(end = 10.dp)
                     )
                     Text(
                         text = tip,
@@ -156,9 +191,9 @@ fun EmptyPhotoSlot(
     Box(
         modifier = modifier
             .size(100.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFFF3F4F6))
-            .border(1.dp, Color(0xFFE5E7EB), RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color.White.copy(alpha = 0.4f))
+            .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)), RoundedCornerShape(20.dp))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -166,7 +201,7 @@ fun EmptyPhotoSlot(
             imageVector = Icons.Default.Add,
             contentDescription = null,
             tint = Primary,
-            modifier = Modifier.size(32.dp)
+            modifier = Modifier.size(36.dp)
         )
     }
 }
@@ -181,7 +216,7 @@ fun SelectedPhotoCard(
     Box(
         modifier = modifier
             .size(100.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(20.dp))
             .clickable(onClick = onClick)
     ) {
         AsyncImage(
@@ -197,8 +232,8 @@ fun SelectedPhotoCard(
         Surface(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(4.dp)
-                .size(24.dp)
+                .padding(6.dp)
+                .size(26.dp)
                 .clickable(onClick = onRemove),
             shape = CircleShape,
             color = Color.Black.copy(alpha = 0.6f),
@@ -207,7 +242,7 @@ fun SelectedPhotoCard(
             Icon(
                 imageVector = Icons.Default.Close,
                 contentDescription = null,
-                modifier = Modifier.padding(4.dp)
+                modifier = Modifier.padding(5.dp)
             )
         }
     }
@@ -226,6 +261,6 @@ fun PicMeImagePlaceholder(
             ),
         contentAlignment = Alignment.Center
     ) {
-        // Optional: Add a subtle logo or icon here
+        // Optional placeholder content
     }
 }

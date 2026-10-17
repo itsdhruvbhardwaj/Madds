@@ -46,10 +46,11 @@ fun StylesGridScreen(
             )
         }
     ) { innerPadding ->
+        // Use only top padding to allow content to scroll behind overlay at the bottom
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(top = innerPadding.calculateTopPadding())
         ) {
             when (val state = uiState) {
                 is StylesGridUiState.Loading -> {
@@ -81,7 +82,8 @@ fun StylesGridScreen(
                         LazyVerticalGrid(
                             state = gridState,
                             columns = GridCells.Fixed(2),
-                            contentPadding = PaddingValues(16.dp),
+                            // Large bottom padding to ensure content can be scrolled above the overlay
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 160.dp),
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                             modifier = Modifier.fillMaxSize()
@@ -90,7 +92,7 @@ fun StylesGridScreen(
                                 items = state.styles,
                                 key = { _, style -> style.id }
                             ) { index, style ->
-                                // Pagination trigger: Load next page when 4 items from the end
+                                // Pagination trigger
                                 if (index >= state.styles.size - 4 && !state.isNextPageLoading && state.hasMore) {
                                     LaunchedEffect(Unit) {
                                         viewModel.loadNextPage()

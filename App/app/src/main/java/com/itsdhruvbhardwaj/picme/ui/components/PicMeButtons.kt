@@ -1,16 +1,22 @@
 package com.itsdhruvbhardwaj.picme.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.itsdhruvbhardwaj.picme.ui.theme.Primary
@@ -22,44 +28,56 @@ fun PicMeButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    isLoading: Boolean = false
+    isLoading: Boolean = false,
+    shadowElevation: Dp = 6.dp
 ) {
-    Button(
-        onClick = onClick,
+    // Premium action button using Box + background + shadow.
+    // This avoids Material 3 Surface artifacts (grey patches/tonal elevation) 
+    // ensuring a uniform gradient fill even on translucent glass backgrounds.
+    
+    val shadowModifier = if (shadowElevation > 0.dp) {
+        Modifier.shadow(
+            elevation = shadowElevation,
+            shape = CircleShape,
+            ambientColor = Color.Black.copy(alpha = 0.15f),
+            spotColor = Color.Black.copy(alpha = 0.2f)
+        )
+    } else Modifier
+
+    Box(
         modifier = modifier
-            .fillMaxWidth()
-            .height(56.dp),
-        enabled = enabled && !isLoading,
-        shape = RoundedCornerShape(28.dp),
-        contentPadding = PaddingValues(0.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(Primary, Secondary)
-                    )
+            .height(48.dp) // Premium compact height
+            .then(shadowModifier)
+            .background(
+                brush = Brush.horizontalGradient(
+                    colors = if (enabled) listOf(Primary, Secondary) else listOf(Color.Gray, Color.LightGray)
                 ),
-            contentAlignment = Alignment.Center
-        ) {
-            if (isLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(24.dp),
+                shape = CircleShape
+            )
+            .clip(CircleShape)
+            .clickable(
+                enabled = enabled && !isLoading,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                color = Color.White,
+                strokeWidth = 2.dp
+            )
+        } else {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge.copy(
                     color = Color.White,
-                    strokeWidth = 2.dp
-                )
-            } else {
-                Text(
-                    text = text,
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                )
-            }
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 15.sp,
+                    letterSpacing = 0.5.sp
+                ),
+                modifier = Modifier.padding(horizontal = 24.dp)
+            )
         }
     }
 }
@@ -72,20 +90,25 @@ fun PicMeSecondaryButton(
     enabled: Boolean = true,
     isLoading: Boolean = false
 ) {
-    OutlinedButton(
-        onClick = onClick,
+    Box(
         modifier = modifier
-            .fillMaxWidth()
-            .height(56.dp),
-        enabled = enabled && !isLoading,
-        shape = RoundedCornerShape(28.dp),
-        border = ButtonDefaults.outlinedButtonBorder.copy(
-            brush = Brush.horizontalGradient(listOf(Primary, Secondary))
-        )
+            .height(48.dp)
+            .background(Color.White.copy(alpha = 0.6f), CircleShape)
+            .border(
+                width = 1.dp,
+                brush = Brush.horizontalGradient(listOf(Primary, Secondary)),
+                shape = CircleShape
+            )
+            .clip(CircleShape)
+            .clickable(
+                enabled = enabled && !isLoading,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
     ) {
         if (isLoading) {
             CircularProgressIndicator(
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier.size(20.dp),
                 color = Primary,
                 strokeWidth = 2.dp
             )
@@ -94,8 +117,10 @@ fun PicMeSecondaryButton(
                 text = text,
                 style = MaterialTheme.typography.labelLarge.copy(
                     fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
+                    fontSize = 15.sp,
+                    color = Primary
+                ),
+                modifier = Modifier.padding(horizontal = 24.dp)
             )
         }
     }
@@ -111,14 +136,13 @@ fun PicMeSocialButton(
 ) {
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier
-            .fillMaxWidth()
-            .height(56.dp),
+        modifier = modifier.height(48.dp),
         enabled = enabled,
-        shape = RoundedCornerShape(28.dp),
+        shape = CircleShape,
         colors = ButtonDefaults.outlinedButtonColors(
             contentColor = MaterialTheme.colorScheme.onBackground
-        )
+        ),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -128,16 +152,16 @@ fun PicMeSocialButton(
                 Icon(
                     painter = painterResource(id = iconRes),
                     contentDescription = null,
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier.size(20.dp),
                     tint = Color.Unspecified
                 )
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
             }
             Text(
                 text = text,
                 style = MaterialTheme.typography.labelLarge.copy(
                     fontWeight = FontWeight.Medium,
-                    fontSize = 16.sp
+                    fontSize = 15.sp
                 )
             )
         }

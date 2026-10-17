@@ -4,11 +4,15 @@ import android.app.Activity
 import android.net.Uri
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -16,6 +20,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
@@ -25,12 +30,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 import com.itsdhruvbhardwaj.picme.ui.theme.Secondary
 import com.itsdhruvbhardwaj.picme.ui.theme.TextSecondary
@@ -52,7 +59,6 @@ fun GenerationScreen(
     val context = LocalContext.current
 
     // Trigger interstitial ad once when the generation process starts
-    // Only shows if the ad is already preloaded
     LaunchedEffect(Unit) {
         val activity = context as? Activity
         if (activity != null && AdManager.isInterstitialReady()) {
@@ -70,123 +76,156 @@ fun GenerationScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    IconButton(onClick = onCancelClick) {
-                        Icon(Icons.Default.Close, contentDescription = "Cancel")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-            )
-        }
-    ) { innerPadding ->
-        Column(
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Softly Blurred Glassmorphism Background
+        Image(
+            painter = painterResource(id = R.drawable.glassmorphismwallpaper),
+            contentDescription = null,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "Creating Your AI Photo",
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 26.sp
+                .blur(20.dp),
+            contentScale = ContentScale.Crop
+        )
+        
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White.copy(alpha = 0.15f))
+        )
+
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    title = {},
+                    navigationIcon = {
+                        IconButton(onClick = onCancelClick) {
+                            Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color(0xFF1F2937))
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
                 )
-            )
-            
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Main Preview Area - Visual Focus
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(0.85f)
-                    .shadow(
-                        elevation = 20.dp,
-                        shape = RoundedCornerShape(32.dp),
-                        ambientColor = Primary.copy(alpha = 0.2f),
-                        spotColor = Primary.copy(alpha = 0.3f)
-                    )
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(Color(0xFFF3F4F6)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (state is GenerationUiState.Error) {
-                    GenerationErrorView(state.message, onRetryClick)
-                } else {
-                    // 1. Display selected photos
-                    PhotoComposition(selectedPhotos = selectedPhotos)
-                    
-                    // 2. Premium Processing layer (Shimmer + Laser Scan)
-                    PremiumProcessingOverlay()
-                    
-                    // 3. Central pulsing AI centerpiece
-                    PremiumPulsingIcon()
-                }
             }
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = innerPadding.calculateTopPadding())
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Spacer(modifier = Modifier.height(16.dp))
 
-            Spacer(modifier = Modifier.height(48.dp))
-
-            // Smoothly transitioning status messages
-            AnimatedContent(
-                targetState = statusMessage,
-                transitionSpec = {
-                    fadeIn(animationSpec = tween(600)) + slideInVertically { it / 2 } togetherWith
-                    fadeOut(animationSpec = tween(600)) + slideOutVertically { -it / 2 }
-                },
-                label = "statusMessage"
-            ) { targetMessage ->
                 Text(
-                    text = targetMessage,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onBackground
+                    text = "Creating Your AI Photo",
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 28.sp,
+                        color = Color(0xFF1E293B)
                     ),
                     textAlign = TextAlign.Center
                 )
-            }
+                
+                Spacer(modifier = Modifier.height(32.dp))
 
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            LinearProgressIndicator(
-                modifier = Modifier
-                    .fillMaxWidth(0.6f)
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp)),
-                color = Primary,
-                trackColor = Primary.copy(alpha = 0.1f)
-            )
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            // Tip Card
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 24.dp),
-                shape = MaterialTheme.shapes.large,
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF9FAFB))
-            ) {
-                Row(
-                    modifier = Modifier.padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                // Main Preview Area - Visual Focus
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(0.85f)
+                        .shadow(
+                            elevation = 20.dp,
+                            shape = RoundedCornerShape(32.dp),
+                            ambientColor = Primary.copy(alpha = 0.2f),
+                            spotColor = Primary.copy(alpha = 0.3f)
+                        )
+                        .clip(RoundedCornerShape(32.dp))
+                        .background(Color.White.copy(alpha = 0.3f))
+                        .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(32.dp)),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Surface(
-                        modifier = Modifier.size(8.dp),
-                        shape = RoundedCornerShape(4.dp),
-                        color = Secondary
-                    ) {}
-                    Spacer(modifier = Modifier.width(16.dp))
+                    if (state is GenerationUiState.Error) {
+                        GenerationErrorView(state.message, onRetryClick)
+                    } else {
+                        // 1. Display selected photos
+                        PhotoComposition(selectedPhotos = selectedPhotos)
+                        
+                        // 2. Premium Processing layer (Shimmer + Laser Scan)
+                        PremiumProcessingOverlay()
+                        
+                        // 3. Central pulsing AI centerpiece
+                        PremiumPulsingIcon()
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(48.dp))
+
+                // Smoothly transitioning status messages
+                AnimatedContent(
+                    targetState = statusMessage,
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(600)) + slideInVertically { it / 2 } togetherWith
+                        fadeOut(animationSpec = tween(600)) + slideOutVertically { -it / 2 }
+                    },
+                    label = "statusMessage"
+                ) { targetMessage ->
                     Text(
-                        text = "Our AI is dreaming up your masterpiece. This usually takes 20-30 seconds.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
+                        text = targetMessage,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF374151),
+                            fontSize = 18.sp
+                        ),
+                        textAlign = TextAlign.Center
                     )
                 }
+
+                Spacer(modifier = Modifier.height(24.dp))
+                
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth(0.6f)
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                    color = Primary,
+                    trackColor = Primary.copy(alpha = 0.1f)
+                )
+
+                Spacer(modifier = Modifier.height(48.dp))
+
+                // Tip Card - Premium Glass Styling
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 32.dp)
+                        .shadow(8.dp, RoundedCornerShape(24.dp)),
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color.White.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.6f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(20.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(10.dp),
+                            shape = RoundedCornerShape(5.dp),
+                            color = Secondary
+                        ) {}
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = "Our AI is dreaming up your masterpiece. This usually takes 20-30 seconds.",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF4B5563)
+                            )
+                        )
+                    }
+                }
+                
+                // Bottom spacing for global banner ad
+                Spacer(modifier = Modifier.height(100.dp))
             }
         }
     }
@@ -235,7 +274,6 @@ fun PhotoComposition(selectedPhotos: List<Uri>) {
                 )
             }
         } else if (selectedPhotos.isNotEmpty()) {
-            // Prominent studio-style display for 1 photo Studio style display for 1 photo
             AsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(selectedPhotos[0])

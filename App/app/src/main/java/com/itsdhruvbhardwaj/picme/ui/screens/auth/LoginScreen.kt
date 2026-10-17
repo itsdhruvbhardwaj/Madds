@@ -33,9 +33,9 @@ fun LoginScreen(
     authState: AuthState,
     onLoginClick: (String, String) -> Unit,
     onResendVerificationClick: (String) -> Unit,
-    onGoogleClick: () -> Unit,
     onSignUpClick: () -> Unit,
-    onForgotPasswordClick: () -> Unit
+    onGoogleClick: () -> Unit = {},
+    onForgotPasswordClick: () -> Unit = {}
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }

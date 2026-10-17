@@ -1,5 +1,6 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.home
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,18 +12,21 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
 import com.itsdhruvbhardwaj.picme.ui.components.*
-import com.itsdhruvbhardwaj.picme.ui.theme.Background
+import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 
 @Composable
 fun HomeScreen(
@@ -37,61 +41,83 @@ fun HomeScreen(
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("All") }
 
-    Scaffold(
-        containerColor = Background,
-        topBar = {
-            HomeTopBar(
-                authState = authState,
-                onProfileClick = onProfileClick
-            )
-        }
-    ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            when (val state = uiState) {
-                is HomeUiState.Loading -> {
-                    HomeSkeleton()
-                }
-                is HomeUiState.Error -> {
-                    HomeErrorState(
-                        message = state.message,
-                        onRetry = { viewModel.loadHomeData() }
-                    )
-                }
-                is HomeUiState.Success -> {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 24.dp)
-                    ) {
-                        item {
-                            PicMeSearchBar(
-                                query = searchQuery,
-                                onQueryChange = { searchQuery = it },
-                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
-                            )
-                        }
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Softly Blurred Glassmorphism Background
+        Image(
+            painter = painterResource(id = R.drawable.glassmorphismwallpaper),
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxSize()
+                .blur(20.dp),
+            contentScale = ContentScale.Crop
+        )
+        
+        // Subtle overlay for better contrast
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White.copy(alpha = 0.15f))
+        )
 
-                        item {
-                            HomeCategorySection(
-                                categories = state.categories,
-                                selectedCategory = selectedCategory,
-                                onCategorySelected = { category ->
-                                    selectedCategory = category
-                                    onSeeAllClick(if (category == "All") null else category, null)
-                                }
-                            )
-                        }
-
-                        items(state.sections, key = { it.config.id }) { sectionData ->
-                            if (sectionData.styles == null) {
-                                // Individual section is still loading
-                                SectionSkeleton()
-                            } else if (sectionData.styles.isNotEmpty()) {
-                                // Individual section loaded successfully
-                                HomeSectionRow(
-                                    sectionData = sectionData,
-                                    onStyleClick = onStyleClick,
-                                    onSeeAllClick = onSeeAllClick
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                HomeTopBar(
+                    authState = authState,
+                    onProfileClick = onProfileClick
+                )
+            }
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = innerPadding.calculateTopPadding())
+            ) {
+                when (val state = uiState) {
+                    is HomeUiState.Loading -> {
+                        HomeSkeleton()
+                    }
+                    is HomeUiState.Error -> {
+                        HomeErrorState(
+                            message = state.message,
+                            onRetry = { viewModel.loadHomeData() }
+                        )
+                    }
+                    is HomeUiState.Success -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            // Padding reduced to 100.dp as banner is now physically outside content area
+                            contentPadding = PaddingValues(bottom = 100.dp)
+                        ) {
+                            item {
+                                PicMeSearchBar(
+                                    query = searchQuery,
+                                    onQueryChange = { searchQuery = it },
+                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
                                 )
+                            }
+
+                            item {
+                                HomeCategorySection(
+                                    categories = state.categories,
+                                    selectedCategory = selectedCategory,
+                                    onCategorySelected = { category ->
+                                        selectedCategory = category
+                                        onSeeAllClick(if (category == "All") null else category, null)
+                                    }
+                                )
+                            }
+
+                            items(state.sections, key = { it.config.id }) { sectionData ->
+                                if (sectionData.styles == null) {
+                                    SectionSkeleton()
+                                } else if (sectionData.styles.isNotEmpty()) {
+                                    HomeSectionRow(
+                                        sectionData = sectionData,
+                                        onStyleClick = onStyleClick,
+                                        onSeeAllClick = onSeeAllClick
+                                    )
+                                }
                             }
                         }
                     }
@@ -114,21 +140,26 @@ fun HomeSectionRow(
                 val collectionSlug = if (sectionData.config.type == "popular") "Popular" else sectionData.config.slug
                 onSeeAllClick(null, collectionSlug)
             },
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
         )
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(sectionData.styles!!, key = { it.id }) { style ->
                 StyleCard(
                     name = style.name,
                     thumbnailUrl = style.thumbnail,
-                    onClick = { onStyleClick(style.id) }
+                    onClick = { onStyleClick(style.id) },
+                    width = 148.dp,
+                    height = 208.dp,
+                    internalPadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp),
+                    actionButtonPadding = 10.dp,
+                    actionButtonSize = 28.dp
                 )
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(12.dp))
     }
 }
 
@@ -137,50 +168,56 @@ fun HomeTopBar(
     authState: AuthState,
     onProfileClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+    Surface(
+        color = Primary,
+        shadowElevation = 8.dp
     ) {
-        PicMeLogo(fontSize = 28)
-        
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            val user = (authState as? AuthState.Authenticated)?.user
-            if (user != null) {
-                CreditBadge(credits = user.credits)
-                Spacer(modifier = Modifier.width(12.dp))
-            }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            PicMeLogo(fontSize = 28, tint = Color.White)
             
-            Surface(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFF3F4F6)),
-                onClick = onProfileClick
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    if (user?.profileImage != null) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data(user.profileImage)
-                                .crossfade(true)
-                                .build(),
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        val initials = user?.name?.take(2)?.uppercase() ?: "U"
-                        Text(
-                            text = initials,
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = Color.Gray
-                              )
-                        )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val user = (authState as? AuthState.Authenticated)?.user
+                if (user != null) {
+                    CreditBadge(credits = user.credits)
+                    Spacer(modifier = Modifier.width(12.dp))
+                }
+                
+                Surface(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape),
+                    onClick = onProfileClick,
+                    color = Color.White.copy(alpha = 0.2f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        if (user?.profileImage != null) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(user.profileImage)
+                                    .crossfade(true)
+                                    .build(),
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            val initials = user?.name?.take(2)?.uppercase() ?: "U"
+                            Text(
+                                text = initials,
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                  )
+                            )
+                        }
                     }
                 }
             }
@@ -195,8 +232,8 @@ fun HomeCategorySection(
     onCategorySelected: (String) -> Unit
 ) {
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         items(categories) { category ->

@@ -4,6 +4,8 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -14,11 +16,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.data.repository.StyleRepository
 import com.itsdhruvbhardwaj.picme.ui.components.EmptyPhotoSlot
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeButton
@@ -43,9 +49,6 @@ fun SelectPhotosScreen(
     // Index of the slot being filled or replaced. If -1, we try to fill any empty slot.
     var activeSlotIndex by remember { mutableIntStateOf(-1) }
 
-    // Use PickMultipleVisualMedia if requiredCount > 1, else PickVisualMedia
-    // However, PickMultipleVisualMedia handles maxItems. For 1, it behaves similarly.
-    // We'll use PickVisualMedia for simplicity when interacting with single slots.
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri ->
@@ -61,107 +64,128 @@ fun SelectPhotosScreen(
     val selectedCount = selectedPhotos.count { it != null }
     val isComplete = selectedCount == requiredCount
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-            )
-        },
-        bottomBar = {
-            Box(modifier = Modifier.padding(24.dp)) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    if (!isComplete) {
-                        Text(
-                            text = "Please select $requiredCount photo${if (requiredCount > 1) "s" else ""} to continue",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(bottom = 8.dp),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                    PicMeButton(
-                        text = "Continue",
-                        onClick = { 
-                            val uris = selectedPhotos.filterNotNull()
-                            if (uris.size == requiredCount) {
-                                onContinueClick(uris)
-                            }
-                        },
-                        enabled = isComplete
-                    )
-                }
-            }
-        }
-    ) { innerPadding ->
-        Column(
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Shared blurred background
+        Image(
+            painter = painterResource(id = R.drawable.glassmorphismwallpaper),
+            contentDescription = null,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 24.dp)
-        ) {
-            Text(
-                text = "Select Your Photos",
-                style = MaterialTheme.typography.headlineLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 28.sp
-                )
-            )
-            
-            Text(
-                text = "Choose $requiredCount clear photo${if (requiredCount > 1) "s" else ""} for the best results",
-                style = MaterialTheme.typography.bodyLarge,
-                color = TextSecondary,
-                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
-            )
+                .blur(20.dp),
+            contentScale = ContentScale.Crop
+        )
+        
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.White.copy(alpha = 0.15f))
+        )
 
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                itemsIndexed(selectedPhotos) { index, uri ->
-                    if (uri != null) {
-                        SelectedPhotoCard(
-                            uri = uri,
-                            onRemove = {
-                                val newList = selectedPhotos.toMutableList()
-                                newList[index] = null
-                                selectedPhotos = newList
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    title = {},
+                    navigationIcon = {
+                        IconButton(onClick = onBackClick) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color(0xFF1F2937))
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                )
+            },
+            bottomBar = {
+                Box(modifier = Modifier.padding(24.dp).padding(bottom = 16.dp)) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (!isComplete) {
+                            Text(
+                                text = "Please select $requiredCount photo${if (requiredCount > 1) "s" else ""} to continue",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(bottom = 8.dp),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                        PicMeButton(
+                            text = "Continue",
+                            onClick = { 
+                                val uris = selectedPhotos.filterNotNull()
+                                if (uris.size == requiredCount) {
+                                    onContinueClick(uris)
+                                }
                             },
-                            onClick = {
+                            enabled = isComplete,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(horizontal = 24.dp)
+            ) {
+                Text(
+                    text = "Select Your Photos",
+                    style = MaterialTheme.typography.headlineLarge.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 28.sp,
+                        color = Color(0xFF1E293B)
+                    )
+                )
+                
+                Text(
+                    text = "Choose $requiredCount clear photo${if (requiredCount > 1) "s" else ""} for the best results",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Color(0xFF374151),
+                    modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
+                )
+
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    itemsIndexed(selectedPhotos) { index, uri ->
+                        if (uri != null) {
+                            SelectedPhotoCard(
+                                uri = uri,
+                                onRemove = {
+                                    val newList = selectedPhotos.toMutableList()
+                                    newList[index] = null
+                                    selectedPhotos = newList
+                                },
+                                onClick = {
+                                    activeSlotIndex = index
+                                    photoPickerLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                }
+                            )
+                        } else {
+                            EmptyPhotoSlot(onClick = {
                                 activeSlotIndex = index
                                 photoPickerLauncher.launch(
                                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                 )
-                            }
-                        )
-                    } else {
-                        EmptyPhotoSlot(onClick = {
-                            activeSlotIndex = index
-                            photoPickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
-                        })
+                            })
+                        }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(32.dp))
 
-            TipsCard(
-                tips = listOf(
-                    "Use clear, front-facing photos",
-                    "Good lighting works best",
-                    "Avoid sunglasses or heavy filters"
+                TipsCard(
+                    tips = listOf(
+                        "Use clear, front-facing photos",
+                        "Good lighting works best",
+                        "Avoid sunglasses or heavy filters"
+                    )
                 )
-            )
+            }
         }
     }
 }

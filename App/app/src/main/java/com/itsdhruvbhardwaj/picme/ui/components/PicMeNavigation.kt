@@ -1,11 +1,21 @@
 package com.itsdhruvbhardwaj.picme.ui.components
 
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -21,7 +31,8 @@ data class BottomNavItem(
 @Composable
 fun PicMeBottomNavigationBar(
     currentRoute: String?,
-    onNavigate: (String) -> Unit
+    onNavigate: (String) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val items = listOf(
         BottomNavItem("Home", Screen.Home.route, Icons.Default.Home),
@@ -31,31 +42,60 @@ fun PicMeBottomNavigationBar(
         BottomNavItem("Profile", Screen.Profile.route, Icons.Default.Person)
     )
 
-    NavigationBar(
-        containerColor = Color.White,
-        tonalElevation = 8.dp
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+            .padding(bottom = 12.dp, top = 8.dp),
+        contentAlignment = Alignment.Center
     ) {
-        items.forEach { item ->
-            val selected = currentRoute == item.route
-            NavigationBarItem(
-                selected = selected,
-                onClick = { onNavigate(item.route) },
-                icon = {
-                    Icon(
-                        imageVector = item.icon,
-                        contentDescription = item.name,
-                        modifier = Modifier.size(24.dp)
-                    )
-                },
-                label = { Text(text = item.name) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = Primary,
-                    selectedTextColor = Primary,
-                    unselectedIconColor = Color.Gray,
-                    unselectedTextColor = Color.Gray,
-                    indicatorColor = Color.Transparent
-                )
-            )
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(68.dp)
+                .shadow(
+                    elevation = 16.dp,
+                    shape = CircleShape,
+                    ambientColor = Color.Black.copy(alpha = 0.2f),
+                    spotColor = Color.Black.copy(alpha = 0.25f)
+                ),
+            shape = CircleShape,
+            // Translucent glass surface
+            color = Color.White.copy(alpha = 0.35f),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                items.forEach { item ->
+                    val selected = currentRoute == item.route
+                    
+                    Box(
+                        modifier = Modifier
+                            .size(54.dp, 50.dp)
+                            .clip(RoundedCornerShape(25.dp))
+                            .background(if (selected) Primary else Color.Transparent)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = ripple(),
+                                onClick = { onNavigate(item.route) }
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = item.icon,
+                            contentDescription = item.name,
+                            modifier = Modifier.size(28.dp),
+                            // Increased alpha for unselected icons to maintain contrast against blurred background
+                            tint = if (selected) Color.White else Color.Black.copy(alpha = 0.5f)
+                        )
+                    }
+                }
+            }
         }
     }
 }
