@@ -27,6 +27,7 @@ import com.itsdhruvbhardwaj.picme.data.repository.StyleRepository
 import com.itsdhruvbhardwaj.picme.navigation.NavGraph
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.create.GenerationViewModel
+import com.itsdhruvbhardwaj.picme.ui.screens.home.FavoritesViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.home.HomeViewModel
 import com.itsdhruvbhardwaj.picme.ui.theme.PicMeTheme
 import com.itsdhruvbhardwaj.picme.utils.AdManager
@@ -73,7 +74,7 @@ class MainActivity : ComponentActivity() {
         val styleApiService = retrofit.create(StyleApiService::class.java)
         
         authRepository = AuthRepository(authApiService, tokenStorage)
-        val styleRepository = StyleRepository(styleApiService)
+        val styleRepository = StyleRepository(styleApiService, tokenStorage)
         val generationRepository = GenerationRepository(styleApiService, applicationContext.contentResolver, tokenStorage)
         
         val viewModelFactory = object : ViewModelProvider.Factory {
@@ -85,6 +86,8 @@ class MainActivity : ComponentActivity() {
                         HomeViewModel(styleRepository) as T
                     modelClass.isAssignableFrom(GenerationViewModel::class.java) ->
                         GenerationViewModel(generationRepository) as T
+                    modelClass.isAssignableFrom(FavoritesViewModel::class.java) ->
+                        FavoritesViewModel(styleRepository) as T
                     else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
                 }
             }
@@ -93,6 +96,7 @@ class MainActivity : ComponentActivity() {
         val authViewModel = ViewModelProvider(this, viewModelFactory)[AuthViewModel::class.java]
         val homeViewModel = ViewModelProvider(this, viewModelFactory)[HomeViewModel::class.java]
         val generationViewModel = ViewModelProvider(this, viewModelFactory)[GenerationViewModel::class.java]
+        val favoritesViewModel = ViewModelProvider(this, viewModelFactory)[FavoritesViewModel::class.java]
 
         setContent {
             PicMeTheme {
@@ -115,6 +119,7 @@ class MainActivity : ComponentActivity() {
                         authViewModel = authViewModel,
                         homeViewModel = homeViewModel,
                         generationViewModel = generationViewModel,
+                        favoritesViewModel = favoritesViewModel,
                         styleRepository = styleRepository
                     )
                 }

@@ -1,5 +1,6 @@
 package com.itsdhruvbhardwaj.picme.data.repository
 
+import com.itsdhruvbhardwaj.picme.data.local.AuthTokenStorage
 import com.itsdhruvbhardwaj.picme.data.model.HomeConfigResponse
 import com.itsdhruvbhardwaj.picme.data.model.Style
 import com.itsdhruvbhardwaj.picme.data.model.StyleResponse
@@ -11,14 +12,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
-import retrofit2.Response
 import java.io.IOException
 import java.net.SocketTimeoutException
 
 class StyleRepository(
-    private val apiService: StyleApiService
+    private val apiService: StyleApiService,
+    private val tokenStorage: AuthTokenStorage
 ) {
-    // Cache to store styles that have been fetched
     private val _cachedStyles = MutableStateFlow<Map<String, Style>>(emptyMap())
     val cachedStyles: StateFlow<Map<String, Style>> = _cachedStyles.asStateFlow()
 
@@ -30,10 +30,12 @@ class StyleRepository(
     ): Result<StyleResponse> = withContext(Dispatchers.IO) {
         retryIO {
             try {
-                val response = apiService.getStyles(page, limit, category, collection)
+                val token = tokenStorage.getAccessToken()
+                val authHeader = token?.let { "Bearer $it" }
+                val response = apiService.getStyles(authHeader, page, limit, category, collection)
+                
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
-                    // Update cache with new styles
                     _cachedStyles.update { currentCache ->
                         currentCache + body.styles.associateBy { it.id }
                     }
@@ -53,6 +55,53 @@ class StyleRepository(
             } catch (e: Exception) {
                 Result.failure(e)
             }
+        }
+    }
+
+    suspend fun getFavorites(): Result<List<Style>> = withContext(Dispatchers.IO) {
+        try {
+            val token = tokenStorage.getAccessToken() ?: return@withContext Result.failure(Exception("unauthorized"))
+            val response = apiService.getFavorites("Bearer $token")
+            
+            if (response.isSuccessful && response.body() != null) {
+                // Ensure isFavorite is true for all styles from favorites endpoint
+                val favorites = response.body()!!.favorites.map { it.copy(isFavorite = true) }
+                _cachedStyles.update { currentCache ->
+                    currentCache + favorites.associateBy { it.id }
+                }
+                Result.success(favorites)
+            } else {
+                Result.failure(Exception("failed_to_load_favorites"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun toggleFavorite(styleId: String, isFavorite: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val token = tokenStorage.getAccessToken() ?: return@withContext Result.failure(Exception("unauthorized"))
+            val response = if (isFavorite) {
+                apiService.addFavorite("Bearer $token", styleId)
+            } else {
+                apiService.removeFavorite("Bearer $token", styleId)
+            }
+
+            if (response.isSuccessful) {
+                _cachedStyles.update { currentCache ->
+                    val style = currentCache[styleId]
+                    if (style != null) {
+                        currentCache + (styleId to style.copy(isFavorite = isFavorite))
+                    } else {
+                        currentCache
+                    }
+                }
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("failed_to_update_favorite"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 
@@ -77,8 +126,8 @@ class StyleRepository(
 
     private suspend fun <T> retryIO(
         times: Int = 3,
-        initialDelay: Long = 1000, // 1 second
-        maxDelay: Long = 5000,    // 5 seconds
+        initialDelay: Long = 1000,
+        maxDelay: Long = 5000,
         factor: Double = 2.0,
         block: suspend () -> Result<T>
     ): Result<T> {
@@ -92,7 +141,7 @@ class StyleRepository(
             delay(currentDelay)
             currentDelay = (currentDelay * factor).toLong().coerceAtMost(maxDelay)
         }
-        return block() // final attempt
+        return block()
     }
 
     fun getStyleById(styleId: String): Style? {

@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.itsdhruvbhardwaj.picme.ui.components.StyleCard
 import com.itsdhruvbhardwaj.picme.ui.theme.Background
@@ -81,11 +82,11 @@ fun StylesGridScreen(
                     } else {
                         LazyVerticalGrid(
                             state = gridState,
-                            columns = GridCells.Fixed(2),
+                            columns = GridCells.Fixed(3),
                             // Large bottom padding to ensure content can be scrolled above the overlay
-                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 160.dp),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 160.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier.fillMaxSize()
                         ) {
                             itemsIndexed(
@@ -103,7 +104,13 @@ fun StylesGridScreen(
                                     name = style.name,
                                     thumbnailUrl = style.thumbnail,
                                     onClick = { onStyleClick(style.id) },
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier.fillMaxWidth(),
+                                    // Proportionally smaller dimensions and padding for 3-column grid
+                                    width = Dp.Unspecified, // Allow grid to determine width
+                                    height = 160.dp,
+                                    internalPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp),
+                                    actionButtonPadding = 8.dp,
+                                    actionButtonSize = 24.dp
                                 )
                             }
 

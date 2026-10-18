@@ -4,8 +4,6 @@ import com.google.gson.annotations.SerializedName
 
 /**
  * Data model representing a generation style in PicMe.
- * 
- * Includes flexible mapping to support various backend naming conventions.
  */
 data class Style(
     @SerializedName("id")
@@ -36,7 +34,10 @@ data class Style(
     val category: String = "",
     
     @SerializedName("collections")
-    val collections: List<String> = emptyList()
+    val collections: List<String> = emptyList(),
+
+    @SerializedName("isFavorite", alternate = ["is_favorite"])
+    val isFavorite: Boolean = false
 )
 
 data class PaginationMetadata(
@@ -59,4 +60,12 @@ data class StyleResponse(
     
     @SerializedName("pagination")
     val pagination: PaginationMetadata = PaginationMetadata()
+)
+
+data class FavoritesResponse(
+    @SerializedName("ok")
+    val ok: Boolean = false,
+    
+    @SerializedName("favorites")
+    val favorites: List<Style> = emptyList()
 )

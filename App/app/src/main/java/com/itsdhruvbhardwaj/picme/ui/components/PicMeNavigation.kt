@@ -36,7 +36,7 @@ fun PicMeBottomNavigationBar(
 ) {
     val items = listOf(
         BottomNavItem("Home", Screen.Home.route, Icons.Default.Home),
-        BottomNavItem("Explore", Screen.Explore.route, Icons.Default.Search),
+        BottomNavItem("Favorites", Screen.Favorites.route, Icons.Default.Favorite),
         BottomNavItem("Create", Screen.Create.route, Icons.Default.AddCircle),
         BottomNavItem("History", Screen.History.route, Icons.Default.History),
         BottomNavItem("Profile", Screen.Profile.route, Icons.Default.Person)

@@ -5,9 +5,13 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.itsdhruvbhardwaj.picme.data.model.Style
 import com.itsdhruvbhardwaj.picme.data.repository.StyleRepository
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 sealed interface StyleDetailsUiState {
@@ -24,34 +28,49 @@ class StyleDetailsViewModel(
     private val _uiState = MutableStateFlow<StyleDetailsUiState>(StyleDetailsUiState.Loading)
     val uiState: StateFlow<StyleDetailsUiState> = _uiState.asStateFlow()
 
+    private val _toastEvent = MutableSharedFlow<String>()
+    val toastEvent: SharedFlow<String> = _toastEvent.asSharedFlow()
+
     init {
+        observeStyleCache()
         loadStyleDetails()
+    }
+
+    private fun observeStyleCache() {
+        viewModelScope.launch {
+            styleRepository.cachedStyles.collectLatest { cache ->
+                cache[styleId]?.let { style ->
+                    _uiState.value = StyleDetailsUiState.Success(style)
+                }
+            }
+        }
     }
 
     private fun loadStyleDetails() {
         viewModelScope.launch {
-            _uiState.value = StyleDetailsUiState.Loading
-            
-            // First try to get from cache
-            val cachedStyle = styleRepository.getStyleById(styleId)
-            if (cachedStyle != null) {
-                _uiState.value = StyleDetailsUiState.Success(cachedStyle)
-            } else {
-                // If not in cache (e.g. direct link or process death), we fetch it.
+            // If not in cache, we fetch it (though usually it will be cached from Home/Grid)
+            if (styleRepository.getStyleById(styleId) == null) {
+                _uiState.value = StyleDetailsUiState.Loading
                 val result = styleRepository.getStyles(page = 1, limit = 50)
-                result.fold(
-                    onSuccess = { response ->
-                        val style = response.styles.find { it.id == styleId }
-                        if (style != null) {
-                            _uiState.value = StyleDetailsUiState.Success(style)
-                        } else {
-                            _uiState.value = StyleDetailsUiState.Error("Style not found")
-                        }
-                    },
-                    onFailure = { error ->
-                        _uiState.value = StyleDetailsUiState.Error(error.message ?: "Failed to load style details")
-                    }
-                )
+                if (result.isFailure) {
+                    _uiState.value = StyleDetailsUiState.Error(result.exceptionOrNull()?.message ?: "Failed to load style details")
+                }
+            }
+        }
+    }
+
+    fun toggleFavorite() {
+        val currentState = _uiState.value
+        if (currentState is StyleDetailsUiState.Success) {
+            val style = currentState.style
+            val willBeFavorite = !style.isFavorite
+            viewModelScope.launch {
+                val result = styleRepository.toggleFavorite(styleId, willBeFavorite)
+                if (result.isSuccess) {
+                    _toastEvent.emit(
+                        if (willBeFavorite) "Added to favorites" else "Removed from favorites"
+                    )
+                }
             }
         }
     }

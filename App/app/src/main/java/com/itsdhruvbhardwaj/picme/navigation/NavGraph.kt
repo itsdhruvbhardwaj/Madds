@@ -33,12 +33,7 @@ import com.itsdhruvbhardwaj.picme.ui.screens.create.GenerationUiState
 import com.itsdhruvbhardwaj.picme.ui.screens.create.GenerationViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.create.ResultScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.create.SelectPhotosScreen
-import com.itsdhruvbhardwaj.picme.ui.screens.home.HomeScreen
-import com.itsdhruvbhardwaj.picme.ui.screens.home.HomeViewModel
-import com.itsdhruvbhardwaj.picme.ui.screens.home.StyleDetailsScreen
-import com.itsdhruvbhardwaj.picme.ui.screens.home.StyleDetailsViewModel
-import com.itsdhruvbhardwaj.picme.ui.screens.home.StylesGridScreen
-import com.itsdhruvbhardwaj.picme.ui.screens.home.StylesGridViewModel
+import com.itsdhruvbhardwaj.picme.ui.screens.home.*
 import com.itsdhruvbhardwaj.picme.ui.screens.onboarding.OnboardingScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.profile.ProfileScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.splash.SplashScreen
@@ -49,6 +44,7 @@ fun NavGraph(
     authViewModel: AuthViewModel,
     homeViewModel: HomeViewModel,
     generationViewModel: GenerationViewModel,
+    favoritesViewModel: FavoritesViewModel,
     styleRepository: StyleRepository
 ) {
     val context = LocalContext.current
@@ -67,7 +63,7 @@ fun NavGraph(
 
     val bottomBarScreens = listOf(
         Screen.Home.route,
-        Screen.Explore.route,
+        Screen.Favorites.route,
         Screen.Create.route,
         Screen.History.route,
         Screen.Profile.route
@@ -145,6 +141,14 @@ fun NavGraph(
                         onStyleClick = { id -> navController.navigate(Screen.StyleDetails.createRoute(id)) },
                         onSeeAllClick = { c, col -> navController.navigate(Screen.StylesGrid.createRoute(c, col)) },
                         onProfileClick = { navController.navigate(Screen.Profile.route) }
+                    )
+                }
+
+                composable(Screen.Favorites.route) {
+                    FavoritesScreen(
+                        authViewModel = authViewModel,
+                        viewModel = favoritesViewModel,
+                        onStyleClick = { id -> navController.navigate(Screen.StyleDetails.createRoute(id)) }
                     )
                 }
 
