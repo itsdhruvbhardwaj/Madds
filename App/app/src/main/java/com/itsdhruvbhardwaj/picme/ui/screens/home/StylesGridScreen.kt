@@ -5,16 +5,13 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.itsdhruvbhardwaj.picme.ui.components.PicMeCompactHeader
 import com.itsdhruvbhardwaj.picme.ui.components.StyleCard
 import com.itsdhruvbhardwaj.picme.ui.theme.Background
 
@@ -29,30 +26,9 @@ fun StylesGridScreen(
     val gridState = rememberLazyGridState()
 
     Scaffold(
-        containerColor = Background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "All Styles",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Background)
-            )
-        }
-    ) { innerPadding ->
-        // Use only top padding to allow content to scroll behind overlay at the bottom
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = innerPadding.calculateTopPadding())
-        ) {
+        containerColor = Background
+    ) { _ -> // Ignore innerPadding for floating overlay
+        Box(modifier = Modifier.fillMaxSize()) {
             when (val state = uiState) {
                 is StylesGridUiState.Loading -> {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -83,8 +59,13 @@ fun StylesGridScreen(
                         LazyVerticalGrid(
                             state = gridState,
                             columns = GridCells.Fixed(3),
-                            // Large bottom padding to ensure content can be scrolled above the overlay
-                            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 160.dp),
+                            // Content padding to start below floating pill and leave room at bottom
+                            contentPadding = PaddingValues(
+                                start = 12.dp, 
+                                end = 12.dp, 
+                                top = 100.dp, // Enough to clear floating pill
+                                bottom = 160.dp
+                            ),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier.fillMaxSize()
@@ -105,8 +86,7 @@ fun StylesGridScreen(
                                     thumbnailUrl = style.thumbnail,
                                     onClick = { onStyleClick(style.id) },
                                     modifier = Modifier.fillMaxWidth(),
-                                    // Proportionally smaller dimensions and padding for 3-column grid
-                                    width = Dp.Unspecified, // Allow grid to determine width
+                                    width = Dp.Unspecified,
                                     height = 160.dp,
                                     internalPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp),
                                     actionButtonPadding = 8.dp,
@@ -130,6 +110,12 @@ fun StylesGridScreen(
                     }
                 }
             }
+
+            // Floating Header Overlay
+            PicMeCompactHeader(
+                title = "All Styles",
+                onBackClick = onBackClick
+            )
         }
     }
 }

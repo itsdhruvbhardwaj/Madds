@@ -38,6 +38,7 @@ import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
 import com.itsdhruvbhardwaj.picme.ui.components.CreditsOptionsBottomSheet
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeButton
+import com.itsdhruvbhardwaj.picme.ui.components.PicMeMainHeader
 import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 import com.itsdhruvbhardwaj.picme.ui.theme.TextSecondary
 
@@ -47,7 +48,8 @@ fun ProfileScreen(
     authViewModel: AuthViewModel,
     onLogoutClick: () -> Unit,
     onSettingsClick: () -> Unit,
-    onNavigateToMyGenerations: () -> Unit
+    onNavigateToMyGenerations: () -> Unit,
+    onProfileClick: () -> Unit
 ) {
     val authState by authViewModel.authState.collectAsState()
     val user = (authState as? AuthState.Authenticated)?.user
@@ -67,19 +69,15 @@ fun ProfileScreen(
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
-                TopAppBar(
-                    title = {
-                        Text(
-                            "Profile",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                        )
-                    },
+                PicMeMainHeader(
+                    title = "Profile",
+                    authState = authState,
+                    onProfileClick = onProfileClick,
                     actions = {
                         IconButton(onClick = onSettingsClick) {
-                            Icon(Icons.Default.Settings, contentDescription = "Settings")
+                            Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.White)
                         }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                    }
                 )
             }
         ) { innerPadding ->
@@ -138,7 +136,7 @@ fun ProfileScreen(
 
                 Spacer(modifier = Modifier.height(32.dp))
 
-                // Credits Card - Switched to Box without shadow to eliminate gray bands from shadow bleed
+                // Credits Card
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -183,7 +181,7 @@ fun ProfileScreen(
 
                 Spacer(modifier = Modifier.height(32.dp))
 
-                // Menu Options - Kept at 4.dp shadow as requested (no modification)
+                // Menu Options
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -238,7 +236,7 @@ fun ProfileScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Red/Pink Glass Logout Row - Kept at 2.dp shadow as requested (no modification)
+                // Red/Pink Glass Logout Row
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -304,7 +302,7 @@ fun MenuItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = icon,
+                icon,
                 contentDescription = null,
                 tint = Color(0xFF1F2937),
                 modifier = Modifier.size(24.dp)

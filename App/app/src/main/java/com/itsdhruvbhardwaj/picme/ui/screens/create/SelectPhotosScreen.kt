@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,16 +19,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.data.repository.StyleRepository
 import com.itsdhruvbhardwaj.picme.ui.components.EmptyPhotoSlot
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeButton
+import com.itsdhruvbhardwaj.picme.ui.components.PicMeCompactHeader
 import com.itsdhruvbhardwaj.picme.ui.components.SelectedPhotoCard
 import com.itsdhruvbhardwaj.picme.ui.components.TipsCard
-import com.itsdhruvbhardwaj.picme.ui.theme.TextSecondary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,17 +80,6 @@ fun SelectPhotosScreen(
 
         Scaffold(
             containerColor = Color.Transparent,
-            topBar = {
-                TopAppBar(
-                    title = {},
-                    navigationIcon = {
-                        IconButton(onClick = onBackClick) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color(0xFF1F2937))
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-                )
-            },
             bottomBar = {
                 Box(modifier = Modifier.padding(24.dp).padding(bottom = 16.dp)) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -103,7 +89,7 @@ fun SelectPhotosScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.padding(bottom = 8.dp),
-                                textAlign = TextAlign.Center
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
                         }
                         PicMeButton(
@@ -120,70 +106,83 @@ fun SelectPhotosScreen(
                     }
                 }
             }
-        ) { innerPadding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(horizontal = 24.dp)
-            ) {
-                Text(
-                    text = "Select Your Photos",
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 28.sp,
-                        color = Color(0xFF1E293B)
-                    )
-                )
-                
-                Text(
-                    text = "Choose $requiredCount clear photo${if (requiredCount > 1) "s" else ""} for the best results",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = Color(0xFF374151),
-                    modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
-                )
-
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth()
+        ) { _ -> // Ignore innerPadding for floating overlay
+            Box(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 24.dp)
                 ) {
-                    itemsIndexed(selectedPhotos) { index, uri ->
-                        if (uri != null) {
-                            SelectedPhotoCard(
-                                uri = uri,
-                                onRemove = {
-                                    val newList = selectedPhotos.toMutableList()
-                                    newList[index] = null
-                                    selectedPhotos = newList
-                                },
-                                onClick = {
+                    // Start content below floating header
+                    Spacer(modifier = Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+                    Spacer(modifier = Modifier.height(100.dp)) // Clear floating pill (76dp + extra padding)
+                    
+                    Text(
+                        text = "Pick Your Best Shots",
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 28.sp,
+                            color = Color(0xFF1E293B)
+                        )
+                    )
+                    
+                    Text(
+                        text = "Choose $requiredCount clear photo${if (requiredCount > 1) "s" else ""} for the best results",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Color(0xFF374151),
+                        modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
+                    )
+
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        itemsIndexed(selectedPhotos) { index, uri ->
+                            if (uri != null) {
+                                SelectedPhotoCard(
+                                    uri = uri,
+                                    onRemove = {
+                                        val newList = selectedPhotos.toMutableList()
+                                        newList[index] = null
+                                        selectedPhotos = newList
+                                    },
+                                    onClick = {
+                                        activeSlotIndex = index
+                                        photoPickerLauncher.launch(
+                                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                        )
+                                    }
+                                )
+                            } else {
+                                EmptyPhotoSlot(onClick = {
                                     activeSlotIndex = index
                                     photoPickerLauncher.launch(
                                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                     )
-                                }
-                            )
-                        } else {
-                            EmptyPhotoSlot(onClick = {
-                                activeSlotIndex = index
-                                photoPickerLauncher.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                )
-                            })
+                                })
+                            }
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    TipsCard(
+                        tips = listOf(
+                            "Use clear, front-facing photos",
+                            "Good lighting works best",
+                            "Avoid sunglasses or heavy filters"
+                        )
+                    )
+                    
+                    Spacer(modifier = Modifier.height(140.dp)) // Room for bottom padding and banner
                 }
 
-                Spacer(modifier = Modifier.height(32.dp))
-
-                TipsCard(
-                    tips = listOf(
-                        "Use clear, front-facing photos",
-                        "Good lighting works best",
-                        "Avoid sunglasses or heavy filters"
-                    )
+                // Floating Overlay Header
+                PicMeCompactHeader(
+                    title = "Select Photos",
+                    onBackClick = onBackClick
                 )
             }
         }

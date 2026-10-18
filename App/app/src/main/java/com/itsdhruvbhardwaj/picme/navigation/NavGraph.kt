@@ -148,7 +148,8 @@ fun NavGraph(
                     FavoritesScreen(
                         authViewModel = authViewModel,
                         viewModel = favoritesViewModel,
-                        onStyleClick = { id -> navController.navigate(Screen.StyleDetails.createRoute(id)) }
+                        onStyleClick = { id -> navController.navigate(Screen.StyleDetails.createRoute(id)) },
+                        onProfileClick = { navController.navigate(Screen.Profile.route) }
                     )
                 }
 
@@ -157,6 +158,11 @@ fun NavGraph(
                         authViewModel = authViewModel,
                         onLogoutClick = { authViewModel.logout() },
                         onSettingsClick = {},
+                        onProfileClick = {
+                            navController.navigate(Screen.Profile.route) {
+                                launchSingleTop = true
+                            }
+                        },
                         onNavigateToMyGenerations = { navController.navigate(Screen.History.route) }
                     )
                 }

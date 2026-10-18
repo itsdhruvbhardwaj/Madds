@@ -6,27 +6,20 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import com.itsdhruvbhardwaj.picme.R
-import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
 import com.itsdhruvbhardwaj.picme.ui.components.*
-import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 
 @Composable
 fun HomeScreen(
@@ -62,7 +55,8 @@ fun HomeScreen(
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
-                HomeTopBar(
+                PicMeMainHeader(
+                    title = "Home",
                     authState = authState,
                     onProfileClick = onProfileClick
                 )
@@ -86,7 +80,6 @@ fun HomeScreen(
                     is HomeUiState.Success -> {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
-                            // Padding reduced to 100.dp as banner is now physically outside content area
                             contentPadding = PaddingValues(bottom = 100.dp)
                         ) {
                             item {
@@ -160,68 +153,6 @@ fun HomeSectionRow(
             }
         }
         Spacer(modifier = Modifier.height(12.dp))
-    }
-}
-
-@Composable
-fun HomeTopBar(
-    authState: AuthState,
-    onProfileClick: () -> Unit
-) {
-    Surface(
-        color = Primary,
-        shadowElevation = 8.dp
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            PicMeLogo(fontSize = 28, tint = Color.White)
-            
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val user = (authState as? AuthState.Authenticated)?.user
-                if (user != null) {
-                    CreditBadge(credits = user.credits)
-                    Spacer(modifier = Modifier.width(12.dp))
-                }
-                
-                Surface(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(CircleShape),
-                    onClick = onProfileClick,
-                    color = Color.White.copy(alpha = 0.2f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        if (user?.profileImage != null) {
-                            AsyncImage(
-                                model = ImageRequest.Builder(LocalContext.current)
-                                    .data(user.profileImage)
-                                    .crossfade(true)
-                                    .build(),
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            val initials = user?.name?.take(2)?.uppercase() ?: "U"
-                            Text(
-                                text = initials,
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                  )
-                            )
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

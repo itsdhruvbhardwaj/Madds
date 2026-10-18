@@ -21,10 +21,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
+import com.itsdhruvbhardwaj.picme.ui.components.PicMeMainHeader
 import com.itsdhruvbhardwaj.picme.ui.components.StyleCard
 import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 
@@ -33,7 +33,8 @@ import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 fun FavoritesScreen(
     authViewModel: AuthViewModel,
     viewModel: FavoritesViewModel,
-    onStyleClick: (String) -> Unit
+    onStyleClick: (String) -> Unit,
+    onProfileClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val authState by authViewModel.authState.collectAsState()
@@ -65,19 +66,10 @@ fun FavoritesScreen(
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
-                CenterAlignedTopAppBar(
-                    title = {
-                        Text(
-                            "My Favorites",
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 0.5.sp
-                            )
-                        )
-                    },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = Color.Transparent
-                    )
+                PicMeMainHeader(
+                    title = "My Favorites",
+                    authState = authState,
+                    onProfileClick = onProfileClick
                 )
             }
         ) { innerPadding ->
