@@ -67,6 +67,9 @@ class AuthViewModel(
             checkSessionMutex.withLock {
                 val currentState = _authState.value
                 
+                // If the user has already logged out or is logging out, abort session checking
+                if (currentState is AuthState.Unauthenticated) return@withLock
+
                 // Only show global checking state if we don't have a valid session context to preserve.
                 // This ensures a "silent refresh" for already authenticated users.
                 if (currentState !is AuthState.Authenticated && currentState !is AuthState.RestoringSession) {
@@ -75,6 +78,9 @@ class AuthViewModel(
                 
                 val userResult = authRepository.getCurrentUser()
                 
+                // Final check before updating state to ensure logout didn't happen during the network call
+                if (_authState.value is AuthState.Unauthenticated) return@withLock
+
                 if (userResult.isSuccess) {
                     _authState.value = AuthState.Authenticated(userResult.getOrThrow())
                 } else {
@@ -91,8 +97,13 @@ class AuthViewModel(
                     // If access token is invalid/expired, attempt refresh.
                     val refreshResult = authRepository.refreshSession()
                     
+                    // Re-check state after potential suspension
+                    if (_authState.value is AuthState.Unauthenticated) return@withLock
+
                     if (refreshResult.isSuccess) {
                         val retryUserResult = authRepository.getCurrentUser()
+                        if (_authState.value is AuthState.Unauthenticated) return@withLock
+
                         if (retryUserResult.isSuccess) {
                             _authState.value = AuthState.Authenticated(retryUserResult.getOrThrow())
                         } else {
@@ -207,9 +218,12 @@ class AuthViewModel(
      * Logs out the user from the current session and clears local state.
      */
     fun logout() {
+        // Immediately mark as unauthenticated to prevent auto-redirects from Login back to Home
+        _authState.value = AuthState.Unauthenticated
+        
         viewModelScope.launch {
+            // Clearing local storage and backend logout is handled as a background task
             authRepository.logout()
-            _authState.value = AuthState.Unauthenticated
         }
     }
 
@@ -217,9 +231,9 @@ class AuthViewModel(
      * Revokes all active sessions for the user and clears local state.
      */
     fun logoutAll() {
+        _authState.value = AuthState.Unauthenticated
         viewModelScope.launch {
             authRepository.logoutAll()
-            _authState.value = AuthState.Unauthenticated
         }
     }
 

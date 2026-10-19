@@ -29,8 +29,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.itsdhruvbhardwaj.picme.R
@@ -52,8 +54,19 @@ fun ProfileScreen(
     onProfileClick: () -> Unit
 ) {
     val authState by authViewModel.authState.collectAsState()
-    val user = (authState as? AuthState.Authenticated)?.user
+    
+    // Freeze user data during the logout transition to prevent flickering of "User" placeholder
+    // when authState changes to Unauthenticated while the screen is still visible.
+    var cachedUser by remember { mutableStateOf((authState as? AuthState.Authenticated)?.user) }
+    LaunchedEffect(authState) {
+        if (authState is AuthState.Authenticated) {
+            cachedUser = (authState as AuthState.Authenticated).user
+        }
+    }
+    
+    val user = (authState as? AuthState.Authenticated)?.user ?: cachedUser
     var showCreditsOptions by remember { mutableStateOf(false) }
+    var showLogoutConfirm by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Blurred Wallpaper Background
@@ -116,7 +129,7 @@ fun ProfileScreen(
                             .crossfade(true)
                             .build(),
                         contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().clip(CircleShape),
                         contentScale = ContentScale.Crop
                     )
                 }
@@ -249,7 +262,7 @@ fun ProfileScreen(
                         .background(Color(0xFFFFEBEE).copy(alpha = 0.5f), RoundedCornerShape(24.dp))
                         .border(BorderStroke(1.dp, Color(0xFFFFCDD2).copy(alpha = 0.6f)), RoundedCornerShape(24.dp))
                         .clip(RoundedCornerShape(24.dp))
-                        .clickable(onClick = onLogoutClick)
+                        .clickable(onClick = { showLogoutConfirm = true })
                 ) {
                     Row(
                         modifier = Modifier
@@ -277,11 +290,94 @@ fun ProfileScreen(
         }
     }
 
+    if (showLogoutConfirm) {
+        LogoutConfirmDialog(
+            onConfirm = {
+                showLogoutConfirm = false
+                onLogoutClick()
+            },
+            onDismiss = { showLogoutConfirm = false }
+        )
+    }
+
     if (showCreditsOptions) {
         CreditsOptionsBottomSheet(
             viewModel = authViewModel,
             onDismiss = { showCreditsOptions = false }
         )
+    }
+}
+
+@Composable
+fun LogoutConfirmDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp),
+            shape = RoundedCornerShape(28.dp),
+            color = Color.White,
+            shadowElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Log out?",
+                    style = MaterialTheme.typography.headlineSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1F2937)
+                    )
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Are you sure you want to log out?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    color = Color(0xFF4B5563)
+                )
+                Spacer(modifier = Modifier.height(32.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = CircleShape,
+                        border = BorderStroke(1.dp, Color(0xFFE5E7EB)),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color(0xFF4B5563)
+                        )
+                    ) {
+                        Text(
+                            text = "Cancel",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
+                    Button(
+                        onClick = onConfirm,
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFDC2626) // Destructive Red
+                        )
+                    ) {
+                        Text(
+                            text = "Log Out",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -140,7 +140,13 @@ fun NavGraph(
                         viewModel = homeViewModel,
                         onStyleClick = { id -> navController.navigate(Screen.StyleDetails.createRoute(id)) },
                         onSeeAllClick = { c, col -> navController.navigate(Screen.StylesGrid.createRoute(c, col)) },
-                        onProfileClick = { navController.navigate(Screen.Profile.route) }
+                        onProfileClick = {
+                            navController.navigate(Screen.Profile.route) {
+                                popUpTo(Screen.Home.route) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
                     )
                 }
 
@@ -149,18 +155,32 @@ fun NavGraph(
                         authViewModel = authViewModel,
                         viewModel = favoritesViewModel,
                         onStyleClick = { id -> navController.navigate(Screen.StyleDetails.createRoute(id)) },
-                        onProfileClick = { navController.navigate(Screen.Profile.route) }
+                        onProfileClick = {
+                            navController.navigate(Screen.Profile.route) {
+                                popUpTo(Screen.Home.route) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
                     )
                 }
 
                 composable(Screen.Profile.route) {
                     ProfileScreen(
                         authViewModel = authViewModel,
-                        onLogoutClick = { authViewModel.logout() },
+                        onLogoutClick = {
+                            // Navigate first to avoid flicker of "User" state on Profile screen
+                            navController.navigate(Screen.Login.route) {
+                                popUpTo(Screen.Splash.route) { inclusive = true }
+                            }
+                            authViewModel.logout()
+                        },
                         onSettingsClick = {},
                         onProfileClick = {
                             navController.navigate(Screen.Profile.route) {
+                                popUpTo(Screen.Home.route) { saveState = true }
                                 launchSingleTop = true
+                                restoreState = true
                             }
                         },
                         onNavigateToMyGenerations = { navController.navigate(Screen.History.route) }

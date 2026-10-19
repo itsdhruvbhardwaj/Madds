@@ -171,23 +171,33 @@ class AuthRepository(
         return tokenStorage.hasRefreshToken()
     }
 
+    /**
+     * Clears the local session and makes a best-effort request to the backend to invalidate tokens.
+     */
     suspend fun logout(): Result<Unit> {
         val accessToken = tokenStorage.getAccessToken()
         
+        // 1. Clear local tokens immediately to prevent any further authenticated requests
+        tokenStorage.clearTokens()
+
+        // 2. Best-effort backend logout if we had a token
         if (accessToken != null) {
             try {
+                // We don't wait for this to succeed or fail to consider logout successful locally
                 apiService.logout("Bearer $accessToken")
             } catch (e: Exception) {
-                // Ignore
+                // Ignore network errors during logout
             }
         }
 
-        tokenStorage.clearTokens()
         return Result.success(Unit)
     }
 
     suspend fun logoutAll(): Result<Unit> {
         val accessToken = tokenStorage.getAccessToken()
+        
+        // 1. Clear local tokens immediately
+        tokenStorage.clearTokens()
 
         if (accessToken != null) {
             try {
@@ -197,7 +207,6 @@ class AuthRepository(
             }
         }
 
-        tokenStorage.clearTokens()
         return Result.success(Unit)
     }
 
