@@ -20,6 +20,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeButton
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeLogo
@@ -66,7 +67,7 @@ fun LoginScreen(
 
         PicMeSocialButton(
             text = "Continue with Google",
-            iconRes = null, // Will use proper Google icon later
+            iconRes = R.drawable.google_icon_logo_svgrepo_com,
             onClick = onGoogleClick,
             enabled = !isLoading
         )

@@ -2,6 +2,7 @@ package com.itsdhruvbhardwaj.picme.navigation
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
@@ -23,6 +24,7 @@ import androidx.navigation.navArgument
 import com.itsdhruvbhardwaj.picme.data.repository.StyleRepository
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
+import com.itsdhruvbhardwaj.picme.ui.auth.GoogleAuthHelper
 import com.itsdhruvbhardwaj.picme.ui.components.BannerAdView
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeBottomNavigationBar
 import com.itsdhruvbhardwaj.picme.ui.screens.auth.LoginScreen
@@ -53,6 +55,9 @@ fun NavGraph(
     val authState by authViewModel.authState.collectAsState()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    
+    val scope = rememberCoroutineScope()
+    val googleAuthHelper = remember { GoogleAuthHelper(context) }
 
     // Synchronize credits balance with generation lifecycle using silent refresh
     LaunchedEffect(Unit) {
@@ -114,7 +119,14 @@ fun NavGraph(
                         authState = authState,
                         onLoginClick = { e, p -> authViewModel.login(e, p) },
                         onResendVerificationClick = { e -> authViewModel.resendVerification(e) },
-                        onSignUpClick = { navController.navigate(Screen.Signup.route) }
+                        onSignUpClick = { navController.navigate(Screen.Signup.route) },
+                        onGoogleClick = {
+                            googleAuthHelper.signIn(
+                                scope = scope,
+                                onSuccess = { idToken -> authViewModel.loginWithGoogle(idToken) },
+                                onError = { error -> Toast.makeText(context, error, Toast.LENGTH_LONG).show() }
+                            )
+                        }
                     )
                     LaunchedEffect(authState) {
                         if (authState is AuthState.Authenticated) {
@@ -130,8 +142,22 @@ fun NavGraph(
                         authState = authState,
                         onSignupClick = { n, e, p -> authViewModel.signup(n, e, p) },
                         onSignInClick = { navController.navigate(Screen.Login.route) },
-                        onBackClick = { navController.popBackStack() }
+                        onBackClick = { navController.popBackStack() },
+                        onGoogleClick = {
+                            googleAuthHelper.signIn(
+                                scope = scope,
+                                onSuccess = { idToken -> authViewModel.loginWithGoogle(idToken) },
+                                onError = { error -> Toast.makeText(context, error, Toast.LENGTH_LONG).show() }
+                            )
+                        }
                     )
+                    LaunchedEffect(authState) {
+                        if (authState is AuthState.Authenticated) {
+                            navController.navigate(Screen.Home.route) { 
+                                popUpTo(Screen.Signup.route) { inclusive = true } 
+                            }
+                        }
+                    }
                 }
 
                 composable(Screen.Home.route) {

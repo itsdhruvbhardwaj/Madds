@@ -17,6 +17,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "BACKEND_BASE_URL", "\"https://picme-ai.onrender.com/\"")
+        buildConfigField("String", "GOOGLE_CLIENT_ID", "\"444690875641-gpg9b7j4p5dnmfprcrgmaaf96kdvvcd8.apps.googleusercontent.com\"")
     }
 
     buildTypes {
@@ -73,6 +74,11 @@ dependencies {
 
     // Google Mobile Ads
     implementation(libs.google.play.services.ads)
+
+    // Google Sign-in & Credentials
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.auth)
+    implementation(libs.googleid)
 
     testImplementation(libs.junit)
     testImplementation(libs.mockito.core)
