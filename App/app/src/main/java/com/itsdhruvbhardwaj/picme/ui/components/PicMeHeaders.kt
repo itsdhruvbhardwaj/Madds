@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
 import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 
@@ -99,35 +100,32 @@ fun PicMeMainHeader(
                 actions()
 
                 Spacer(modifier = Modifier.width(6.dp))
+                
+                // Genuine photo check: Use avatar.png as default unless a non-placeholder HTTP URL is present.
+                val profileImageSource = user?.profileImage?.takeIf { 
+                    it.isNotBlank() && 
+                    it.startsWith("http") &&
+                    !it.contains("default", ignoreCase = true) && 
+                    !it.contains("placeholder", ignoreCase = true)
+                } ?: R.drawable.avatar
+
                 Surface(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape),
+                    modifier = Modifier.size(38.dp),
+                    shape = CircleShape,
                     onClick = onProfileClick,
                     color = Color.White.copy(alpha = 0.2f),
                     border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        if (user?.profileImage != null) {
-                            AsyncImage(
-                                model = ImageRequest.Builder(LocalContext.current)
-                                    .data(user.profileImage)
-                                    .crossfade(true)
-                                    .build(),
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            val initials = user?.name?.split(" ")?.mapNotNull { it.firstOrNull() }?.joinToString("")?.take(2)?.uppercase() ?: "U"
-                            Text(
-                                text = initials,
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            )
-                        }
+                        AsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(profileImageSource)
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = "Profile",
+                            modifier = Modifier.fillMaxSize().clip(CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
                     }
                 }
             }

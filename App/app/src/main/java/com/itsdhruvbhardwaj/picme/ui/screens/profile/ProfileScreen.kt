@@ -102,24 +102,23 @@ fun ProfileScreen(
                         .border(2.dp, Color.White.copy(alpha = 0.8f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (user?.profileImage != null) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data(user.profileImage)
-                                .crossfade(true)
-                                .build(),
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.AccountCircle,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize().padding(4.dp),
-                            tint = Primary.copy(alpha = 0.7f)
-                        )
-                    }
+                    // Use avatar.png as default. Only use profileImage if it's a non-placeholder URL.
+                    val profileData = user?.profileImage?.takeIf { 
+                        it.isNotBlank() && 
+                        !it.contains("default", ignoreCase = true) && 
+                        !it.contains("placeholder", ignoreCase = true) &&
+                        it.startsWith("http")
+                    } ?: R.drawable.avatar
+
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(profileData)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
