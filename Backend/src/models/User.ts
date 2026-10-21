@@ -41,6 +41,19 @@ const UserSchema = new Schema(
       type: Boolean,
       default: true,
     },
+    deletionScheduledAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+    deletionCleanupStartedAt: {
+      type: Date,
+      default: null,
+    },
+    authVersion: {
+      type: Number,
+      default: 0,
+    },
   },
   { timestamps: true },
 );

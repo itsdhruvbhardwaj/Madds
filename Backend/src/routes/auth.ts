@@ -79,6 +79,27 @@ function getRequestBodyValue(req: Request, key: string): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function respondToScheduledDeletion(
+  res: Response,
+  deletionScheduledAt: Date | string | null | undefined,
+): boolean {
+  if (!deletionScheduledAt) {
+    return false;
+  }
+
+  const scheduledAt = new Date(deletionScheduledAt);
+  const expired = scheduledAt.getTime() <= Date.now();
+  res.status(expired ? 410 : 403).json({
+    ok: false,
+    code: expired ? "ACCOUNT_DELETION_EXPIRED" : "ACCOUNT_DELETION_PENDING",
+    error: expired
+      ? "The account deletion grace period has ended."
+      : "Account deletion is scheduled. Cancel deletion to continue using this account.",
+    deletionScheduledAt: scheduledAt.toISOString(),
+  });
+  return true;
+}
+
 async function verifyGoogleIdentity(idToken: string): Promise<{
   googleId: string;
   email: string;
@@ -427,10 +448,16 @@ router.post("/verify-email", authRateLimiter, async (req: Request, res: Response
       });
     }
 
+    const verifiedUser = await User.findById(result.user.id);
+    if (!verifiedUser || respondToScheduledDeletion(res, verifiedUser.deletionScheduledAt)) {
+      return;
+    }
+
     const refreshToken = createRefreshToken();
     const refreshTokenHash = hashRefreshToken(refreshToken);
     const session = await Session.create({
       userId: result.user.id,
+      authVersion: verifiedUser.authVersion ?? 0,
       refreshTokenHash,
       deviceInfo: req.headers["user-agent"] ?? "",
       expiresAt: getRefreshSessionExpiryDate(),
@@ -546,10 +573,15 @@ router.post("/login", loginRateLimiter, async (req: Request, res: Response) => {
       return res.status(401).json({ ok: false, error: "Invalid email or password." });
     }
 
+    if (respondToScheduledDeletion(res, user.deletionScheduledAt)) {
+      return;
+    }
+
     const refreshToken = createRefreshToken();
     const refreshTokenHash = hashRefreshToken(refreshToken);
     const session = await Session.create({
       userId: user._id,
+      authVersion: user.authVersion ?? 0,
       refreshTokenHash,
       deviceInfo: req.headers["user-agent"] ?? "",
       expiresAt: getRefreshSessionExpiryDate(),
@@ -566,6 +598,158 @@ router.post("/login", loginRateLimiter, async (req: Request, res: Response) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to login.";
+    return res.status(500).json({ ok: false, error: message });
+  }
+});
+
+router.post("/login/cancel-deletion", loginRateLimiter, async (req: Request, res: Response) => {
+  const email = getRequestBodyValue(req, "email");
+  const password = getRequestBodyValue(req, "password");
+
+  if (!isValidEmail(email) || !password) {
+    return res.status(401).json({ ok: false, error: "Invalid email or password." });
+  }
+
+  try {
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user || user.isActive === false || !user.passwordHash) {
+      return res.status(401).json({ ok: false, error: "Invalid email or password." });
+    }
+    if (user.emailVerified === false) {
+      return res.status(401).json({ ok: false, error: "Please verify your email before signing in." });
+    }
+
+    if (!(await comparePassword(password, user.passwordHash))) {
+      return res.status(401).json({ ok: false, error: "Invalid email or password." });
+    }
+
+    const now = new Date();
+    if (!user.deletionScheduledAt) {
+      return res.status(409).json({
+        ok: false,
+        code: "ACCOUNT_DELETION_NOT_PENDING",
+        error: "There is no pending account deletion to cancel.",
+      });
+    }
+
+    if (
+      new Date(user.deletionScheduledAt).getTime() <= now.getTime() ||
+      user.deletionCleanupStartedAt
+    ) {
+      return res.status(410).json({
+        ok: false,
+        code: "ACCOUNT_DELETION_EXPIRED",
+        error: "The account deletion grace period has ended.",
+        deletionScheduledAt: new Date(user.deletionScheduledAt).toISOString(),
+      });
+    }
+
+    const cancellation = await User.updateOne(
+      {
+        _id: user._id,
+        deletionScheduledAt: { $gt: now },
+        deletionCleanupStartedAt: null,
+      },
+      { $set: { deletionScheduledAt: null }, $inc: { authVersion: 1 } },
+    );
+    if (cancellation.modifiedCount !== 1) {
+      return res.status(410).json({
+        ok: false,
+        code: "ACCOUNT_DELETION_EXPIRED",
+        error: "The account deletion grace period has ended.",
+        deletionScheduledAt: new Date(user.deletionScheduledAt).toISOString(),
+      });
+    }
+
+    await Session.updateMany(
+      { userId: user._id, revokedAt: null },
+      { $set: { revokedAt: now } },
+    );
+
+    const refreshToken = createRefreshToken();
+    const refreshTokenHash = hashRefreshToken(refreshToken);
+    const session = await Session.create({
+      userId: user._id,
+      authVersion: (user.authVersion ?? 0) + 1,
+      refreshTokenHash,
+      deviceInfo: req.headers["user-agent"] ?? "",
+      expiresAt: getRefreshSessionExpiryDate(),
+      lastUsedAt: now,
+    });
+    const accessToken = createAccessToken(String(user._id), String(session._id));
+
+    return res.json({
+      ok: true,
+      accessToken,
+      refreshToken,
+      user: sanitizeUser(user),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to cancel account deletion.";
+    return res.status(500).json({ ok: false, error: message });
+  }
+});
+
+router.post("/delete-account", authRateLimiter, requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id;
+  const password = getRequestBodyValue(req, "password");
+  if (!userId) {
+    return res.status(401).json({ ok: false, error: "Authentication required." });
+  }
+
+  try {
+    const user = await User.findById(userId);
+    if (!user || user.isActive === false) {
+      return res.status(401).json({ ok: false, error: "Authentication required." });
+    }
+    if (!user.passwordHash) {
+      return res.status(403).json({
+        ok: false,
+        code: "GOOGLE_REAUTHENTICATION_REQUIRED",
+        error: "Re-authenticate with Google before scheduling account deletion.",
+      });
+    }
+    if (!password) {
+      return res.status(400).json({
+        ok: false,
+        code: "CURRENT_PASSWORD_REQUIRED",
+        error: "Enter your current password to schedule account deletion.",
+      });
+    }
+    if (!(await comparePassword(password, user.passwordHash))) {
+      return res.status(401).json({ ok: false, code: "INVALID_CREDENTIALS", error: "Current password is incorrect." });
+    }
+
+    const now = new Date();
+    const deletionScheduledAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const scheduled = await User.updateOne(
+      {
+        _id: user._id,
+        deletionScheduledAt: null,
+        deletionCleanupStartedAt: null,
+      },
+      { $set: { deletionScheduledAt }, $inc: { authVersion: 1 } },
+    );
+    if (scheduled.modifiedCount !== 1) {
+      return res.status(409).json({
+        ok: false,
+        code: "ACCOUNT_DELETION_ALREADY_PENDING",
+        error: "Account deletion is already scheduled.",
+      });
+    }
+
+    await Session.updateMany(
+      { userId: user._id, revokedAt: null },
+      { $set: { revokedAt: now } },
+    );
+
+    return res.json({
+      ok: true,
+      message: "Account deletion is scheduled. You can cancel it by signing in within 30 days.",
+      deletionScheduledAt: deletionScheduledAt.toISOString(),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to schedule account deletion.";
     return res.status(500).json({ ok: false, error: message });
   }
 });
@@ -595,6 +779,9 @@ router.post("/google", loginRateLimiter, async (req: Request, res: Response) => 
       if (existingEmailUser) {
         if (existingEmailUser.isActive === false) {
           return res.status(401).json({ ok: false, error: "Google authentication failed." });
+        }
+        if (respondToScheduledDeletion(res, existingEmailUser.deletionScheduledAt)) {
+          return;
         }
 
         const linked = await User.updateOne(
@@ -644,11 +831,15 @@ router.post("/google", loginRateLimiter, async (req: Request, res: Response) => 
     if (user.isActive === false) {
       return res.status(401).json({ ok: false, error: "Google authentication failed." });
     }
+    if (respondToScheduledDeletion(res, user.deletionScheduledAt)) {
+      return;
+    }
 
     const refreshToken = createRefreshToken();
     const refreshTokenHash = hashRefreshToken(refreshToken);
     const session = await Session.create({
       userId: user._id,
+      authVersion: user.authVersion ?? 0,
       refreshTokenHash,
       deviceInfo: req.headers["user-agent"] ?? "",
       expiresAt: getRefreshSessionExpiryDate(),
@@ -694,12 +885,19 @@ router.post("/refresh", refreshRateLimiter, async (req: Request, res: Response) 
     if (!user || !user.isActive || !user.emailVerified) {
       return res.status(401).json({ ok: false, error: "Refresh token is invalid or expired." });
     }
+    if (respondToScheduledDeletion(res, user.deletionScheduledAt)) {
+      return;
+    }
+    if ((existingSession.authVersion ?? 0) !== (user.authVersion ?? 0)) {
+      return res.status(401).json({ ok: false, error: "Refresh token is invalid or expired." });
+    }
 
     const newRefreshToken = createRefreshToken();
     const newTokenHash = hashRefreshToken(newRefreshToken);
 
     const rewrittenSession = await Session.create({
       userId: existingSession.userId,
+      authVersion: user.authVersion ?? 0,
       refreshTokenHash: newTokenHash,
       deviceInfo: existingSession.deviceInfo ?? "",
       expiresAt: getRefreshSessionExpiryDate(),

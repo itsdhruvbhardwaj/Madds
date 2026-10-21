@@ -8,6 +8,10 @@ const SessionSchema = new Schema(
       required: true,
       index: true,
     },
+    authVersion: {
+      type: Number,
+      default: 0,
+    },
     refreshTokenHash: {
       type: String,
       required: true,

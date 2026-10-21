@@ -83,6 +83,15 @@ const userModel = User as any;
 const sessionModel = Session as any;
 const tokenModel = EmailVerificationToken as any;
 
+async function createTestAccessToken(userId: string, sessionId: string): Promise<string> {
+  const { default: jwt } = await import("jsonwebtoken");
+  return jwt.sign(
+    { sub: userId, sid: sessionId, type: "access" },
+    "test-access-secret",
+    { issuer: "picme-ai-backend", expiresIn: "15m" },
+  );
+}
+
 describe("auth registration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1175,5 +1184,247 @@ describe("session lifecycle and refresh security", () => {
     const response = await request(app).post("/api/auth/refresh").send({ refreshToken: "unverified-refresh-token" });
 
     expect(response.status).toBe(401);
+  });
+
+  it("schedules deletion only after verifying the current password and revokes sessions", async () => {
+    const passwordHash = await bcrypt.hash("StrongPass1!", 10);
+    const authenticatedUser = {
+      _id: "user-delete",
+      name: "Delete User",
+      email: "delete@example.com",
+      emailVerified: true,
+      isActive: true,
+      authVersion: 0,
+    };
+    const user = { ...authenticatedUser, passwordHash };
+    const accessToken = await createTestAccessToken("user-delete", "session-delete");
+
+    userModel.findById
+      .mockReturnValueOnce({
+        select: () => ({ lean: async () => authenticatedUser }),
+      })
+      .mockResolvedValueOnce(user);
+    sessionModel.findOne.mockReturnValue({
+      lean: async () => ({
+        _id: "session-delete",
+        userId: "user-delete",
+        authVersion: 0,
+        revokedAt: null,
+        expiresAt: new Date(Date.now() + 60_000),
+      }),
+    });
+    userModel.updateOne.mockResolvedValue({ matchedCount: 1, modifiedCount: 1 });
+    sessionModel.updateMany.mockResolvedValue({ modifiedCount: 2 });
+
+    const before = Date.now();
+    const response = await request(app)
+      .post("/api/auth/delete-account")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ password: "StrongPass1!" });
+    const after = Date.now();
+    const scheduledDate = new Date(response.body.deletionScheduledAt).getTime();
+    const scheduledUpdate = userModel.updateOne.mock.calls[0][1];
+
+    expect(response.status).toBe(200);
+    expect(scheduledUpdate.$set.deletionScheduledAt.getTime()).toBe(scheduledDate);
+    expect(scheduledDate).toBeGreaterThanOrEqual(before + 30 * 24 * 60 * 60 * 1000);
+    expect(scheduledDate).toBeLessThanOrEqual(after + 30 * 24 * 60 * 60 * 1000);
+    expect(response.body.message).toMatch(/scheduled/i);
+    expect(sessionModel.updateMany).toHaveBeenCalledWith(
+      { userId: "user-delete", revokedAt: null },
+      expect.objectContaining({ $set: { revokedAt: expect.any(Date) } }),
+    );
+  });
+
+  it("requires Google re-authentication when requesting deletion without a password hash", async () => {
+    const authenticatedUser = {
+      _id: "google-delete",
+      name: "Google User",
+      email: "google-delete@example.com",
+      emailVerified: true,
+      isActive: true,
+      authVersion: 0,
+    };
+    const accessToken = await createTestAccessToken("google-delete", "google-session");
+
+    userModel.findById
+      .mockReturnValueOnce({
+        select: () => ({ lean: async () => authenticatedUser }),
+      })
+      .mockResolvedValueOnce({ ...authenticatedUser, passwordHash: null });
+    sessionModel.findOne.mockReturnValue({
+      lean: async () => ({
+        _id: "google-session",
+        userId: "google-delete",
+        authVersion: 0,
+        revokedAt: null,
+        expiresAt: new Date(Date.now() + 60_000),
+      }),
+    });
+
+    const response = await request(app)
+      .post("/api/auth/delete-account")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({});
+
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe("GOOGLE_REAUTHENTICATION_REQUIRED");
+    expect(userModel.updateOne).not.toHaveBeenCalled();
+    expect(sessionModel.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("does not schedule deletion or revoke sessions for an incorrect current password", async () => {
+    const authenticatedUser = {
+      _id: "user-delete-invalid",
+      name: "Delete User",
+      email: "delete-invalid@example.com",
+      emailVerified: true,
+      isActive: true,
+      authVersion: 0,
+    };
+    const user = {
+      ...authenticatedUser,
+      passwordHash: await bcrypt.hash("StrongPass1!", 10),
+    };
+    const accessToken = await createTestAccessToken("user-delete-invalid", "session-delete-invalid");
+
+    userModel.findById
+      .mockReturnValueOnce({
+        select: () => ({ lean: async () => authenticatedUser }),
+      })
+      .mockResolvedValueOnce(user);
+    sessionModel.findOne.mockReturnValue({
+      lean: async () => ({
+        _id: "session-delete-invalid",
+        userId: "user-delete-invalid",
+        authVersion: 0,
+        revokedAt: null,
+        expiresAt: new Date(Date.now() + 60_000),
+      }),
+    });
+
+    const response = await request(app)
+      .post("/api/auth/delete-account")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({ password: "WrongPass1!" });
+
+    expect(response.status).toBe(401);
+    expect(response.body.code).toBe("INVALID_CREDENTIALS");
+    expect(userModel.updateOne).not.toHaveBeenCalled();
+    expect(sessionModel.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("returns the pending-deletion login contract without issuing tokens", async () => {
+    userModel.findOne.mockResolvedValue({
+      _id: "user-pending",
+      name: "Pending User",
+      email: "pending@example.com",
+      passwordHash: await bcrypt.hash("StrongPass1!", 10),
+      emailVerified: true,
+      isActive: true,
+      deletionScheduledAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+    });
+
+    const response = await request(app).post("/api/auth/login").send({
+      email: "pending@example.com",
+      password: "StrongPass1!",
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({
+      ok: false,
+      code: "ACCOUNT_DELETION_PENDING",
+      deletionScheduledAt: expect.any(String),
+    });
+    expect(response.body.error).toMatch(/deletion is scheduled/i);
+    expect(response.body.accessToken).toBeUndefined();
+    expect(sessionModel.create).not.toHaveBeenCalled();
+  });
+
+  it("cancels a pending deletion with valid credentials and creates a fresh session", async () => {
+    userModel.findOne.mockResolvedValue({
+      _id: "user-cancel",
+      name: "Cancel User",
+      email: "cancel@example.com",
+      passwordHash: await bcrypt.hash("StrongPass1!", 10),
+      emailVerified: true,
+      isActive: true,
+      authVersion: 1,
+      deletionScheduledAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+      deletionCleanupStartedAt: null,
+    });
+    userModel.updateOne.mockResolvedValue({ matchedCount: 1, modifiedCount: 1 });
+    sessionModel.updateMany.mockResolvedValue({ modifiedCount: 1 });
+    sessionModel.create.mockResolvedValue({ _id: "session-cancel" });
+
+    const response = await request(app).post("/api/auth/login/cancel-deletion").send({
+      email: "cancel@example.com",
+      password: "StrongPass1!",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.ok).toBe(true);
+    expect(response.body.accessToken).toEqual(expect.any(String));
+    expect(response.body.refreshToken).toEqual(expect.any(String));
+    expect(userModel.updateOne).toHaveBeenCalledWith(
+      expect.objectContaining({
+        _id: "user-cancel",
+        deletionScheduledAt: { $gt: expect.any(Date) },
+        deletionCleanupStartedAt: null,
+      }),
+      { $set: { deletionScheduledAt: null }, $inc: { authVersion: 1 } },
+    );
+    expect(sessionModel.updateMany).toHaveBeenCalled();
+    expect(sessionModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "user-cancel", authVersion: 2 }),
+    );
+  });
+
+  it("does not cancel deletion or issue tokens for invalid credentials", async () => {
+    userModel.findOne.mockResolvedValue({
+      _id: "user-cancel-invalid",
+      passwordHash: await bcrypt.hash("StrongPass1!", 10),
+      isActive: true,
+      deletionScheduledAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+    });
+
+    const response = await request(app).post("/api/auth/login/cancel-deletion").send({
+      email: "cancel-invalid@example.com",
+      password: "WrongPass1!",
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Invalid email or password.");
+    expect(userModel.updateOne).not.toHaveBeenCalled();
+    expect(sessionModel.create).not.toHaveBeenCalled();
+  });
+
+  it("blocks refresh when deletion is pending", async () => {
+    sessionModel.findOne.mockReturnValue({
+      lean: async () => ({
+        _id: "session-pending",
+        userId: "user-pending-refresh",
+        authVersion: 0,
+        revokedAt: null,
+        expiresAt: new Date(Date.now() + 60_000),
+      }),
+    });
+    userModel.findById.mockResolvedValue({
+      _id: "user-pending-refresh",
+      email: "refresh-pending@example.com",
+      name: "Pending Refresh",
+      emailVerified: true,
+      isActive: true,
+      authVersion: 1,
+      deletionScheduledAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+    });
+
+    const response = await request(app).post("/api/auth/refresh").send({
+      refreshToken: "pending-refresh-token",
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe("ACCOUNT_DELETION_PENDING");
+    expect(sessionModel.create).not.toHaveBeenCalled();
   });
 });

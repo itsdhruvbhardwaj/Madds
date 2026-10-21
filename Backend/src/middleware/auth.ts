@@ -47,6 +47,20 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
       return;
     }
 
+    if (user.deletionScheduledAt) {
+      const deletionScheduledAt = new Date(user.deletionScheduledAt);
+      const expired = deletionScheduledAt.getTime() <= Date.now();
+      res.status(expired ? 410 : 403).json({
+        ok: false,
+        code: expired ? "ACCOUNT_DELETION_EXPIRED" : "ACCOUNT_DELETION_PENDING",
+        error: expired
+          ? "The account deletion grace period has ended."
+          : "Account deletion is scheduled. Cancel deletion to continue using this account.",
+        deletionScheduledAt: deletionScheduledAt.toISOString(),
+      });
+      return;
+    }
+
     const sessionId = payload.sid;
     if (!sessionId) {
       res.status(401).json({ ok: false, error: "Authentication token is missing a session reference." });
@@ -60,7 +74,7 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
       expiresAt: { $gt: new Date() },
     }).lean();
 
-    if (!session) {
+    if (!session || (session.authVersion ?? 0) !== (user.authVersion ?? 0)) {
       res.status(401).json({ ok: false, error: "Authentication session is invalid or expired." });
       return;
     }

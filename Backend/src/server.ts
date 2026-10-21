@@ -10,6 +10,7 @@ import { fileTypeFromBuffer } from "file-type";
 import { connectToDatabase } from "./config/database.js";
 import { env } from "./config/env.js";
 import { requireAuth, type AuthenticatedRequest } from "./middleware/auth.js";
+import { cleanupScheduledAccountDeletions } from "./services/accountDeletion.js";
 import { CreditTransaction } from "./models/CreditTransaction.js";
 import { FavoriteStyle } from "./models/FavoriteStyle.js";
 import { Generation } from "./models/Generation.js";
@@ -428,6 +429,16 @@ if (isDirectExecution) {
           FavoriteStyle.init(),
           RewardedAdAttempt.init(),
         ]);
+        await cleanupScheduledAccountDeletions();
+        const accountDeletionCleanupTimer = setInterval(() => {
+          void cleanupScheduledAccountDeletions().catch((error: unknown) => {
+            console.error(
+              "Account deletion cleanup failed.",
+              error instanceof Error ? error.name : "UNKNOWN",
+            );
+          });
+        }, 60 * 60 * 1000);
+        accountDeletionCleanupTimer.unref();
       }
       app.listen(env.port, () => {
         console.log(`Server listening on port ${env.port}`);
