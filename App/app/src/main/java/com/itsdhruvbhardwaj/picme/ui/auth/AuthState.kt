@@ -54,6 +54,24 @@ sealed interface AuthState {
      * Session restoration failed due to a network error.
      */
     data object SessionCheckNetworkError : AuthState
+    
+    /**
+     * Password reset email was sent successfully.
+     * @property message Success message from the server.
+     */
+    data class PasswordResetSent(val message: String) : AuthState
+
+    /**
+     * Password was reset successfully.
+     * @property message Success message from the server.
+     */
+    data class PasswordResetSuccess(val message: String) : AuthState
+
+    /**
+     * Login failed because the account is scheduled for deletion.
+     * @property scheduledDate The date when the account will be permanently deleted.
+     */
+    data class DeletionPending(val scheduledDate: String?) : AuthState
 
     /**
      * An authentication operation failed.

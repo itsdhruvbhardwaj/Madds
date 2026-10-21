@@ -41,6 +41,10 @@ class AuthViewModel(
     val uiEvent: SharedFlow<String> = _uiEvent.asSharedFlow()
 
     private val checkSessionMutex = Mutex()
+    
+    // Temporary storage for credentials during deletion-pending login attempt
+    private var pendingDeletionEmail: String? = null
+    private var pendingDeletionPassword: String? = null
 
     init {
         // Optimistically initialize state from cache to speed up startup
@@ -135,7 +139,7 @@ class AuthViewModel(
         viewModelScope.launch {
             _authState.value = AuthState.Authenticating
             val result = authRepository.login(email, password)
-            handleAuthResult(result)
+            handleAuthResult(result, email, password)
         }
     }
 
@@ -200,6 +204,77 @@ class AuthViewModel(
                     _authState.value = AuthState.Error(mapError(error.message))
                 }
             )
+        }
+    }
+
+    /**
+     * Initiates the password reset process.
+     */
+    fun forgotPassword(email: String) {
+        viewModelScope.launch {
+            _authState.value = AuthState.Authenticating
+            val result = authRepository.forgotPassword(email)
+            result.fold(
+                onSuccess = { message ->
+                    _authState.value = AuthState.PasswordResetSent(message)
+                },
+                onFailure = { error ->
+                    _authState.value = AuthState.Error(mapError(error.message))
+                }
+            )
+        }
+    }
+
+    /**
+     * Completes the password reset process with a token.
+     */
+    fun resetPassword(token: String, newPassword: String) {
+        viewModelScope.launch {
+            _authState.value = AuthState.Authenticating
+            val result = authRepository.resetPassword(token, newPassword)
+            result.fold(
+                onSuccess = { message ->
+                    _authState.value = AuthState.PasswordResetSuccess(message)
+                },
+                onFailure = { error ->
+                    _authState.value = AuthState.Error(mapError(error.message))
+                }
+            )
+        }
+    }
+
+    /**
+     * Requests account deletion.
+     */
+    fun deleteAccount(password: String) {
+        viewModelScope.launch {
+            _authState.value = AuthState.Authenticating
+            val result = authRepository.deleteAccount(password)
+            result.fold(
+                onSuccess = { scheduledAt ->
+                    val dateMsg = if (scheduledAt.isNotEmpty()) " on $scheduledAt" else ""
+                    _authState.value = AuthState.Unauthenticated
+                    _uiEvent.emit("Account scheduled for deletion$dateMsg. You have 30 days to cancel by signing in.")
+                },
+                onFailure = { error ->
+                    _authState.value = AuthState.Authenticated(authRepository.getCachedUser()!!)
+                    _uiEvent.emit(mapError(error.message))
+                }
+            )
+        }
+    }
+
+    /**
+     * Cancels a pending account deletion and logs the user in.
+     */
+    fun cancelDeletion() {
+        val email = pendingDeletionEmail ?: return
+        val password = pendingDeletionPassword ?: return
+        
+        viewModelScope.launch {
+            _authState.value = AuthState.Authenticating
+            val result = authRepository.cancelDeletion(email, password)
+            handleAuthResult(result)
         }
     }
 
@@ -304,27 +379,39 @@ class AuthViewModel(
         }
     }
 
-    private fun handleAuthResult(result: Result<User>) {
+    private fun handleAuthResult(result: Result<User>, email: String? = null, password: String? = null) {
         result.fold(
             onSuccess = { user ->
+                pendingDeletionEmail = null
+                pendingDeletionPassword = null
                 _authState.value = AuthState.Authenticated(user)
             },
             onFailure = { error ->
-                _authState.value = AuthState.Error(mapError(error.message))
+                val message = error.message ?: ""
+                if (message.startsWith("deletion_pending")) {
+                    val date = message.substringAfter("|", "")
+                    pendingDeletionEmail = email
+                    pendingDeletionPassword = password
+                    _authState.value = AuthState.DeletionPending(date.takeIf { it.isNotEmpty() })
+                } else {
+                    _authState.value = AuthState.Error(mapError(message))
+                }
             }
         )
     }
 
     private fun mapError(message: String?): String {
-        return when (message) {
-            "invalid_credentials" -> "Incorrect email or password. Please try again."
-            "unverified_account" -> "Your account has been created, but your email hasn't been verified yet. Check your inbox and Spam/Junk folder."
-            "email_already_exists" -> "An account with this email already exists. Try logging in instead."
-            "invalid_token", "expired_token", "token_already_used" -> "This verification link is invalid or has expired. Request a new one."
-            "network_failure" -> "Unable to connect. Check your internet connection and try again."
-            "server_failure" -> "PicMe is temporarily unavailable. Please try again shortly."
-            "timeout" -> "Connection timed out. Please try again."
-            else -> message ?: "An unexpected error occurred. Please try again."
+        val cleanMsg = message ?: ""
+        return when {
+            cleanMsg == "invalid_credentials" -> "Incorrect email or password. Please try again."
+            cleanMsg == "unverified_account" -> "Your account has been created, but your email hasn't been verified yet. Check your inbox and Spam/Junk folder."
+            cleanMsg == "email_already_exists" -> "An account with this email already exists. Try logging in instead."
+            cleanMsg == "google_reauth_required" -> "Password confirmation is not available for this Google account. Re-authentication via Google is required."
+            cleanMsg.contains("invalid", ignoreCase = true) && cleanMsg.contains("token", ignoreCase = true) -> "This link is invalid or has expired. Request a new one."
+            cleanMsg == "network_failure" -> "Unable to connect. Check your internet connection and try again."
+            cleanMsg == "server_failure" -> "PicMe is temporarily unavailable. Please try again shortly."
+            cleanMsg == "timeout" -> "Connection timed out. Please try again."
+            else -> cleanMsg.takeIf { it.isNotEmpty() } ?: "An unexpected error occurred. Please try again."
         }
     }
 
@@ -333,5 +420,7 @@ class AuthViewModel(
      */
     fun resetAuthState() {
         _authState.value = AuthState.Unauthenticated
+        pendingDeletionEmail = null
+        pendingDeletionPassword = null
     }
 }

@@ -21,13 +21,16 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
 import com.itsdhruvbhardwaj.picme.data.repository.StyleRepository
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
 import com.itsdhruvbhardwaj.picme.ui.auth.GoogleAuthHelper
 import com.itsdhruvbhardwaj.picme.ui.components.BannerAdView
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeBottomNavigationBar
+import com.itsdhruvbhardwaj.picme.ui.screens.auth.ForgotPasswordScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.auth.LoginScreen
+import com.itsdhruvbhardwaj.picme.ui.screens.auth.ResetPasswordScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.auth.SignupScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.auth.VerifyEmailScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.create.GenerationScreen
@@ -38,7 +41,10 @@ import com.itsdhruvbhardwaj.picme.ui.screens.create.SelectPhotosScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.home.*
 import com.itsdhruvbhardwaj.picme.ui.screens.onboarding.OnboardingScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.profile.ProfileScreen
+import com.itsdhruvbhardwaj.picme.ui.screens.settings.DeleteAccountScreen
+import com.itsdhruvbhardwaj.picme.ui.screens.settings.SettingsScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.splash.SplashScreen
+import kotlinx.coroutines.flow.collectLatest
 
 @Composable
 fun NavGraph(
@@ -58,6 +64,13 @@ fun NavGraph(
     
     val scope = rememberCoroutineScope()
     val googleAuthHelper = remember { GoogleAuthHelper(context) }
+
+    // Unified UI Event Handling (Toasts for success/failure)
+    LaunchedEffect(Unit) {
+        authViewModel.uiEvent.collectLatest { message ->
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        }
+    }
 
     // Synchronize credits balance with generation lifecycle using silent refresh
     LaunchedEffect(Unit) {
@@ -126,7 +139,13 @@ fun NavGraph(
                                 onSuccess = { idToken -> authViewModel.loginWithGoogle(idToken) },
                                 onError = { error -> Toast.makeText(context, error, Toast.LENGTH_LONG).show() }
                             )
-                        }
+                        },
+                        onForgotPasswordClick = { email ->
+                            navController.navigate(Screen.ForgotPassword.createRoute(email))
+                        },
+                        onCancelDeletion = { authViewModel.cancelDeletion() },
+                        onKeepDeletion = { authViewModel.resetAuthState() },
+                        onDismissDeletionDialog = { authViewModel.resetAuthState() }
                     )
                     LaunchedEffect(authState) {
                         if (authState is AuthState.Authenticated) {
@@ -201,7 +220,7 @@ fun NavGraph(
                             }
                             authViewModel.logout()
                         },
-                        onSettingsClick = {},
+                        onSettingsClick = { navController.navigate(Screen.Settings.route) },
                         onProfileClick = {
                             navController.navigate(Screen.Profile.route) {
                                 popUpTo(Screen.Home.route) { saveState = true }
@@ -211,6 +230,31 @@ fun NavGraph(
                         },
                         onNavigateToMyGenerations = { navController.navigate(Screen.History.route) }
                     )
+                }
+
+                composable(Screen.Settings.route) {
+                    SettingsScreen(
+                        authViewModel = authViewModel,
+                        onBackClick = { navController.popBackStack() },
+                        onDeleteAccountClick = { navController.navigate(Screen.DeleteAccount.route) }
+                    )
+                }
+
+                composable(Screen.DeleteAccount.route) {
+                    DeleteAccountScreen(
+                        authState = authState,
+                        onBackClick = { navController.popBackStack() },
+                        onSubmitDelete = { password -> authViewModel.deleteAccount(password) }
+                    )
+                    
+                    // Exit flow on successful deletion request (Unauthenticated means tokens cleared)
+                    LaunchedEffect(authState) {
+                        if (authState is AuthState.Unauthenticated) {
+                            navController.navigate(Screen.Login.route) {
+                                popUpTo(Screen.Splash.route) { inclusive = true }
+                            }
+                        }
+                    }
                 }
 
                 composable(
@@ -301,6 +345,11 @@ fun NavGraph(
                     arguments = listOf(
                         navArgument("email") { type = NavType.StringType; nullable = true },
                         navArgument("token") { type = NavType.StringType; nullable = true }
+                    ),
+                    deepLinks = listOf(
+                        navDeepLink {
+                            uriPattern = "https://picme-ai.onrender.com/api/auth/verify-email?token={token}"
+                        }
                     )
                 ) { backStackEntry ->
                     val email = backStackEntry.arguments?.getString("email")
@@ -312,6 +361,54 @@ fun NavGraph(
                         onVerifyClick = { authViewModel.verifyEmail(it) },
                         onResendClick = { email?.let { authViewModel.resendVerification(it) } },
                         onBackClick = { navController.popBackStack() }
+                    )
+                }
+
+                composable(
+                    route = Screen.ForgotPassword.route,
+                    arguments = listOf(
+                        navArgument("email") { type = NavType.StringType; nullable = true }
+                    )
+                ) { backStackEntry ->
+                    val email = backStackEntry.arguments?.getString("email")
+                    ForgotPasswordScreen(
+                        initialEmail = email,
+                        authState = authState,
+                        onSubmitClick = { authViewModel.forgotPassword(it) },
+                        onBackClick = { 
+                            authViewModel.resetAuthState()
+                            navController.popBackStack() 
+                        }
+                    )
+                }
+
+                composable(
+                    route = Screen.ResetPassword.route,
+                    arguments = listOf(
+                        navArgument("token") { type = NavType.StringType; nullable = true }
+                    ),
+                    deepLinks = listOf(
+                        navDeepLink {
+                            uriPattern = "https://picme-ai.onrender.com/api/auth/reset-password?token={token}"
+                        }
+                    )
+                ) { backStackEntry ->
+                    val token = backStackEntry.arguments?.getString("token") ?: ""
+                    ResetPasswordScreen(
+                        token = token,
+                        authState = authState,
+                        onSubmitClick = { t, p -> authViewModel.resetPassword(t, p) },
+                        onBackClick = { 
+                            authViewModel.resetAuthState()
+                            navController.popBackStack() 
+                        },
+                        onSuccess = {
+                            Toast.makeText(context, "Password reset successfully. Please sign in.", Toast.LENGTH_LONG).show()
+                            navController.navigate(Screen.Login.route) {
+                                popUpTo(Screen.Splash.route) { inclusive = true }
+                            }
+                            authViewModel.resetAuthState()
+                        }
                     )
                 }
 

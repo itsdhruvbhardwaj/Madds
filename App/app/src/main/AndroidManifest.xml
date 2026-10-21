@@ -30,7 +30,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- App Link for Email Verification -->
+            <!-- App Link for Email Verification & Reset Password -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -38,6 +38,7 @@
                 <data android:scheme="https" />
                 <data android:host="picme-ai.onrender.com" />
                 <data android:pathPrefix="/api/auth/verify-email" />
+                <data android:pathPrefix="/api/auth/reset-password" />
             </intent-filter>
         </activity>
 

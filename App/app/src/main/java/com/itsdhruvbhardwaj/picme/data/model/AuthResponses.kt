@@ -4,7 +4,8 @@ data class AuthResponse(
     val ok: Boolean,
     val accessToken: String?,
     val refreshToken: String?,
-    val user: User?
+    val user: User?,
+    val deletionScheduledAt: String? = null
 )
 
 data class RegistrationResponse(
@@ -26,12 +27,15 @@ data class UserResponse(
 
 data class MessageResponse(
     val ok: Boolean,
-    val message: String
+    val message: String,
+    val deletionScheduledAt: String? = null
 )
 
 data class ErrorResponse(
     val ok: Boolean,
-    val message: String
+    val message: String,
+    val code: String? = null,
+    val deletionScheduledAt: String? = null
 )
 
 /**

@@ -33,6 +33,8 @@ class AuthRepository(
                     tokenStorage.saveTokens(accessToken, refreshToken)
                     tokenStorage.saveUser(user)
                     Result.success(user)
+                } else if (response.deletionScheduledAt != null) {
+                    Result.failure(Exception("deletion_pending|${response.deletionScheduledAt}"))
                 } else {
                     Result.failure(Exception("server_failure"))
                 }
@@ -85,6 +87,54 @@ class AuthRepository(
     suspend fun googleAuth(idToken: String): Result<User> {
         return safeApiCall(
             call = { apiService.googleAuth(GoogleAuthRequest(idToken)) },
+            onSuccess = { response ->
+                val user = response.user
+                val accessToken = response.accessToken
+                val refreshToken = response.refreshToken
+
+                if (user != null && accessToken != null && refreshToken != null) {
+                    tokenStorage.saveTokens(accessToken, refreshToken)
+                    tokenStorage.saveUser(user)
+                    Result.success(user)
+                } else {
+                    Result.failure(Exception("server_failure"))
+                }
+            }
+        )
+    }
+
+    suspend fun forgotPassword(email: String): Result<String> {
+        return safeApiCall(
+            call = { apiService.forgotPassword(ForgotPasswordRequest(email)) },
+            onSuccess = { response ->
+                Result.success(response.message)
+            }
+        )
+    }
+
+    suspend fun resetPassword(token: String, newPassword: String): Result<String> {
+        return safeApiCall(
+            call = { apiService.resetPassword(ResetPasswordRequest(token, newPassword)) },
+            onSuccess = { response ->
+                Result.success(response.message)
+            }
+        )
+    }
+
+    suspend fun deleteAccount(password: String): Result<String> {
+        val accessToken = tokenStorage.getAccessToken() ?: return Result.failure(Exception("unauthorized"))
+        return safeApiCall(
+            call = { apiService.deleteAccount("Bearer $accessToken", DeleteAccountRequest(password)) },
+            onSuccess = { response ->
+                tokenStorage.clearTokens()
+                Result.success(response.deletionScheduledAt ?: "")
+            }
+        )
+    }
+
+    suspend fun cancelDeletion(email: String, password: String): Result<User> {
+        return safeApiCall(
+            call = { apiService.cancelDeletion(CancelDeletionRequest(email, password)) },
             onSuccess = { response ->
                 val user = response.user
                 val accessToken = response.accessToken
@@ -258,8 +308,11 @@ class AuthRepository(
                 }
 
                 val serverMessage = errorResponse?.message ?: errorBodyString
+                val serverCode = errorResponse?.code
                 
                 val mappedMessage = when {
+                    serverCode == "ACCOUNT_DELETION_PENDING" -> "deletion_pending|${errorResponse?.deletionScheduledAt ?: ""}"
+                    serverCode == "GOOGLE_REAUTHENTICATION_REQUIRED" -> "google_reauth_required"
                     errorCode == 409 || serverMessage.contains("already exists", ignoreCase = true) || serverMessage.contains("already taken", ignoreCase = true) -> "email_already_exists"
                     serverMessage.contains("verify your email", ignoreCase = true) -> "unverified_account"
                     serverMessage.contains("invalid", ignoreCase = true) && serverMessage.contains("token", ignoreCase = true) -> "invalid_token"

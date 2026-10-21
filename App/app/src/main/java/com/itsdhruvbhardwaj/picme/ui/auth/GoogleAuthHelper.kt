@@ -36,7 +36,6 @@ class GoogleAuthHelper(private val context: Context) {
                     request = request
                 )
                 val credential = result.credential
-                
                 if (credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
                     try {
                         val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)

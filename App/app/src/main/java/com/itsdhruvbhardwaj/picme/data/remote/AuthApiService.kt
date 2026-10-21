@@ -64,6 +64,17 @@ interface AuthApiService {
         @Body request: ResetPasswordRequest
     ): Response<MessageResponse>
 
+    @POST("api/auth/delete-account")
+    suspend fun deleteAccount(
+        @Header("Authorization") authorization: String,
+        @Body request: DeleteAccountRequest
+    ): Response<MessageResponse>
+
+    @POST("api/auth/login/cancel-deletion")
+    suspend fun cancelDeletion(
+        @Body request: CancelDeletionRequest
+    ): Response<AuthResponse>
+
     /**
      * Requests a one-time ticket for a rewarded ad attempt.
      * The ticket should be passed to AdMob SSV custom data.

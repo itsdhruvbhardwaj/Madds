@@ -10,6 +10,8 @@ sealed class Screen(val route: String) {
     data object Create : Screen("create")
     data object History : Screen("history")
     data object Profile : Screen("profile")
+    data object Settings : Screen("settings")
+    data object DeleteAccount : Screen("delete_account")
     data object StyleDetails : Screen("style_details/{styleId}") {
         fun createRoute(styleId: String) = "style_details/$styleId"
     }
@@ -37,5 +39,13 @@ sealed class Screen(val route: String) {
             val query = listOf(emailPart, tokenPart).filter { it.isNotEmpty() }.joinToString("&")
             return if (query.isNotEmpty()) "verify_email?$query" else "verify_email"
         }
+    }
+
+    data object ForgotPassword : Screen("forgot_password?email={email}") {
+        fun createRoute(email: String? = null) = if (email != null) "forgot_password?email=$email" else "forgot_password"
+    }
+
+    data object ResetPassword : Screen("reset_password?token={token}") {
+        fun createRoute(token: String? = null) = if (token != null) "reset_password?token=$token" else "reset_password"
     }
 }

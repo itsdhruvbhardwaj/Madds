@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
+import com.itsdhruvbhardwaj.picme.ui.components.PendingDeletionDialog
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeButton
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeLogo
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeSocialButton
@@ -36,7 +37,10 @@ fun LoginScreen(
     onResendVerificationClick: (String) -> Unit,
     onSignUpClick: () -> Unit,
     onGoogleClick: () -> Unit = {},
-    onForgotPasswordClick: () -> Unit = {}
+    onForgotPasswordClick: (String) -> Unit = {},
+    onCancelDeletion: () -> Unit = {},
+    onKeepDeletion: () -> Unit = {},
+    onDismissDeletionDialog: () -> Unit = {}
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -45,6 +49,7 @@ fun LoginScreen(
     val isLoading = authState is AuthState.Authenticating
     val errorMessage = (authState as? AuthState.Error)?.message
     val isUnverified = errorMessage?.contains("hasn't been verified yet", ignoreCase = true) == true
+    val isInvalidCredentials = errorMessage?.contains("Incorrect email or password", ignoreCase = true) == true
 
     Column(
         modifier = Modifier
@@ -127,7 +132,9 @@ fun LoginScreen(
                 text = "Forgot Password?",
                 style = MaterialTheme.typography.labelLarge,
                 color = Primary,
-                modifier = Modifier.clickable(enabled = !isLoading, onClick = onForgotPasswordClick)
+                modifier = Modifier.clickable(enabled = !isLoading) { 
+                    onForgotPasswordClick(email)
+                }
             )
         }
 
@@ -150,6 +157,30 @@ fun LoginScreen(
                         onResendVerificationClick(email)
                     }
                 )
+            }
+
+            if (isInvalidCredentials) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Forgot password? ",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                    Text(
+                        text = "Reset it",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = Primary,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        modifier = Modifier.clickable(enabled = !isLoading) { 
+                            onForgotPasswordClick(email)
+                        }
+                    )
+                }
             }
         }
 
@@ -182,5 +213,15 @@ fun LoginScreen(
                 modifier = Modifier.clickable(enabled = !isLoading, onClick = onSignUpClick)
             )
         }
+    }
+
+    // Deletion Pending Dialog
+    if (authState is AuthState.DeletionPending) {
+        PendingDeletionDialog(
+            scheduledDate = authState.scheduledDate,
+            onCancelDeletion = onCancelDeletion,
+            onKeepDeletion = onKeepDeletion,
+            onDismiss = onDismissDeletionDialog
+        )
     }
 }

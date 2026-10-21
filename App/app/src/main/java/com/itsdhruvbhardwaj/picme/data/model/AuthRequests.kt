@@ -35,3 +35,12 @@ data class ResetPasswordRequest(
     val token: String,
     val newPassword: String
 )
+
+data class DeleteAccountRequest(
+    val password: String
+)
+
+data class CancelDeletionRequest(
+    val email: String,
+    val password: String
+)
