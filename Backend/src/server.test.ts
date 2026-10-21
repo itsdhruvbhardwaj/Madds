@@ -70,8 +70,8 @@ vi.mock("./services/credits/creditService.js", () => {
 
   return {
     hashIdempotencyKey: (key: string) => `hashed:${key}`,
-    fingerprintGenerationRequest: (styleId: string, images: unknown[]) =>
-      `${styleId}:${images.length}`,
+    fingerprintGenerationRequest: (styleId: string, images: unknown[], customPrompt?: string) =>
+      `${styleId}:${customPrompt ?? ""}:${images.length}`,
     reserveGenerationCredits: generationMocks.reserveGenerationCredits,
     completeGeneration: generationMocks.completeGeneration,
     markGenerationOutcomeUnknown: generationMocks.markGenerationOutcomeUnknown,
@@ -475,6 +475,10 @@ describe("style favorites endpoints", () => {
 
 describe("generation endpoint", () => {
   beforeEach(() => {
+    generationMocks.generate.mockResolvedValue({
+      data: [{ b64_json: "abc123" }],
+      usage: { input_tokens: 12, output_tokens: 8, total_tokens: 20 },
+    });
     generationMocks.reserveGenerationCredits.mockResolvedValue({
       generationId: "generation-123",
       balanceAfter: 90,
@@ -570,6 +574,196 @@ describe("generation endpoint", () => {
     expect(response.status).toBe(400);
     expect(response.body.code).toBe("INVALID_IMAGE_COUNT");
     expect(generationMocks.reserveGenerationCredits).not.toHaveBeenCalled();
+  });
+
+  it.each([0, 1, 2])("accepts a custom prompt with %i uploaded image(s)", async (imageCount) => {
+    let generationRequest = request(app)
+      .post("/api/generate")
+      .set("Authorization", "******")
+      .set("Idempotency-Key", `custom-images-${imageCount}`)
+      .field("customPrompt", "A watercolor portrait in a garden");
+
+    for (let index = 0; index < imageCount; index += 1) {
+      generationRequest = generationRequest.attach("images", Buffer.from(`image-${index}`), {
+        filename: `reference-${index}.png`,
+        contentType: "image/png",
+      });
+    }
+    const response = await generationRequest;
+
+    expect(response.status).toBe(200);
+    expect(generationMocks.reserveGenerationCredits).toHaveBeenCalledWith(
+      expect.objectContaining({
+        styleId: "custom-prompt",
+        creditsCost: 10,
+        requestFingerprint: expect.stringContaining("A watercolor portrait in a garden"),
+      }),
+    );
+    expect(generationMocks.generate).toHaveBeenCalledTimes(imageCount === 0 ? 1 : 0);
+    expect(generationMocks.edit).toHaveBeenCalledTimes(imageCount > 0 ? 1 : 0);
+    const providerCall = imageCount > 0
+      ? generationMocks.edit.mock.calls[0]
+      : generationMocks.generate.mock.calls[0];
+    expect(providerCall[0].prompt).toContain("A watercolor portrait in a garden");
+    expect(providerCall[0].prompt).toContain("Do not identify or infer the identity of any person.");
+    expect(providerCall[0].prompt).toContain("creative direction");
+  });
+
+  it("rejects more than two custom reference images before reserving credits", async () => {
+    const response = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "******")
+      .set("Idempotency-Key", "custom-too-many-images")
+      .field("customPrompt", "A watercolor portrait")
+      .attach("images", Buffer.from("image-1"), { filename: "one.png", contentType: "image/png" })
+      .attach("images", Buffer.from("image-2"), { filename: "two.png", contentType: "image/png" })
+      .attach("images", Buffer.from("image-3"), { filename: "three.png", contentType: "image/png" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("TOO_MANY_IMAGES");
+    expect(generationMocks.reserveGenerationCredits).not.toHaveBeenCalled();
+  });
+
+  it("accepts exactly 150 whitespace-separated custom prompt words", async () => {
+    const customPrompt = Array.from({ length: 150 }, (_, index) => `word${index}`).join(" ");
+    const response = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "******")
+      .set("Idempotency-Key", "custom-150-words")
+      .field("customPrompt", customPrompt);
+
+    expect(response.status).toBe(200);
+    expect(generationMocks.reserveGenerationCredits).toHaveBeenCalledTimes(1);
+    expect(generationMocks.reserveGenerationCredits.mock.calls[0][0].requestFingerprint)
+      .toContain(customPrompt);
+  });
+
+  it("rejects custom prompts over 150 words without reserving credits", async () => {
+    const customPrompt = Array.from({ length: 151 }, (_, index) => `word${index}`).join(" ");
+    const response = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "******")
+      .set("Idempotency-Key", "custom-151-words")
+      .field("customPrompt", customPrompt);
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("CUSTOM_PROMPT_TOO_LONG");
+    expect(generationMocks.reserveGenerationCredits).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty custom prompt without reserving credits", async () => {
+    const response = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "******")
+      .set("Idempotency-Key", "custom-empty-prompt")
+      .field("customPrompt", " \t\n ");
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("CUSTOM_PROMPT_EMPTY");
+    expect(generationMocks.reserveGenerationCredits).not.toHaveBeenCalled();
+  });
+
+  it("requires exactly one generation mode", async () => {
+    const noMode = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "******")
+      .set("Idempotency-Key", "missing-generation-mode");
+    const bothModes = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "******")
+      .set("Idempotency-Key", "conflicting-generation-modes")
+      .field("styleId", "professional-portrait")
+      .field("customPrompt", "A watercolor portrait");
+
+    expect(noMode.status).toBe(400);
+    expect(noMode.body.code).toBe("GENERATION_MODE_REQUIRED");
+    expect(bothModes.status).toBe(400);
+    expect(bothModes.body.code).toBe("GENERATION_MODE_CONFLICT");
+    expect(generationMocks.reserveGenerationCredits).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid custom image types without reserving credits", async () => {
+    const response = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "******")
+      .set("Idempotency-Key", "custom-invalid-image")
+      .field("customPrompt", "A watercolor portrait")
+      .attach("images", Buffer.from("not an image"), {
+        filename: "reference.txt",
+        contentType: "text/plain",
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("INVALID_IMAGE");
+    expect(generationMocks.reserveGenerationCredits).not.toHaveBeenCalled();
+  });
+
+  it("returns the existing insufficient-credit contract for custom generations", async () => {
+    const { InsufficientCreditsError } = await import("./services/credits/creditService.js");
+    generationMocks.reserveGenerationCredits.mockRejectedValueOnce(
+      new InsufficientCreditsError(10, 4),
+    );
+    const response = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "******")
+      .set("Idempotency-Key", "custom-insufficient-credits")
+      .field("customPrompt", "A watercolor portrait");
+
+    expect(response.status).toBe(402);
+    expect(response.body).toMatchObject({
+      code: "INSUFFICIENT_CREDITS",
+      requiredCredits: 10,
+      availableCredits: 4,
+    });
+    expect(generationMocks.generate).not.toHaveBeenCalled();
+  });
+
+  it("includes the custom prompt in the idempotency fingerprint", async () => {
+    const { IdempotencyConflictError } = await import("./services/credits/creditService.js");
+    let firstFingerprint: string | undefined;
+    generationMocks.reserveGenerationCredits
+      .mockImplementationOnce(async (input: { requestFingerprint: string }) => {
+        firstFingerprint = input.requestFingerprint;
+        return { generationId: "generation-123", balanceAfter: 90 };
+      })
+      .mockImplementationOnce(async (input: { requestFingerprint: string }) => {
+        expect(input.requestFingerprint).not.toBe(firstFingerprint);
+        throw new IdempotencyConflictError("generation-existing", "completed", false);
+      });
+
+    const firstResponse = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "******")
+      .set("Idempotency-Key", "same-custom-prompt-key")
+      .field("customPrompt", "A watercolor portrait");
+    const secondResponse = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "******")
+      .set("Idempotency-Key", "same-custom-prompt-key")
+      .field("customPrompt", "A realistic oil painting");
+
+    expect(firstResponse.status).toBe(200);
+    expect(secondResponse.status).toBe(409);
+    expect(secondResponse.body.code).toBe("IDEMPOTENCY_KEY_REUSED");
+    expect(generationMocks.reserveGenerationCredits).toHaveBeenCalledTimes(2);
+  });
+
+  it("refunds a custom generation when the provider confirms failure", async () => {
+    generationMocks.generate.mockRejectedValueOnce(Object.assign(new Error("Provider rejected request."), {
+      status: 400,
+    }));
+    const response = await request(app)
+      .post("/api/generate")
+      .set("Authorization", "******")
+      .set("Idempotency-Key", "custom-provider-failure")
+      .field("customPrompt", "A watercolor portrait");
+
+    expect(response.status).toBe(502);
+    expect(response.body.code).toBe("GENERATION_FAILED_CREDITS_REFUNDED");
+    expect(generationMocks.refundGeneration).toHaveBeenCalledWith(
+      "generation-123",
+      "PROVIDER_REJECTED",
+    );
   });
 
   it("returns structured insufficient-credit details without calling the provider", async () => {

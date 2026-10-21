@@ -16,11 +16,19 @@ export function hashIdempotencyKey(key: string): string {
 export function fingerprintGenerationRequest(
   styleId: string,
   images: Array<{ buffer: Buffer }>,
+  customPrompt?: string,
 ): string {
   const hash = createHash("sha256")
     .update(String(Buffer.byteLength(styleId)))
     .update(":")
     .update(styleId);
+  if (customPrompt !== undefined) {
+    hash
+      .update("\0custom-prompt\0")
+      .update(String(Buffer.byteLength(customPrompt)))
+      .update(":")
+      .update(customPrompt);
+  }
   for (const image of images) {
     hash.update(String(image.buffer.length));
     hash.update(":");

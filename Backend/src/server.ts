@@ -31,7 +31,7 @@ import {
   UserNotFoundError,
 } from "./services/credits/creditService.js";
 import { OpenAIImageGenerator } from "./services/openai/generation.js";
-import { buildPrompt, findStyle, styles } from "./services/styles/styles.js";
+import { buildCustomPrompt, buildPrompt, findStyle, styles } from "./services/styles/styles.js";
 import type { UploadedImage } from "./types/generation.js";
 
 const upload = multer({
@@ -211,18 +211,54 @@ app.post(
       });
     }
 
-    const styleId = typeof req.body?.styleId === "string" ? req.body.styleId : "";
-    const style = findStyle(styleId);
-    if (!style) {
+    const body = req.body ?? {};
+    const hasStyleId = Object.prototype.hasOwnProperty.call(body, "styleId");
+    const hasCustomPrompt = Object.prototype.hasOwnProperty.call(body, "customPrompt");
+    if (hasStyleId === hasCustomPrompt) {
       return res.status(400).json({
         ok: false,
-        code: "INVALID_STYLE",
-        error: "A valid styleId is required.",
+        code: hasStyleId ? "GENERATION_MODE_CONFLICT" : "GENERATION_MODE_REQUIRED",
+        error: hasStyleId
+          ? "Provide either styleId or customPrompt, not both."
+          : "Provide either styleId or customPrompt.",
       });
     }
 
+    let style: ReturnType<typeof findStyle>;
+    let customPrompt: string | undefined;
+    if (hasStyleId) {
+      const styleId = typeof body.styleId === "string" ? body.styleId.trim() : "";
+      style = findStyle(styleId);
+      if (!style) {
+        return res.status(400).json({
+          ok: false,
+          code: "INVALID_STYLE",
+          error: "A valid styleId is required.",
+        });
+      }
+    } else {
+      customPrompt = typeof body.customPrompt === "string" ? body.customPrompt.trim() : "";
+      if (!customPrompt) {
+        return res.status(400).json({
+          ok: false,
+          code: "CUSTOM_PROMPT_EMPTY",
+          error: "A non-empty customPrompt is required.",
+        });
+      }
+
+      const wordCount = customPrompt.split(/\s+/u).length;
+      if (wordCount > 150) {
+        return res.status(400).json({
+          ok: false,
+          code: "CUSTOM_PROMPT_TOO_LONG",
+          error: "customPrompt must contain no more than 150 words.",
+          maxWords: 150,
+        });
+      }
+    }
+
     const uploadedFiles = Array.isArray(req.files) ? req.files : [];
-    if (uploadedFiles.length !== style.imageCount) {
+    if (style && uploadedFiles.length !== style.imageCount) {
       return res.status(400).json({
         ok: false,
         code: "INVALID_IMAGE_COUNT",
@@ -266,15 +302,20 @@ app.post(
       });
     }
 
-    const requestFingerprint = fingerprintGenerationRequest(style.id, validatedImages);
+    const reservationStyleId = style?.id ?? "custom-prompt";
+    const requestFingerprint = fingerprintGenerationRequest(
+      reservationStyleId,
+      validatedImages,
+      customPrompt,
+    );
     let reservation: { generationId: string; balanceAfter: number };
     try {
       reservation = await reserveGenerationCredits({
         userId,
-        styleId: style.id,
+        styleId: reservationStyleId,
         idempotencyKeyHash,
         requestFingerprint,
-        creditsCost: style.tokensRequired,
+        creditsCost: style?.tokensRequired ?? 10,
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
@@ -325,7 +366,9 @@ app.post(
     try {
       const generator = new OpenAIImageGenerator();
       result = await generator.generate({
-        prompt: buildPrompt(style, validatedImages.length),
+        prompt: style
+          ? buildPrompt(style, validatedImages.length)
+          : buildCustomPrompt(customPrompt ?? "", validatedImages.length),
         images: validatedImages,
       });
     } catch (error) {
@@ -407,6 +450,25 @@ app.post(
 );
 
 app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === "LIMIT_UNEXPECTED_FILE" || error.code === "LIMIT_FILE_COUNT") {
+      res.status(400).json({
+        ok: false,
+        code: "TOO_MANY_IMAGES",
+        error: "A maximum of 2 images may be uploaded.",
+      });
+      return;
+    }
+    if (error.code === "LIMIT_FILE_SIZE") {
+      res.status(400).json({
+        ok: false,
+        code: "IMAGE_TOO_LARGE",
+        error: "An uploaded image exceeds the allowed file size.",
+      });
+      return;
+    }
+  }
+
   res.status(500).json({
     ok: false,
     error: error.message,

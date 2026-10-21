@@ -70,6 +70,7 @@ vi.mock("./models/RewardedAdAttempt.js", () => ({
 import {
   createUserWithWelcomeCredits,
   createRewardedAdAttempt,
+  fingerprintGenerationRequest,
   grantRewardedAdCredits,
   IdempotencyConflictError,
   InsufficientCreditsError,
@@ -98,6 +99,17 @@ function rewardedAdAttemptQuery(result: unknown) {
     lean: vi.fn().mockResolvedValue(result),
   };
 }
+
+describe("generation request fingerprint", () => {
+  it("distinguishes custom prompts and uploaded image contents", () => {
+    const images = [{ buffer: Buffer.from("image-a") }];
+
+    expect(fingerprintGenerationRequest("custom-prompt", images, "paint a forest"))
+      .not.toBe(fingerprintGenerationRequest("custom-prompt", images, "paint a city"));
+    expect(fingerprintGenerationRequest("custom-prompt", images, "paint a forest"))
+      .not.toBe(fingerprintGenerationRequest("custom-prompt", [{ buffer: Buffer.from("image-b") }], "paint a forest"));
+  });
+});
 
 describe("credit accounting transactions", () => {
   beforeEach(() => {
