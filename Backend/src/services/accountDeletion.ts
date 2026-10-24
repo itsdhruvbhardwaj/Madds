@@ -5,6 +5,7 @@ import { EmailVerificationToken } from "../models/EmailVerificationToken.js";
 import { FavoriteStyle } from "../models/FavoriteStyle.js";
 import { Generation } from "../models/Generation.js";
 import { PasswordResetToken } from "../models/PasswordResetToken.js";
+import { PasswordSetupToken } from "../models/PasswordSetupToken.js";
 import { Purchase } from "../models/Purchase.js";
 import { RewardedAdAttempt } from "../models/RewardedAdAttempt.js";
 import { Session } from "../models/Session.js";
@@ -17,6 +18,7 @@ const userOwnedModels = [
   FavoriteStyle,
   Generation,
   PasswordResetToken,
+  PasswordSetupToken,
   Purchase,
   RewardedAdAttempt,
   Session,

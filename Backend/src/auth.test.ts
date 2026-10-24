@@ -231,6 +231,8 @@ describe("email verification", () => {
       isActive: true,
       profileImage: null,
       credits: 500,
+      hasPassword: true,
+      hasGoogleLogin: true,
     });
     expect(response.body.accessToken).toBeTruthy();
     expect(response.body.refreshToken).toBeTruthy();
@@ -1240,7 +1242,7 @@ describe("session lifecycle and refresh security", () => {
     );
   });
 
-  it("requires Google re-authentication when requesting deletion without a password hash", async () => {
+  it("requires verified password setup before deleting an account without a password hash", async () => {
     const authenticatedUser = {
       _id: "google-delete",
       name: "Google User",
@@ -1272,7 +1274,7 @@ describe("session lifecycle and refresh security", () => {
       .send({});
 
     expect(response.status).toBe(403);
-    expect(response.body.code).toBe("GOOGLE_REAUTHENTICATION_REQUIRED");
+    expect(response.body.code).toBe("PASSWORD_SETUP_REQUIRED");
     expect(userModel.updateOne).not.toHaveBeenCalled();
     expect(sessionModel.updateMany).not.toHaveBeenCalled();
   });

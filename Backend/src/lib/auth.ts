@@ -14,6 +14,8 @@ export type AuthenticatedUser = {
   isActive: boolean;
   credits: number;
   profileImage?: string | null;
+  hasPassword: boolean;
+  hasGoogleLogin: boolean;
 };
 
 export function hashPassword(password: string): Promise<string> {
@@ -112,6 +114,8 @@ export function sanitizeUser(user: {
   profileImage?: string | null;
   isActive?: boolean;
   credits?: number;
+  passwordHash?: string | null;
+  googleId?: string | null;
 }): AuthenticatedUser {
   const id = typeof user._id === "string" ? user._id : user._id?.toString?.() ?? user.id ?? "";
 
@@ -125,5 +129,7 @@ export function sanitizeUser(user: {
       ? user.credits
       : 0,
     profileImage: user.profileImage ?? null,
+    hasPassword: Boolean(user.passwordHash),
+    hasGoogleLogin: Boolean(user.googleId),
   };
 }

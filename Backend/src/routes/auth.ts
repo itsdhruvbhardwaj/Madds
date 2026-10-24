@@ -7,10 +7,11 @@ import { createAccessToken, createRandomToken, createRefreshToken, getRefreshSes
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth.js";
 import { EmailVerificationToken } from "../models/EmailVerificationToken.js";
 import { PasswordResetToken } from "../models/PasswordResetToken.js";
+import { PasswordSetupToken } from "../models/PasswordSetupToken.js";
 import { Session } from "../models/Session.js";
 import { User } from "../models/User.js";
 import { createUserWithWelcomeCredits } from "../services/credits/creditService.js";
-import { sendPasswordResetEmail, sendVerificationEmail } from "../services/emailService.js";
+import { sendPasswordResetEmail, sendPasswordSetupVerificationEmail, sendVerificationEmail } from "../services/emailService.js";
 
 const router: Router = Router();
 const googleOAuthClient = new OAuth2Client();
@@ -690,6 +691,119 @@ router.post("/login/cancel-deletion", loginRateLimiter, async (req: Request, res
   }
 });
 
+router.post("/google/password/setup", authRateLimiter, requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user?.id;
+  const password = getRequestBodyValue(req, "password");
+  const confirmPassword = getRequestBodyValue(req, "confirmPassword");
+  if (!userId) {
+    return res.status(401).json({ ok: false, error: "Authentication required." });
+  }
+  if (!isStrongPassword(password)) {
+    return res.status(400).json({
+      ok: false,
+      code: "WEAK_PASSWORD",
+      error: "Password must be at least 8 characters and include uppercase, lowercase, and numeric characters.",
+    });
+  }
+  if (password !== confirmPassword) {
+    return res.status(400).json({ ok: false, code: "PASSWORDS_DO_NOT_MATCH", error: "Passwords do not match." });
+  }
+
+  try {
+    const user = await User.findOne({ _id: userId, isActive: { $ne: false } });
+    if (!user) {
+      return res.status(401).json({ ok: false, error: "Authentication required." });
+    }
+    if (!user.googleId) {
+      return res.status(403).json({ ok: false, code: "GOOGLE_ACCOUNT_REQUIRED", error: "This password setup flow is only for Google sign-in accounts." });
+    }
+    if (user.passwordHash) {
+      return res.status(409).json({ ok: false, code: "PASSWORD_ALREADY_SET", error: "This account already has a password. Confirm deletion with that password." });
+    }
+    if (!user.emailVerified) {
+      return res.status(403).json({ ok: false, code: "EMAIL_NOT_VERIFIED", error: "Verify your email address before setting a password." });
+    }
+    if (user.deletionScheduledAt || user.deletionCleanupStartedAt) {
+      return res.status(409).json({ ok: false, code: "ACCOUNT_DELETION_PENDING", error: "Cancel the scheduled account deletion before setting a password." });
+    }
+
+    const rawToken = createRandomToken();
+    const now = new Date();
+    await PasswordSetupToken.deleteMany({ userId: user._id, usedAt: null });
+    await PasswordSetupToken.create({
+      userId: user._id,
+      tokenHash: hashToken(rawToken),
+      pendingPasswordHash: await hashPassword(password),
+      expiresAt: new Date(now.getTime() + 30 * 60 * 1000),
+    });
+
+    const sent = await sendPasswordSetupVerificationEmail({
+      email: user.email,
+      name: user.name,
+      rawToken,
+    });
+    if (!sent) {
+      await PasswordSetupToken.deleteMany({ userId: user._id, usedAt: null });
+      return res.status(503).json({ ok: false, code: "EMAIL_SEND_FAILED", error: "We could not send the verification email. Please try again later." });
+    }
+
+    return res.json({ ok: true, message: "Password verification email sent. Verify your email before deleting your account." });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to start password setup.";
+    return res.status(500).json({ ok: false, error: message });
+  }
+});
+
+router.get("/google/password/verify", authRateLimiter, async (req: Request, res: Response) => {
+  const respond = (status: number, body: { ok: boolean; message?: string; code?: string; error?: string }) => {
+    const message = body.message ?? body.error ?? "Password verification could not be completed.";
+    if (req.accepts("html") && !req.accepts("json")) {
+      const title = body.ok ? "Password verified" : "Verification link issue";
+      const safeMessage = message.replace(/[&<>\"']/g, (character) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;",
+      })[character] ?? character);
+      return res.status(status).type("html").send(`<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title></head><body style="font:16px Arial,sans-serif;max-width:560px;margin:12vh auto;padding:24px;color:#202124"><h1>${title}</h1><p>${safeMessage}</p><p>Return to PicMee to continue.</p></body></html>`);
+    }
+    return res.status(status).json(body);
+  };
+  const rawToken = typeof req.query.token === "string" ? req.query.token.trim() : "";
+  if (!rawToken) {
+    return respond(400, { ok: false, code: "INVALID_TOKEN", error: "Password verification link is invalid." });
+  }
+
+  try {
+    const now = new Date();
+    const token = await PasswordSetupToken.findOneAndUpdate(
+      { tokenHash: hashToken(rawToken), usedAt: null, expiresAt: { $gt: now } },
+      { $set: { usedAt: now } },
+      { new: true },
+    );
+    if (!token) {
+      return respond(400, { ok: false, code: "INVALID_OR_EXPIRED_TOKEN", error: "This password verification link is invalid, expired, or already used. Request a new one in PicMee." });
+    }
+
+    const updated = await User.updateOne(
+      {
+        _id: token.userId,
+        isActive: { $ne: false },
+        googleId: { $exists: true, $ne: null },
+        passwordHash: null,
+        deletionScheduledAt: null,
+        deletionCleanupStartedAt: null,
+      },
+      { $set: { passwordHash: token.pendingPasswordHash } },
+    );
+    if (updated.modifiedCount !== 1) {
+      return respond(409, { ok: false, code: "PASSWORD_SETUP_NOT_APPLIED", error: "Password setup could not be applied. Sign in again and request a new verification email." });
+    }
+
+    return respond(200, { ok: true, message: "Email verified and password set. Confirm account deletion in PicMee with your new password." });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to verify password setup.";
+    return res.status(500).json({ ok: false, error: message });
+  }
+});
+
 router.post("/delete-account", authRateLimiter, requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user?.id;
   const password = getRequestBodyValue(req, "password");
@@ -705,8 +819,8 @@ router.post("/delete-account", authRateLimiter, requireAuth, async (req: Authent
     if (!user.passwordHash) {
       return res.status(403).json({
         ok: false,
-        code: "GOOGLE_REAUTHENTICATION_REQUIRED",
-        error: "Re-authenticate with Google before scheduling account deletion.",
+        code: "PASSWORD_SETUP_REQUIRED",
+        error: "Set and verify a password before scheduling account deletion.",
       });
     }
     if (!password) {

@@ -34,9 +34,33 @@ async function sendEmail(message: EmailMessage, purpose: string): Promise<boolea
   }
 }
 
-function buildAuthUrl(path: "verify-email" | "reset-password", rawToken: string): string {
+function buildAuthUrl(path: "verify-email" | "reset-password" | "google/password/verify", rawToken: string): string {
   const baseUrl = env.appBaseUrl.replace(/\/+$/, "");
   return `${baseUrl}/api/auth/${path}?token=${encodeURIComponent(rawToken)}`;
+}
+
+export async function sendPasswordSetupVerificationEmail(input: {
+  email: string;
+  name: string;
+  rawToken: string;
+}): Promise<boolean> {
+  const { email, name, rawToken } = input;
+  const verificationUrl = buildAuthUrl("google/password/verify", rawToken);
+
+  return sendEmail(
+    {
+      to: email,
+      subject: "Verify your PicMee password setup",
+      html: `
+        <p>Hello ${name},</p>
+        <p>Confirm this password setup request for your PicMee account by opening the link below:</p>
+        <p><a href="${verificationUrl}">Verify password setup</a></p>
+        <p>This link expires in 30 minutes. If you did not request this, you can ignore this email.</p>
+      `,
+      text: `Hello ${name},\n\nVerify your PicMee password setup using this link:\n${verificationUrl}\n\nThis link expires in 30 minutes. If you did not request this, you can ignore this email.`,
+    },
+    "password setup verification",
+  );
 }
 
 export async function sendVerificationEmail(input: {
