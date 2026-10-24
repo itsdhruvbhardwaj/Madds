@@ -1,7 +1,7 @@
 export interface HomeSection {
   id: string;
   title: string;
-  type: "collection" | "popular";
+  type: "collection";
   slug?: string;
   visible: boolean;
   order: number;
@@ -19,7 +19,8 @@ export const homeSections: HomeSection[] = [
   {
     id: "popular",
     title: "Popular",
-    type: "popular",
+    type: "collection",
+    slug: "Popular",
     visible: true,
     order: 2,
   },
@@ -54,5 +55,21 @@ export const homeSections: HomeSection[] = [
     slug: "Bhakti",
     visible: true,
     order: 6,
+  },
+  {
+    id: "artistic-styles",
+    title: "Artistic Styles",
+    type: "collection",
+    slug: "Artistic",
+    visible: true,
+    order: 1,
+  },
+  {
+    id: "saree-styles",
+    title: "Saree",
+    type: "collection",
+    slug: "Saree",
+    visible: true,
+    order: 1,
   },
 ];

@@ -167,7 +167,8 @@ describe("home configuration endpoint", () => {
       {
         id: "popular",
         title: "Popular",
-        type: "popular",
+        type: "collection",
+        slug: "Popular",
         visible: true,
         order: 2,
       },
@@ -217,6 +218,7 @@ describe("home configuration endpoint", () => {
 
     expect(configuredCollections.filter((slug: string) => existingCollections.has(slug))).toEqual([
       "trending",
+      "popular",
       "couple",
       "merge",
       "professional",
@@ -276,6 +278,7 @@ describe("styles endpoint", () => {
       expect(style).toHaveProperty("description");
       expect(style).toHaveProperty("prompt");
       expect(style).toHaveProperty("thumbnail");
+      expect(style).not.toHaveProperty("category");
       expect(style.collections).toEqual(expectedCollectionsByStyle[style.id]);
       expect(style.previewImages).toEqual(
         style.id === "cinematic-couple"
@@ -307,18 +310,6 @@ describe("styles endpoint", () => {
     expect(favoriteStyleMocks.find).toHaveBeenCalledWith({ userId: "test-user" });
   });
 
-  it("filters styles by category case-insensitively", async () => {
-    const response = await request(app).get("/api/styles?category=portrait");
-
-    expect(response.status).toBe(200);
-    expect(response.body.styles.map((style: { id: string }) => style.id)).toEqual([
-      "cinematic-couple",
-      "wedding",
-      "professional-portrait",
-    ]);
-    expect(response.body.pagination.totalCount).toBe(3);
-  });
-
   it("filters styles by a single collection case-insensitively", async () => {
     assignCollections("cinematic-couple", "Featured");
 
@@ -343,20 +334,6 @@ describe("styles endpoint", () => {
       "cinematic-couple",
       "90s-bollywood",
     ]);
-  });
-
-  it("applies category and collection filters together", async () => {
-    assignCollections("cinematic-couple", "Featured");
-    assignCollections("anime-portrait", "Featured");
-
-    const response = await request(app)
-      .get("/api/styles?category=Portrait&collection=featured");
-
-    expect(response.status).toBe(200);
-    expect(response.body.styles.map((style: { id: string }) => style.id)).toEqual([
-      "cinematic-couple",
-    ]);
-    expect(response.body.pagination.totalCount).toBe(1);
   });
 
   it("paginates after applying the collection filter", async () => {

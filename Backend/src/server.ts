@@ -140,18 +140,14 @@ app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Resp
   // Parse query parameters with defaults and safety limits
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 18));
-  const category = req.query.category as string;
   const collectionQuery = req.query.collection;
+  const searchQuery = typeof req.query.search === "string" ? req.query.search.trim().toLowerCase() : "";
+  const trendingFirst = req.query.trendingFirst === "true";
   const collections = (Array.isArray(collectionQuery) ? collectionQuery : [collectionQuery])
     .filter((value): value is string => typeof value === "string");
 
-  // Apply category and collection filters before pagination
+  // Apply collection filters before pagination
   let filteredStyles = styles;
-  if (category) {
-    filteredStyles = styles.filter(
-      (s) => s.category.toLowerCase() === category.toLowerCase()
-    );
-  }
   if (collections.length > 0) {
     filteredStyles = filteredStyles.filter((style) =>
       style.collections.some((collection) =>
@@ -160,6 +156,19 @@ app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Resp
         )
       )
     );
+  }
+  if (searchQuery) {
+    filteredStyles = filteredStyles.filter((style) =>
+      style.name.toLowerCase().includes(searchQuery) ||
+      style.description.toLowerCase().includes(searchQuery)
+    );
+  }
+  if (trendingFirst) {
+    filteredStyles = [...filteredStyles].sort((left, right) => {
+      const leftIsTrending = left.collections.some((collection) => collection.toLowerCase() === "trending");
+      const rightIsTrending = right.collections.some((collection) => collection.toLowerCase() === "trending");
+      return Number(rightIsTrending) - Number(leftIsTrending);
+    });
   }
 
   // Calculate pagination metadata
