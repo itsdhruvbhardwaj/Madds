@@ -36,8 +36,11 @@ data class ResetPasswordRequest(
     val newPassword: String
 )
 
-data class DeleteAccountRequest(
-    val password: String
+data class DeleteAccountRequest(val password: String)
+
+data class GooglePasswordSetupRequest(
+    val password: String,
+    val confirmPassword: String
 )
 
 data class CancelDeletionRequest(

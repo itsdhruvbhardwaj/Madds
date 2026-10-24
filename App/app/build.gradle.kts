@@ -80,6 +80,9 @@ dependencies {
     implementation(libs.androidx.credentials.play.auth)
     implementation(libs.googleid)
 
+    // Google Play Billing
+    implementation(libs.google.billing)
+
     testImplementation(libs.junit)
     testImplementation(libs.mockito.core)
     testImplementation(libs.mockito.kotlin)

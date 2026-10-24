@@ -6,6 +6,7 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
+import retrofit2.http.Query
 
 interface AuthApiService {
 
@@ -70,6 +71,17 @@ interface AuthApiService {
         @Body request: DeleteAccountRequest
     ): Response<MessageResponse>
 
+    @POST("api/auth/google/password/setup")
+    suspend fun requestGooglePasswordSetup(
+        @Header("Authorization") authorization: String,
+        @Body request: GooglePasswordSetupRequest
+    ): Response<MessageResponse>
+
+    @GET("api/auth/google/password/verify")
+    suspend fun verifyGooglePasswordSetup(
+        @Query("token") token: String
+    ): Response<MessageResponse>
+
     @POST("api/auth/login/cancel-deletion")
     suspend fun cancelDeletion(
         @Body request: CancelDeletionRequest
@@ -83,4 +95,13 @@ interface AuthApiService {
     suspend fun requestRewardAttempt(
         @Header("Authorization") authorization: String
     ): Response<RewardAttemptResponse>
+
+    /**
+     * Verifies a Google Play purchase and grants credits.
+     */
+    @POST("api/purchases/google-play/verify")
+    suspend fun verifyPurchase(
+        @Header("Authorization") authorization: String,
+        @Body request: GooglePlayPurchaseRequest
+    ): Response<PurchaseVerificationResponse>
 }

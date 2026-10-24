@@ -10,10 +10,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -32,8 +34,6 @@ fun PicMeButton(
     shadowElevation: Dp = 6.dp
 ) {
     // Premium action button using Box + background + shadow.
-    // This avoids Material 3 Surface artifacts (grey patches/tonal elevation) 
-    // ensuring a uniform gradient fill even on translucent glass backgrounds.
     
     val shadowModifier = if (shadowElevation > 0.dp) {
         Modifier.shadow(
@@ -61,22 +61,26 @@ fun PicMeButton(
             ),
         contentAlignment = Alignment.Center
     ) {
+        // Use graphicsLayer alpha to hide text without removing it from layout, 
+        // ensuring the button width remains stable during loading.
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge.copy(
+                color = Color.White,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 15.sp,
+                letterSpacing = 0.5.sp
+            ),
+            modifier = Modifier
+                .padding(horizontal = 24.dp)
+                .graphicsLayer(alpha = if (isLoading) 0f else 1f)
+        )
+
         if (isLoading) {
             CircularProgressIndicator(
                 modifier = Modifier.size(20.dp),
                 color = Color.White,
                 strokeWidth = 2.dp
-            )
-        } else {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelLarge.copy(
-                    color = Color.White,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 15.sp,
-                    letterSpacing = 0.5.sp
-                ),
-                modifier = Modifier.padding(horizontal = 24.dp)
             )
         }
     }
@@ -106,21 +110,23 @@ fun PicMeSecondaryButton(
             ),
         contentAlignment = Alignment.Center
     ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = Primary
+            ),
+            modifier = Modifier
+                .padding(horizontal = 24.dp)
+                .graphicsLayer(alpha = if (isLoading) 0f else 1f)
+        )
+
         if (isLoading) {
             CircularProgressIndicator(
                 modifier = Modifier.size(20.dp),
                 color = Primary,
                 strokeWidth = 2.dp
-            )
-        } else {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = Primary
-                ),
-                modifier = Modifier.padding(horizontal = 24.dp)
             )
         }
     }

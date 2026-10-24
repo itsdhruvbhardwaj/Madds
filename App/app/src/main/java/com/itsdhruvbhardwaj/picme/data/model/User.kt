@@ -18,5 +18,7 @@ data class User(
     val emailVerified: Boolean,
     val isActive: Boolean = true,
     val profileImage: String? = null,
-    val credits: Int = 0
+    val credits: Int = 0,
+    val hasPassword: Boolean = false,
+    val hasGoogleLogin: Boolean = false
 )

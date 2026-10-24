@@ -26,30 +26,22 @@ fun HomeScreen(
     authViewModel: AuthViewModel,
     viewModel: HomeViewModel,
     onStyleClick: (String) -> Unit,
-    onSeeAllClick: (String?, String?) -> Unit,
+    onSeeAllClick: (String?) -> Unit,
     onProfileClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val authState by authViewModel.authState.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("All") }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Softly Blurred Glassmorphism Background
         Image(
             painter = painterResource(id = R.drawable.glassmorphismwallpaper),
             contentDescription = null,
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(20.dp),
+            modifier = Modifier.fillMaxSize().blur(20.dp),
             contentScale = ContentScale.Crop
         )
-        
-        // Subtle overlay for better contrast
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.White.copy(alpha = 0.15f))
+            modifier = Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.15f))
         )
 
         Scaffold(
@@ -68,15 +60,11 @@ fun HomeScreen(
                     .padding(top = innerPadding.calculateTopPadding())
             ) {
                 when (val state = uiState) {
-                    is HomeUiState.Loading -> {
-                        HomeSkeleton()
-                    }
-                    is HomeUiState.Error -> {
-                        HomeErrorState(
-                            message = state.message,
-                            onRetry = { viewModel.loadHomeData() }
-                        )
-                    }
+                    HomeUiState.Loading -> HomeSkeleton()
+                    is HomeUiState.Error -> HomeErrorState(
+                        message = state.message,
+                        onRetry = { viewModel.loadHomeData() }
+                    )
                     is HomeUiState.Success -> {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
@@ -89,18 +77,6 @@ fun HomeScreen(
                                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
                                 )
                             }
-
-                            item {
-                                HomeCategorySection(
-                                    categories = state.categories,
-                                    selectedCategory = selectedCategory,
-                                    onCategorySelected = { category ->
-                                        selectedCategory = category
-                                        onSeeAllClick(if (category == "All") null else category, null)
-                                    }
-                                )
-                            }
-
                             items(state.sections, key = { it.config.id }) { sectionData ->
                                 if (sectionData.styles == null) {
                                     SectionSkeleton()
@@ -124,15 +100,12 @@ fun HomeScreen(
 fun HomeSectionRow(
     sectionData: HomeSectionData,
     onStyleClick: (String) -> Unit,
-    onSeeAllClick: (String?, String?) -> Unit
+    onSeeAllClick: (String?) -> Unit
 ) {
     Column {
         SectionHeader(
             title = sectionData.config.title,
-            onSeeAllClick = {
-                val collectionSlug = if (sectionData.config.type == "popular") "Popular" else sectionData.config.slug
-                onSeeAllClick(null, collectionSlug)
-            },
+            onSeeAllClick = { onSeeAllClick(sectionData.config.slug) },
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
         )
         LazyRow(
@@ -157,27 +130,6 @@ fun HomeSectionRow(
 }
 
 @Composable
-fun HomeCategorySection(
-    categories: List<String>,
-    selectedCategory: String,
-    onCategorySelected: (String) -> Unit
-) {
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        items(categories) { category ->
-            CategoryChip(
-                name = category,
-                isSelected = selectedCategory == category,
-                onClick = { onCategorySelected(category) }
-            )
-        }
-    }
-}
-
-@Composable
 fun HomeErrorState(
     message: String,
     onRetry: () -> Unit
@@ -195,10 +147,7 @@ fun HomeErrorState(
             style = MaterialTheme.typography.bodyLarge
         )
         Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = onRetry,
-            shape = RoundedCornerShape(12.dp)
-        ) {
+        Button(onClick = onRetry, shape = RoundedCornerShape(12.dp)) {
             Text("Retry")
         }
     }

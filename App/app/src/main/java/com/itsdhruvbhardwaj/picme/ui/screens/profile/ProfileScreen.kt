@@ -103,7 +103,7 @@ fun ProfileScreen(
                     .padding(bottom = 160.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // User Profile Section
                 Box(
@@ -134,7 +134,7 @@ fun ProfileScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
                     text = user?.name ?: "User",
@@ -146,7 +146,7 @@ fun ProfileScreen(
                     color = TextSecondary
                 )
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 // Credits Card
                 Box(
@@ -191,7 +191,7 @@ fun ProfileScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 // Menu Options
                 Box(
@@ -246,7 +246,7 @@ fun ProfileScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Red/Pink Glass Logout Row
                 Box(

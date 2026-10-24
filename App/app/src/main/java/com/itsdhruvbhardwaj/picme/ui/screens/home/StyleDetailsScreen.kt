@@ -126,37 +126,15 @@ fun StyleDetailsScreen(
                             Column(
                                 verticalArrangement = Arrangement.spacedBy(24.dp)
                             ) {
-                                // Title & Category Row
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = style.name,
-                                        style = MaterialTheme.typography.headlineSmall.copy(
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 28.sp,
-                                            color = Color(0xFF1E293B)
-                                        ),
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    
-                                    Surface(
-                                        color = Color.White.copy(alpha = 0.5f),
-                                        shape = RoundedCornerShape(12.dp),
-                                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.6f))
-                                    ) {
-                                        Text(
-                                            text = style.category,
-                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                            style = MaterialTheme.typography.labelMedium.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                color = Primary
-                                            )
-                                        )
-                                    }
-                                }
+                                Text(
+                                    text = style.name,
+                                    style = MaterialTheme.typography.headlineSmall.copy(
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 28.sp,
+                                        color = Color(0xFF1E293B)
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
                                 
                                 // Description
                                 Text(

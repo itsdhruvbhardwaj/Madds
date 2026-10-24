@@ -29,8 +29,10 @@ import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.create.GenerationViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.home.FavoritesViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.home.HomeViewModel
+import com.itsdhruvbhardwaj.picme.ui.screens.search.ExploreViewModel
 import com.itsdhruvbhardwaj.picme.ui.theme.PicMeTheme
 import com.itsdhruvbhardwaj.picme.utils.AdManager
+import com.itsdhruvbhardwaj.picme.utils.BillingManager
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -39,6 +41,7 @@ import java.util.concurrent.TimeUnit
 class MainActivity : ComponentActivity() {
     
     private var intentState by mutableStateOf<Intent?>(null)
+    private lateinit var billingManager: BillingManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,19 +49,18 @@ class MainActivity : ComponentActivity() {
 
         // Initialize Google Mobile Ads SDK
         MobileAds.initialize(this) {
-            // Preload ads once SDK is initialized
             AdManager.loadInterstitial(this)
             AdManager.loadRewardedAd(this)
         }
 
+        // Initialize Billing Manager
+        billingManager = BillingManager(applicationContext)
+
         val tokenStorage = AuthTokenStorage(applicationContext)
-        
-        // Use a late-init style approach to resolve circular dependency between AuthRepository and Authenticator
         lateinit var authRepository: AuthRepository
 
         val okHttpClient = OkHttpClient.Builder()
             .authenticator(AuthAuthenticator(tokenStorage) { authRepository })
-            // Increased timeouts to accommodate Render.com cold starts (approx 30s)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
@@ -81,13 +83,15 @@ class MainActivity : ComponentActivity() {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 return when {
                     modelClass.isAssignableFrom(AuthViewModel::class.java) -> 
-                        AuthViewModel(authRepository) as T
+                        AuthViewModel(authRepository, billingManager) as T
                     modelClass.isAssignableFrom(HomeViewModel::class.java) -> 
                         HomeViewModel(styleRepository) as T
                     modelClass.isAssignableFrom(GenerationViewModel::class.java) ->
                         GenerationViewModel(generationRepository) as T
                     modelClass.isAssignableFrom(FavoritesViewModel::class.java) ->
                         FavoritesViewModel(styleRepository) as T
+                    modelClass.isAssignableFrom(ExploreViewModel::class.java) ->
+                        ExploreViewModel(styleRepository) as T
                     else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
                 }
             }
@@ -97,6 +101,7 @@ class MainActivity : ComponentActivity() {
         val homeViewModel = ViewModelProvider(this, viewModelFactory)[HomeViewModel::class.java]
         val generationViewModel = ViewModelProvider(this, viewModelFactory)[GenerationViewModel::class.java]
         val favoritesViewModel = ViewModelProvider(this, viewModelFactory)[FavoritesViewModel::class.java]
+        val exploreViewModel = ViewModelProvider(this, viewModelFactory)[ExploreViewModel::class.java]
 
         setContent {
             PicMeTheme {
@@ -106,11 +111,10 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val navController = rememberNavController()
                     
-                    // Handle new intents delivered via singleTask / onNewIntent
                     LaunchedEffect(intentState) {
                         intentState?.let {
                             navController.handleDeepLink(it)
-                            intentState = null // Reset after handling
+                            intentState = null
                         }
                     }
 
@@ -120,11 +124,19 @@ class MainActivity : ComponentActivity() {
                         homeViewModel = homeViewModel,
                         generationViewModel = generationViewModel,
                         favoritesViewModel = favoritesViewModel,
+                        exploreViewModel = exploreViewModel,
                         styleRepository = styleRepository
                     )
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Process any purchases that might have completed while the app was in background
+        val authViewModel = ViewModelProvider(this)[AuthViewModel::class.java]
+        authViewModel.processPendingPurchases()
     }
 
     override fun onNewIntent(intent: Intent) {

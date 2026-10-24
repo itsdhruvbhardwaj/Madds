@@ -21,7 +21,6 @@ sealed interface StylesGridUiState {
 
 class StylesGridViewModel(
     private val styleRepository: StyleRepository,
-    private val category: String?,
     private val collection: String?
 ) : ViewModel() {
 
@@ -45,7 +44,6 @@ class StylesGridViewModel(
             val result = styleRepository.getStyles(
                 page = currentPage, 
                 limit = pageSize, 
-                category = category,
                 collection = collection
             )
             
@@ -76,7 +74,6 @@ class StylesGridViewModel(
             val result = styleRepository.getStyles(
                 page = currentPage, 
                 limit = pageSize, 
-                category = category,
                 collection = collection
             )
             

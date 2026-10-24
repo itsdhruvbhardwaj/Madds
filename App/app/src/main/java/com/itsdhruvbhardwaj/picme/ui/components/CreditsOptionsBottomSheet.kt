@@ -37,11 +37,20 @@ fun CreditsOptionsBottomSheet(
 ) {
     val context = LocalContext.current
     val isAdLoading by viewModel.isRewardedAdLoading.collectAsState()
+    val isPurchaseLoading by viewModel.isPurchaseLoading.collectAsState()
+    val productDetails by viewModel.productDetails.collectAsState()
 
-    // Collect transient UI events like "Ad not ready" and show them as Toasts
+    // Get the formatted price from Google Play ProductDetails
+    val priceText = productDetails?.oneTimePurchaseOfferDetails?.formattedPrice ?: "Loading..."
+
+    // Collect transient UI events like "Ad not ready" or "Purchase success"
     LaunchedEffect(viewModel) {
         viewModel.uiEvent.collectLatest { message ->
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            // Auto-dismiss on success message from backend
+            if (message.contains("Credits added", ignoreCase = true)) {
+                onDismiss()
+            }
         }
     }
 
@@ -86,7 +95,7 @@ fun CreditsOptionsBottomSheet(
                         viewModel.startRewardedAdFlow(activity)
                     }
                 },
-                enabled = !isAdLoading,
+                enabled = !isAdLoading && !isPurchaseLoading,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(64.dp),
@@ -138,8 +147,12 @@ fun CreditsOptionsBottomSheet(
             // Buy Credits Button (Premium Gradient)
             Button(
                 onClick = { 
-                    Toast.makeText(context, "Purchase flow coming soon", Toast.LENGTH_SHORT).show()
+                    val activity = context as? Activity
+                    if (activity != null) {
+                        viewModel.startPurchaseFlow(activity)
+                    }
                 },
+                enabled = !isAdLoading && !isPurchaseLoading,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(64.dp),
@@ -151,24 +164,34 @@ fun CreditsOptionsBottomSheet(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(
-                            brush = Brush.horizontalGradient(
-                                colors = listOf(Primary, Secondary)
-                            )
+                            brush = if (isPurchaseLoading) {
+                                Brush.horizontalGradient(listOf(Color.Gray, Color.LightGray))
+                            } else {
+                                Brush.horizontalGradient(listOf(Primary, Secondary))
+                            }
                         )
                         .padding(horizontal = 20.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.ShoppingCart,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
+                        if (isPurchaseLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.ShoppingCart,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
                             Text(
-                                text = "Buy Credits",
+                                text = if (isPurchaseLoading) "Processing..." else "Get 250 Credits ($priceText)",
                                 style = MaterialTheme.typography.labelLarge.copy(
                                     color = Color.White,
                                     fontWeight = FontWeight.Bold,
@@ -187,7 +210,7 @@ fun CreditsOptionsBottomSheet(
             
             Spacer(modifier = Modifier.height(32.dp))
             
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = onDismiss, enabled = !isAdLoading && !isPurchaseLoading) {
                 Text(
                     text = "Maybe Later",
                     style = MaterialTheme.typography.labelLarge.copy(

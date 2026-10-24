@@ -1,9 +1,13 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.create
 
 import android.util.Base64
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
@@ -16,6 +20,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeButton
@@ -35,6 +41,11 @@ fun ResultScreen(
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+    var showFullscreenPreview by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = showFullscreenPreview) {
+        showFullscreenPreview = false
+    }
     
     LaunchedEffect(Unit) {
         viewModel.eventFlow.collectLatest { event ->
@@ -97,7 +108,8 @@ fun ResultScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(1f)
-                    .clip(MaterialTheme.shapes.extraLarge),
+                    .clip(MaterialTheme.shapes.extraLarge)
+                    .clickable(enabled = imageBytes != null) { showFullscreenPreview = true },
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFF3F4F6))
             ) {
@@ -139,6 +151,13 @@ fun ResultScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp)
             )
+
+            Text(
+                text = "Tap the image to view it full screen",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp)
+            )
             
             Spacer(modifier = Modifier.weight(1f))
             
@@ -172,6 +191,44 @@ fun ResultScreen(
             )
             
             Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+
+    if (showFullscreenPreview && imageBytes != null) {
+        Dialog(
+            onDismissRequest = { showFullscreenPreview = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(imageBytes)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = "Full-screen preview of your generated photo",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit
+                )
+                IconButton(
+                    onClick = { showFullscreenPreview = false },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .statusBarsPadding()
+                        .padding(8.dp)
+                        .background(Color.Black.copy(alpha = 0.55f), MaterialTheme.shapes.extraLarge)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close full-screen preview",
+                        tint = Color.White
+                    )
+                }
+            }
         }
     }
 }

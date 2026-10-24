@@ -163,56 +163,35 @@ class AuthRepositoryTest {
     }
 
     @Test
-    fun `requestRewardAttempt with ok false returns failure`() = runBlocking {
+    fun `verifyPurchase sends correct request and returns success`() = runBlocking {
         `when`(tokenStorage.getAccessToken()).thenReturn("test_access_token")
-        val mockResponse = RewardAttemptResponse(
-            ok = false,
-            customData = null,
-            expiresAt = null,
-            message = "Limit reached",
-            error = null
+        val mockResponse = PurchaseVerificationResponse(
+            ok = true,
+            message = "Success",
+            newBalance = 250
         )
-        `when`(apiService.requestRewardAttempt(any())).thenReturn(Response.success(mockResponse))
+        `when`(apiService.verifyPurchase(any(), any())).thenReturn(Response.success(mockResponse))
 
-        val result = repository.requestRewardAttempt()
+        val result = repository.verifyPurchase("product_id", "token", "option_id")
 
-        assertTrue(result.isFailure)
-        assertEquals("Limit reached", result.exceptionOrNull()?.message)
+        assertTrue(result.isSuccess)
+        assertEquals(250, result.getOrNull()?.newBalance)
+        verify(apiService).verifyPurchase(
+            authorization = "Bearer test_access_token",
+            request = GooglePlayPurchaseRequest("product_id", "token", "option_id")
+        )
     }
 
     @Test
-    fun `requestRewardAttempt with null customData returns failure`() = runBlocking {
+    fun `verifyPurchase with error response returns failure`() = runBlocking {
         `when`(tokenStorage.getAccessToken()).thenReturn("test_access_token")
-        val mockResponse = RewardAttemptResponse(
-            ok = true,
-            customData = null,
-            expiresAt = null,
-            message = null,
-            error = null
-        )
-        `when`(apiService.requestRewardAttempt(any())).thenReturn(Response.success(mockResponse))
+        val errorJson = "{\"ok\":false, \"message\":\"Invalid token\"}"
+        val errorResponseBody = errorJson.toResponseBody("application/json".toMediaTypeOrNull())
+        `when`(apiService.verifyPurchase(any(), any())).thenReturn(Response.error(400, errorResponseBody))
 
-        val result = repository.requestRewardAttempt()
+        val result = repository.verifyPurchase("product_id", "token", "option_id")
 
         assertTrue(result.isFailure)
-        assertEquals("Failed to get reward ticket", result.exceptionOrNull()?.message)
-    }
-
-    @Test
-    fun `requestRewardAttempt with blank customData returns failure`() = runBlocking {
-        `when`(tokenStorage.getAccessToken()).thenReturn("test_access_token")
-        val mockResponse = RewardAttemptResponse(
-            ok = true,
-            customData = "   ",
-            expiresAt = null,
-            message = null,
-            error = null
-        )
-        `when`(apiService.requestRewardAttempt(any())).thenReturn(Response.success(mockResponse))
-
-        val result = repository.requestRewardAttempt()
-
-        assertTrue(result.isFailure)
-        assertEquals("Failed to get reward ticket", result.exceptionOrNull()?.message)
+        assertEquals("Invalid token (400)", result.exceptionOrNull()?.message)
     }
 }

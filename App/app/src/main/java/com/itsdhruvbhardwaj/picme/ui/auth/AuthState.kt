@@ -79,3 +79,12 @@ sealed interface AuthState {
      */
     data class Error(val message: String) : AuthState
 }
+
+sealed interface PasswordSetupState {
+    data object Idle : PasswordSetupState
+    data object Sending : PasswordSetupState
+    data class EmailSent(val message: String) : PasswordSetupState
+    data object Verifying : PasswordSetupState
+    data object Verified : PasswordSetupState
+    data class Error(val message: String) : PasswordSetupState
+}

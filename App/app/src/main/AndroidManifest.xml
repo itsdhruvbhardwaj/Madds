@@ -4,6 +4,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <uses-permission android:name="com.android.vending.BILLING" />
 
     <application
         android:allowBackup="true"
@@ -39,6 +40,7 @@
                 <data android:host="picme-ai.onrender.com" />
                 <data android:pathPrefix="/api/auth/verify-email" />
                 <data android:pathPrefix="/api/auth/reset-password" />
+                <data android:pathPrefix="/api/auth/google/password/verify" />
             </intent-filter>
         </activity>
 

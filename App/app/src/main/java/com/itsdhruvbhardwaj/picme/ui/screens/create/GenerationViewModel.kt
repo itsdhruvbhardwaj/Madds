@@ -72,61 +72,88 @@ class GenerationViewModel(
     }
 
     fun generateImage(styleId: String, isRetry: Boolean = false) {
+        if (_uiState.value is GenerationUiState.Uploading || _uiState.value is GenerationUiState.Processing) return
+
         val uris = _selectedPhotos.value
         if (uris.isEmpty()) {
             _uiState.value = GenerationUiState.Error("No photos selected. Please go back and select your photos.")
             return
         }
 
+        if (!isRetry || currentIdempotencyKey == null) {
+            currentIdempotencyKey = UUID.randomUUID().toString()
+        }
+
+        viewModelScope.launch {
+            executeGeneration { generationRepository.generateImage(styleId, uris, currentIdempotencyKey!!) }
+        }
+    }
+
+    fun generateCustomImage(prompt: String, isRetry: Boolean = false) {
         if (_uiState.value is GenerationUiState.Uploading || _uiState.value is GenerationUiState.Processing) return
+
+        val uris = _selectedPhotos.value
+        // Prompt is required for custom generation. Word limit 150.
+        val wordCount = prompt.trim().split("\\s+".toRegex()).size
+        if (prompt.isBlank()) {
+            _uiState.value = GenerationUiState.Error("Please enter a prompt for custom generation.")
+            return
+        }
+        if (wordCount > 150) {
+            _uiState.value = GenerationUiState.Error("Prompt is too long. Please keep it under 150 words.")
+            return
+        }
 
         if (!isRetry || currentIdempotencyKey == null) {
             currentIdempotencyKey = UUID.randomUUID().toString()
         }
 
         viewModelScope.launch {
-            _uiState.value = GenerationUiState.Uploading
-            
-            // Start background status cycling immediately
-            startStatusCycle()
-
-            val result = generationRepository.generateImage(styleId, uris, currentIdempotencyKey!!)
-            
-            result.fold(
-                onSuccess = { response ->
-                    statusJob?.cancel()
-                    _uiState.value = GenerationUiState.Processing
-                    _statusMessage.value = "Your masterpiece is ready!"
-                    
-                    if (response.image != null) {
-                        // Success! The ResultScreen will handle navigation
-                        _uiState.value = GenerationUiState.Success(response.image)
-                        onProfileRefreshRequested?.invoke()
-                    } else {
-                        _uiState.value = GenerationUiState.Error("The AI couldn't generate an image. Please try again.")
-                    }
-                },
-                onFailure = { error ->
-                    statusJob?.cancel()
-                    handleGenerationFailure(error)
-                }
-            )
+            executeGeneration { generationRepository.generateCustomImage(prompt, uris, currentIdempotencyKey!!) }
         }
+    }
+
+    private suspend fun executeGeneration(call: suspend () -> Result<com.itsdhruvbhardwaj.picme.data.model.GenerationResponse>) {
+        _uiState.value = GenerationUiState.Uploading
+        startStatusCycle()
+
+        val result = call()
+        
+        result.fold(
+            onSuccess = { response ->
+                statusJob?.cancel()
+                _uiState.value = GenerationUiState.Processing
+                _statusMessage.value = "Your masterpiece is ready!"
+                
+                if (response.image != null) {
+                    _uiState.value = GenerationUiState.Success(response.image)
+                    onProfileRefreshRequested?.invoke()
+                } else {
+                    _uiState.value = GenerationUiState.Error("The AI couldn't generate an image. Please try again.")
+                }
+            },
+            onFailure = { error ->
+                statusJob?.cancel()
+                handleGenerationFailure(error)
+            }
+        )
     }
 
     private fun startStatusCycle() {
         statusJob?.cancel()
         val messages = listOf(
             "Preparing your photo...",
-            "Applying your chosen style...",
+            "AI is thinking...",
+            "Dreaming up your vision...",
             "Adding the finishing touches...",
-            "Your masterpiece is almost ready..."
+            "Almost there..."
         )
         statusJob = viewModelScope.launch {
-            for (msg in messages) {
-                _statusMessage.value = msg
-                // Adaptive delay for smooth feel
-                delay(if (msg.contains("Preparing")) 2000 else 5000)
+            var index = 0
+            while (true) {
+                _statusMessage.value = messages[index % messages.size]
+                delay(if (index == 0) 2000 else 5000)
+                index++
             }
         }
     }
@@ -135,7 +162,7 @@ class GenerationViewModel(
         when (error) {
             is InsufficientCreditsException -> {
                 _uiState.value = GenerationUiState.Error(
-                    message = "You need ${error.required} credits for this style, but you have ${error.available}.",
+                    message = "You need ${error.required} credits, but you have ${error.available}.",
                     canRetryWithNewKey = true
                 )
                 onProfileRefreshRequested?.invoke()
@@ -149,18 +176,13 @@ class GenerationViewModel(
             }
             is DuplicateOperationException -> {
                 _uiState.value = GenerationUiState.Error(
-                    message = "This generation is already in progress or has been registered. Please check your history.",
+                    message = "This generation is already in progress.",
                     canRetryWithNewKey = false
                 )
             }
             else -> {
-                val friendlyMessage = when {
-                    error.message?.contains("401") == true -> "Session expired. Please sign in again."
-                    error.message?.contains("429") == true -> "AI server is busy. Please try again in a few moments."
-                    else -> error.message ?: "Failed to generate image. Please check your connection."
-                }
                 _uiState.value = GenerationUiState.Error(
-                    message = friendlyMessage,
+                    message = error.message ?: "Failed to generate image. Please try again.",
                     canRetryWithNewKey = true
                 )
             }

@@ -26,6 +26,7 @@ import com.itsdhruvbhardwaj.picme.data.repository.StyleRepository
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
 import com.itsdhruvbhardwaj.picme.ui.auth.GoogleAuthHelper
+import com.itsdhruvbhardwaj.picme.ui.auth.PasswordSetupState
 import com.itsdhruvbhardwaj.picme.ui.components.BannerAdView
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeBottomNavigationBar
 import com.itsdhruvbhardwaj.picme.ui.screens.auth.ForgotPasswordScreen
@@ -33,6 +34,7 @@ import com.itsdhruvbhardwaj.picme.ui.screens.auth.LoginScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.auth.ResetPasswordScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.auth.SignupScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.auth.VerifyEmailScreen
+import com.itsdhruvbhardwaj.picme.ui.screens.create.CreateScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.create.GenerationScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.create.GenerationUiState
 import com.itsdhruvbhardwaj.picme.ui.screens.create.GenerationViewModel
@@ -41,6 +43,8 @@ import com.itsdhruvbhardwaj.picme.ui.screens.create.SelectPhotosScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.home.*
 import com.itsdhruvbhardwaj.picme.ui.screens.onboarding.OnboardingScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.profile.ProfileScreen
+import com.itsdhruvbhardwaj.picme.ui.screens.search.ExploreScreen
+import com.itsdhruvbhardwaj.picme.ui.screens.search.ExploreViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.settings.DeleteAccountScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.settings.SettingsScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.splash.SplashScreen
@@ -53,12 +57,14 @@ fun NavGraph(
     homeViewModel: HomeViewModel,
     generationViewModel: GenerationViewModel,
     favoritesViewModel: FavoritesViewModel,
+    exploreViewModel: ExploreViewModel,
     styleRepository: StyleRepository
 ) {
     val context = LocalContext.current
     val prefs = context.getSharedPreferences("picme_prefs", Context.MODE_PRIVATE)
     
     val authState by authViewModel.authState.collectAsState()
+    val passwordSetupState by authViewModel.passwordSetupState.collectAsState()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     
@@ -83,7 +89,7 @@ fun NavGraph(
         Screen.Home.route,
         Screen.Favorites.route,
         Screen.Create.route,
-        Screen.History.route,
+        Screen.Search.route,
         Screen.Profile.route
     )
     
@@ -171,9 +177,14 @@ fun NavGraph(
                         }
                     )
                     LaunchedEffect(authState) {
-                        if (authState is AuthState.Authenticated) {
+                        val state = authState
+                        if (state is AuthState.Authenticated) {
                             navController.navigate(Screen.Home.route) { 
                                 popUpTo(Screen.Signup.route) { inclusive = true } 
+                            }
+                        } else if (state is AuthState.VerifyEmailRequired) {
+                            navController.navigate(Screen.VerifyEmail.createRoute(state.email)) {
+                                popUpTo(Screen.Signup.route) { inclusive = true }
                             }
                         }
                     }
@@ -184,7 +195,22 @@ fun NavGraph(
                         authViewModel = authViewModel,
                         viewModel = homeViewModel,
                         onStyleClick = { id -> navController.navigate(Screen.StyleDetails.createRoute(id)) },
-                        onSeeAllClick = { c, col -> navController.navigate(Screen.StylesGrid.createRoute(c, col)) },
+                        onSeeAllClick = { collection -> navController.navigate(Screen.StylesGrid.createRoute(collection)) },
+                        onProfileClick = {
+                            navController.navigate(Screen.Profile.route) {
+                                popUpTo(Screen.Home.route) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    )
+                }
+
+                composable(Screen.Search.route) {
+                    ExploreScreen(
+                        authViewModel = authViewModel,
+                        viewModel = exploreViewModel,
+                        onStyleClick = { id -> navController.navigate(Screen.StyleDetails.createRoute(id)) },
                         onProfileClick = {
                             navController.navigate(Screen.Profile.route) {
                                 popUpTo(Screen.Home.route) { saveState = true }
@@ -200,6 +226,23 @@ fun NavGraph(
                         authViewModel = authViewModel,
                         viewModel = favoritesViewModel,
                         onStyleClick = { id -> navController.navigate(Screen.StyleDetails.createRoute(id)) },
+                        onProfileClick = {
+                            navController.navigate(Screen.Profile.route) {
+                                popUpTo(Screen.Home.route) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    )
+                }
+
+                composable(Screen.Create.route) {
+                    CreateScreen(
+                        authViewModel = authViewModel,
+                        onGenerateClick = { prompt, uris ->
+                            generationViewModel.setSelectedPhotos(uris)
+                            navController.navigate(Screen.Generation.createRoute("custom", prompt))
+                        },
                         onProfileClick = {
                             navController.navigate(Screen.Profile.route) {
                                 popUpTo(Screen.Home.route) { saveState = true }
@@ -241,10 +284,16 @@ fun NavGraph(
                 }
 
                 composable(Screen.DeleteAccount.route) {
+                    val deletionUser = (authState as? AuthState.Authenticated)?.user
                     DeleteAccountScreen(
                         authState = authState,
+                        passwordSetupState = passwordSetupState,
                         onBackClick = { navController.popBackStack() },
-                        onSubmitDelete = { password -> authViewModel.deleteAccount(password) }
+                        hasPassword = deletionUser?.hasPassword == true,
+                        hasGoogleLogin = deletionUser?.hasGoogleLogin == true,
+                        onSubmitDelete = { password -> authViewModel.deleteAccount(password) },
+                        onRequestPasswordSetup = { password, confirm -> authViewModel.requestGooglePasswordSetup(password, confirm) },
+                        onRefreshPasswordSetup = { authViewModel.refreshGooglePasswordSetupStatus() }
                     )
                     
                     // Exit flow on successful deletion request (Unauthenticated means tokens cleared)
@@ -253,6 +302,40 @@ fun NavGraph(
                             navController.navigate(Screen.Login.route) {
                                 popUpTo(Screen.Splash.route) { inclusive = true }
                             }
+                        }
+                    }
+                }
+
+                composable(
+                    route = Screen.VerifyGooglePasswordSetup.route,
+                    arguments = listOf(navArgument("token") { type = NavType.StringType; nullable = true }),
+                    deepLinks = listOf(
+                        navDeepLink {
+                            uriPattern = "https://picme-ai.onrender.com/api/auth/google/password/verify?token={token}"
+                        }
+                    )
+                ) { backStackEntry ->
+                    val token = backStackEntry.arguments?.getString("token")
+                    LaunchedEffect(token) {
+                        if (!token.isNullOrBlank()) authViewModel.verifyGooglePasswordSetup(token)
+                    }
+                    Column(
+                        modifier = androidx.compose.ui.Modifier.fillMaxSize().padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = when (passwordSetupState) {
+                                PasswordSetupState.Verifying -> "Verifying your email and setting your password…"
+                                PasswordSetupState.Verified -> "Email verified. Your password is set. Return to account deletion and confirm with this password."
+                                is PasswordSetupState.Error -> (passwordSetupState as PasswordSetupState.Error).message
+                                else -> "Open PicMee to finish verifying your password."
+                            },
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Spacer(modifier = androidx.compose.ui.Modifier.height(20.dp))
+                        Button(onClick = { navController.navigate(Screen.DeleteAccount.route) }) {
+                            Text("Continue")
                         }
                     }
                 }
@@ -288,15 +371,25 @@ fun NavGraph(
 
                 composable(
                     route = Screen.Generation.route,
-                    arguments = listOf(navArgument("styleId") { type = NavType.StringType })
+                    arguments = listOf(
+                        navArgument("styleId") { type = NavType.StringType },
+                        navArgument("prompt") { type = NavType.StringType; nullable = true }
+                    )
                 ) { backStackEntry ->
                     val styleId = backStackEntry.arguments?.getString("styleId") ?: ""
+                    val prompt = backStackEntry.arguments?.getString("prompt")
                     val genState by generationViewModel.uiState.collectAsState()
                     val statusMsg by generationViewModel.statusMessage.collectAsState()
                     val selectedPhotos by generationViewModel.selectedPhotos.collectAsState()
                     val isAdVisible by generationViewModel.isInterstitialVisible.collectAsState()
 
-                    LaunchedEffect(Unit) { generationViewModel.generateImage(styleId) }
+                    LaunchedEffect(Unit) {
+                        if (styleId == "custom" && prompt != null) {
+                            generationViewModel.generateCustomImage(prompt)
+                        } else {
+                            generationViewModel.generateImage(styleId)
+                        }
+                    }
 
                     GenerationScreen(
                         state = genState,
@@ -309,7 +402,13 @@ fun NavGraph(
                             generationViewModel.resetState()
                             navController.popBackStack() 
                         },
-                        onRetryClick = { generationViewModel.generateImage(styleId) },
+                        onRetryClick = {
+                            if (styleId == "custom" && prompt != null) {
+                                generationViewModel.generateCustomImage(prompt, isRetry = true)
+                            } else {
+                                generationViewModel.generateImage(styleId, isRetry = true)
+                            }
+                        },
                         onSuccess = { _ ->
                             navController.navigate(Screen.Result.route) { 
                                 popUpTo(Screen.Generation.route) { inclusive = true } 
@@ -362,6 +461,13 @@ fun NavGraph(
                         onResendClick = { email?.let { authViewModel.resendVerification(it) } },
                         onBackClick = { navController.popBackStack() }
                     )
+                    LaunchedEffect(authState) {
+                        if (authState is AuthState.Authenticated) {
+                            navController.navigate(Screen.Home.route) {
+                                popUpTo(Screen.Splash.route) { inclusive = true }
+                            }
+                        }
+                    }
                 }
 
                 composable(
@@ -415,17 +521,15 @@ fun NavGraph(
                 composable(
                     route = Screen.StylesGrid.route,
                     arguments = listOf(
-                        navArgument("category") { type = NavType.StringType; nullable = true },
                         navArgument("collection") { type = NavType.StringType; nullable = true }
                     )
                 ) { backStackEntry ->
-                    val category = backStackEntry.arguments?.getString("category")
                     val collection = backStackEntry.arguments?.getString("collection")
                     val gridViewModel: StylesGridViewModel = viewModel(
                         factory = object : androidx.lifecycle.ViewModelProvider.Factory {
                             override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
                                 @Suppress("UNCHECKED_CAST")
-                                return StylesGridViewModel(styleRepository, category, collection) as T
+                                return StylesGridViewModel(styleRepository, collection) as T
                             }
                         }
                     )

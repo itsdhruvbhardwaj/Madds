@@ -69,14 +69,13 @@ fun SignupScreen(
     val isPasswordStrong = remember(password) { ValidationUtils.isStrongPassword(password) }
     val passwordsMatch = remember(password, confirmPassword) { password == confirmPassword }
     
-    val isFormValid by remember(name, email, password, confirmPassword, isLoading) {
+    val isFormValid by remember(name, email, password, confirmPassword) {
         derivedStateOf {
             name.length >= 2 && 
             isEmailValid && 
             isPasswordStrong && 
             confirmPassword.isNotEmpty() && 
-            passwordsMatch && 
-            !isLoading
+            passwordsMatch
         }
     }
 

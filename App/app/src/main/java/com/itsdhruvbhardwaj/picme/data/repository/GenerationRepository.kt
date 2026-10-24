@@ -34,84 +34,77 @@ class GenerationRepository(
 
     /**
      * Sends a request to the backend to generate an image using the selected style and photos.
-     * Includes authentication and idempotency headers.
-     *
-     * @param styleId The ID of the style to apply.
-     * @param imageUris List of Android content URIs for the input images.
-     * @param idempotencyKey A unique key for this generation attempt to prevent duplicate charges.
-     * @return A Result containing the [GenerationResponse] on success or a specific exception on failure.
      */
     suspend fun generateImage(
         styleId: String,
         imageUris: List<Uri>,
         idempotencyKey: String
     ): Result<GenerationResponse> = withContext(Dispatchers.IO) {
-        try {
-            val accessToken = tokenStorage.getAccessToken()
-                ?: return@withContext Result.failure(Exception("401 Unauthorized: No access token"))
-
-            if (imageUris.isEmpty()) {
-                return@withContext Result.failure(Exception("No images selected"))
-            }
-
-            val styleIdBody = styleId.toRequestBody("text/plain".toMediaTypeOrNull())
+        val styleIdBody = styleId.toRequestBody("text/plain".toMediaTypeOrNull())
+        executeGeneration(idempotencyKey) { auth, key ->
             val imageParts = imageUris.mapNotNull { uri ->
                 FileUtils.uriToMultipartPart(contentResolver, uri, "images")
             }
+            if (imageParts.size != imageUris.size) throw Exception("Failed to process images")
+            
+            apiService.generateImage(auth, key, styleIdBody, imageParts)
+        }
+    }
 
-            if (imageParts.size != imageUris.size) {
-                return@withContext Result.failure(Exception("Failed to process some images. Please check if they are accessible."))
+    /**
+     * Sends a request to generate an image from a custom text prompt.
+     */
+    suspend fun generateCustomImage(
+        prompt: String,
+        imageUris: List<Uri>,
+        idempotencyKey: String
+    ): Result<GenerationResponse> = withContext(Dispatchers.IO) {
+        val promptBody = prompt.toRequestBody("text/plain".toMediaTypeOrNull())
+        executeGeneration(idempotencyKey) { auth, key ->
+            val imageParts = imageUris.mapNotNull { uri ->
+                FileUtils.uriToMultipartPart(contentResolver, uri, "images")
             }
+            apiService.generateCustomImage(auth, key, promptBody, imageParts)
+        }
+    }
 
-            val response = apiService.generateImage(
-                authorization = "Bearer $accessToken",
-                idempotencyKey = idempotencyKey,
-                styleId = styleIdBody,
-                images = imageParts
-            )
+    private suspend fun executeGeneration(
+        idempotencyKey: String,
+        call: suspend (auth: String, key: String) -> retrofit2.Response<GenerationResponse>
+    ): Result<GenerationResponse> {
+        try {
+            val accessToken = tokenStorage.getAccessToken()
+                ?: return Result.failure(Exception("401 Unauthorized"))
+
+            val response = call("Bearer $accessToken", idempotencyKey)
 
             if (response.isSuccessful && response.body() != null) {
                 val body = response.body()!!
-                if (body.ok) {
-                    Result.success(body)
-                } else {
-                    Result.failure(Exception(body.message ?: "Generation failed"))
-                }
+                return if (body.ok) Result.success(body) else Result.failure(Exception(body.message))
             } else {
                 val errorCode = response.code()
                 val errorBodyString = response.errorBody()?.string() ?: ""
                 
-                when (errorCode) {
+                return when (errorCode) {
                     402 -> {
-                        val details = try {
-                            Gson().fromJson(errorBodyString, InsufficientCreditsResponse::class.java)
-                        } catch (e: Exception) { null }
-                        
-                        if (details != null) {
-                            Result.failure(InsufficientCreditsException(details.requiredCredits, details.availableCredits, details.error))
-                        } else {
-                            Result.failure(Exception("Insufficient credits for this style."))
-                        }
+                        val details = try { Gson().fromJson(errorBodyString, InsufficientCreditsResponse::class.java) } catch (e: Exception) { null }
+                        if (details != null) Result.failure(InsufficientCreditsException(details.requiredCredits, details.availableCredits, details.error))
+                        else Result.failure(Exception("Insufficient credits"))
                     }
-                    409 -> {
-                        Result.failure(DuplicateOperationException("This request was already processed or is currently pending. Please wait or check your history."))
+                    409 -> Result.failure(DuplicateOperationException("Duplicate request"))
+                    400 -> {
+                        if (errorBodyString.contains("TOO_MANY_IMAGES")) Result.failure(Exception("Please select at most 2 images for custom generation."))
+                        else Result.failure(Exception("Invalid request: $errorBodyString"))
                     }
-                    else -> {
-                        val serverMessage = try {
-                            Gson().fromJson(errorBodyString, ErrorResponse::class.java).message
-                        } catch (e: Exception) { null } ?: "Server error during generation"
-                        Result.failure(Exception("API Error $errorCode: $serverMessage"))
-                    }
+                    else -> Result.failure(Exception("Error $errorCode"))
                 }
             }
         } catch (e: SocketTimeoutException) {
-            // Ambiguous outcome: request might have reached server but response didn't come back
-            Result.failure(AmbiguousOutcomeException("Connection timed out. We couldn't confirm if your generation started. Please check your history before trying again."))
+            return Result.failure(AmbiguousOutcomeException("Timeout"))
         } catch (e: IOException) {
-            // Ambiguous outcome if it happened during the request
-            Result.failure(AmbiguousOutcomeException("Network failure. The status of your generation is unconfirmed. Please wait a moment before retrying."))
+            return Result.failure(AmbiguousOutcomeException("Network error"))
         } catch (e: Exception) {
-            Result.failure(e)
+            return Result.failure(e)
         }
     }
 }

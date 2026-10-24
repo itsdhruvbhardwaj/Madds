@@ -15,8 +15,9 @@ interface StyleApiService {
         @Header("Authorization") authorization: String? = null,
         @Query("page") page: Int,
         @Query("limit") limit: Int,
-        @Query("category") category: String? = null,
-        @Query("collection") collection: String? = null
+        @Query("collection") collection: String? = null,
+        @Query("search") search: String? = null,
+        @Query("trendingFirst") trendingFirst: Boolean = false
     ): Response<StyleResponse>
 
     @GET("api/home/config")
@@ -28,6 +29,15 @@ interface StyleApiService {
         @Header("Authorization") authorization: String,
         @Header("Idempotency-Key") idempotencyKey: String,
         @Part("styleId") styleId: RequestBody,
+        @Part images: List<MultipartBody.Part>
+    ): Response<GenerationResponse>
+
+    @Multipart
+    @POST("api/generate")
+    suspend fun generateCustomImage(
+        @Header("Authorization") authorization: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Part("prompt") prompt: RequestBody,
         @Part images: List<MultipartBody.Part>
     ): Response<GenerationResponse>
 

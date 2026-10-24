@@ -35,22 +35,36 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
+import com.itsdhruvbhardwaj.picme.ui.auth.PasswordSetupState
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeButton
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeCompactHeader
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeTextField
 import com.itsdhruvbhardwaj.picme.ui.theme.TextSecondary
+import com.itsdhruvbhardwaj.picme.utils.ValidationUtils
 
 @Composable
 fun DeleteAccountScreen(
     authState: AuthState,
+    passwordSetupState: PasswordSetupState,
     onBackClick: () -> Unit,
-    onSubmitDelete: (String) -> Unit
+    hasPassword: Boolean,
+    hasGoogleLogin: Boolean,
+    onSubmitDelete: (String) -> Unit,
+    onRequestPasswordSetup: (String, String) -> Unit,
+    onRefreshPasswordSetup: () -> Unit
 ) {
     var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
+    var confirmPasswordVisible by remember { mutableStateOf(false) }
     var showConfirmDialog by remember { mutableStateOf(false) }
-    
     val isLoading = authState is AuthState.Authenticating
+    val isSettingUpPassword = passwordSetupState is PasswordSetupState.Sending ||
+        passwordSetupState is PasswordSetupState.Verifying
+    val setupVerified = hasPassword || passwordSetupState is PasswordSetupState.Verified
+    val needsPasswordSetup = hasGoogleLogin && !setupVerified
+    val passwordStrong = ValidationUtils.isStrongPassword(password)
+    val passwordsMatch = password.isNotEmpty() && password == confirmPassword
 
     Box(modifier = Modifier.fillMaxSize()) {
         Image(
@@ -136,40 +150,124 @@ fun DeleteAccountScreen(
 
                 Spacer(modifier = Modifier.height(32.dp))
 
-                Text(
-                    text = "Confirm password to continue",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
-                    modifier = Modifier.fillMaxWidth().padding(start = 4.dp)
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                PicMeTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = "Password",
-                    leadingIcon = Icons.Default.Lock,
-                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    trailingIcon = {
-                        val image = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
-                        IconButton(onClick = { passwordVisible = !passwordVisible }, enabled = !isLoading) {
-                            Icon(imageVector = image, contentDescription = null, tint = TextSecondary)
+                if (needsPasswordSetup) {
+                    Text(
+                        text = "Set a password for your Google account before requesting account deletion.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary,
+                        modifier = Modifier.fillMaxWidth().padding(start = 4.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    PicMeTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = "New password",
+                        leadingIcon = Icons.Default.Lock,
+                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            val image = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
+                            IconButton(onClick = { passwordVisible = !passwordVisible }, enabled = !isLoading) {
+                                Icon(imageVector = image, contentDescription = null, tint = TextSecondary)
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        enabled = !isSettingUpPassword
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    PicMeTextField(
+                        value = confirmPassword,
+                        onValueChange = { confirmPassword = it },
+                        label = "Confirm new password",
+                        leadingIcon = Icons.Default.Lock,
+                        visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            val image = if (confirmPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
+                            IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }, enabled = !isSettingUpPassword) {
+                                Icon(imageVector = image, contentDescription = null, tint = TextSecondary)
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        enabled = !isSettingUpPassword
+                    )
+                    Text(
+                        text = "Use at least 8 characters, including uppercase and lowercase letters and a number.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        modifier = Modifier.fillMaxWidth().padding(start = 4.dp, top = 4.dp)
+                    )
+                    when (val state = passwordSetupState) {
+                        is PasswordSetupState.EmailSent -> {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(state.message, color = TextSecondary, modifier = Modifier.fillMaxWidth())
+                            Text(
+                                "Open the verification link sent to your email, then return here.",
+                                color = TextSecondary,
+                                modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+                            )
+                            TextButton(onClick = onRefreshPasswordSetup, enabled = !isSettingUpPassword) {
+                                Text("I verified my email")
+                            }
                         }
-                    },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    enabled = !isLoading
-                )
+                        is PasswordSetupState.Error -> {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(state.message, color = MaterialTheme.colorScheme.error, modifier = Modifier.fillMaxWidth())
+                            if (password.isNotEmpty() && confirmPassword.isNotEmpty()) {
+                                TextButton(onClick = onRefreshPasswordSetup, enabled = !isSettingUpPassword) {
+                                    Text("Check verification status")
+                                }
+                            }
+                        }
+                        else -> Unit
+                    }
+                    Spacer(modifier = Modifier.height(32.dp))
+                    PicMeButton(
+                        text = if (passwordSetupState is PasswordSetupState.EmailSent) "Resend verification email" else "Send verification email",
+                        onClick = { onRequestPasswordSetup(password, confirmPassword) },
+                        enabled = passwordStrong && passwordsMatch && !isSettingUpPassword,
+                        isLoading = isSettingUpPassword,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else if (hasPassword || setupVerified) {
+                    Text(
+                        text = "Confirm your password to continue",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    PicMeTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = "Password",
+                        leadingIcon = Icons.Default.Lock,
+                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        trailingIcon = {
+                            val image = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
+                            IconButton(onClick = { passwordVisible = !passwordVisible }, enabled = !isLoading) {
+                                Icon(imageVector = image, contentDescription = null, tint = TextSecondary)
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        enabled = !isLoading
+                    )
+                    Spacer(modifier = Modifier.height(32.dp))
+                    PicMeButton(
+                        text = "Request Account Deletion",
+                        onClick = { showConfirmDialog = true },
+                        enabled = password.isNotBlank() && !isLoading,
+                        isLoading = isLoading,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    Text(
+                        text = "This account does not have a password. Sign in with Google, then set and verify a password here before requesting deletion.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
 
-                Spacer(modifier = Modifier.height(48.dp))
-
-                PicMeButton(
-                    text = "Request Account Deletion",
-                    onClick = { showConfirmDialog = true },
-                    enabled = password.isNotBlank() && !isLoading,
-                    isLoading = isLoading,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Spacer(modifier = Modifier.height(32.dp))
                 
                 Spacer(modifier = Modifier.height(32.dp))
             }

@@ -132,6 +132,27 @@ class AuthRepository(
         )
     }
 
+    suspend fun requestGooglePasswordSetup(password: String, confirmPassword: String): Result<String> {
+        val accessToken = tokenStorage.getAccessToken()
+            ?: return Result.failure(Exception("No access token available"))
+        return safeApiCall(
+            call = {
+                apiService.requestGooglePasswordSetup(
+                    "Bearer $accessToken",
+                    GooglePasswordSetupRequest(password, confirmPassword)
+                )
+            },
+            onSuccess = { response -> Result.success(response.message) }
+        )
+    }
+
+    suspend fun verifyGooglePasswordSetup(token: String): Result<String> {
+        return safeApiCall(
+            call = { apiService.verifyGooglePasswordSetup(token) },
+            onSuccess = { response -> Result.success(response.message) }
+        )
+    }
+
     suspend fun cancelDeletion(email: String, password: String): Result<User> {
         return safeApiCall(
             call = { apiService.cancelDeletion(CancelDeletionRequest(email, password)) },
@@ -281,6 +302,30 @@ class AuthRepository(
     }
 
     /**
+     * Verifies a Google Play purchase with the backend.
+     */
+    suspend fun verifyPurchase(productId: String, purchaseToken: String, purchaseOptionId: String): Result<PurchaseVerificationResponse> {
+        val accessToken = tokenStorage.getAccessToken()
+            ?: return Result.failure(Exception("No access token available"))
+
+        return safeApiCall(
+            call = { 
+                apiService.verifyPurchase(
+                    "Bearer $accessToken", 
+                    GooglePlayPurchaseRequest(productId, purchaseToken, purchaseOptionId)
+                ) 
+            },
+            onSuccess = { response ->
+                if (response.ok) {
+                    Result.success(response)
+                } else {
+                    Result.failure(Exception(response.message))
+                }
+            }
+        )
+    }
+
+    /**
      * Helper to safely execute API calls and map responses to [Result].
      */
     private suspend fun <T, R> safeApiCall(
@@ -307,12 +352,11 @@ class AuthRepository(
                     null
                 }
 
-                val serverMessage = errorResponse?.message ?: errorBodyString
+                val serverMessage = errorResponse?.message ?: errorResponse?.error ?: errorBodyString
                 val serverCode = errorResponse?.code
                 
                 val mappedMessage = when {
                     serverCode == "ACCOUNT_DELETION_PENDING" -> "deletion_pending|${errorResponse?.deletionScheduledAt ?: ""}"
-                    serverCode == "GOOGLE_REAUTHENTICATION_REQUIRED" -> "google_reauth_required"
                     errorCode == 409 || serverMessage.contains("already exists", ignoreCase = true) || serverMessage.contains("already taken", ignoreCase = true) -> "email_already_exists"
                     serverMessage.contains("verify your email", ignoreCase = true) -> "unverified_account"
                     serverMessage.contains("invalid", ignoreCase = true) && serverMessage.contains("token", ignoreCase = true) -> "invalid_token"

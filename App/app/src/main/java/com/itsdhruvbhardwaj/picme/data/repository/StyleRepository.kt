@@ -25,14 +25,15 @@ class StyleRepository(
     suspend fun getStyles(
         page: Int,
         limit: Int,
-        category: String? = null,
-        collection: String? = null
+        collection: String? = null,
+        search: String? = null,
+        trendingFirst: Boolean = false
     ): Result<StyleResponse> = withContext(Dispatchers.IO) {
         retryIO {
             try {
                 val token = tokenStorage.getAccessToken()
                 val authHeader = token?.let { "Bearer $it" }
-                val response = apiService.getStyles(authHeader, page, limit, category, collection)
+                val response = apiService.getStyles(authHeader, page, limit, collection, search, trendingFirst)
                 
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!

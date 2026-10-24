@@ -6,30 +6,36 @@ sealed class Screen(val route: String) {
     data object Login : Screen("login")
     data object Signup : Screen("signup")
     data object Home : Screen("home")
+    data object Search : Screen("search")
     data object Favorites : Screen("favorites")
     data object Create : Screen("create")
     data object History : Screen("history")
     data object Profile : Screen("profile")
     data object Settings : Screen("settings")
     data object DeleteAccount : Screen("delete_account")
+    data object VerifyGooglePasswordSetup : Screen("verify_google_password_setup?token={token}") {
+        fun createRoute(token: String? = null) = if (token != null) "verify_google_password_setup?token=$token" else "verify_google_password_setup"
+    }
     data object StyleDetails : Screen("style_details/{styleId}") {
         fun createRoute(styleId: String) = "style_details/$styleId"
     }
     data object SelectPhotos : Screen("select_photos/{styleId}") {
         fun createRoute(styleId: String) = "select_photos/$styleId"
     }
-    data object Generation : Screen("generation/{styleId}") {
-        fun createRoute(styleId: String) = "generation/$styleId"
+    data object Generation : Screen("generation/{styleId}?prompt={prompt}") {
+        fun createRoute(styleId: String, prompt: String? = null): String {
+            return if (prompt != null) {
+                "generation/$styleId?prompt=${java.net.URLEncoder.encode(prompt, "UTF-8")}"
+            } else {
+                "generation/$styleId"
+            }
+        }
     }
     data object Result : Screen("result")
     
-    data object StylesGrid : Screen("styles_grid?category={category}&collection={collection}") {
-        fun createRoute(category: String? = null, collection: String? = null): String {
-            val categoryPart = if (category != null) "category=$category" else ""
-            val collectionPart = if (collection != null) "collection=$collection" else ""
-            val query = listOf(categoryPart, collectionPart).filter { it.isNotEmpty() }.joinToString("&")
-            return if (query.isNotEmpty()) "styles_grid?$query" else "styles_grid"
-        }
+    data object StylesGrid : Screen("styles_grid?collection={collection}") {
+        fun createRoute(collection: String? = null): String =
+            if (collection != null) "styles_grid?collection=$collection" else "styles_grid"
     }
 
     data object VerifyEmail : Screen("verify_email?email={email}&token={token}") {

@@ -38,7 +38,7 @@ fun PicMeBottomNavigationBar(
         BottomNavItem("Home", Screen.Home.route, Icons.Default.Home),
         BottomNavItem("Favorites", Screen.Favorites.route, Icons.Default.Favorite),
         BottomNavItem("Create", Screen.Create.route, Icons.Default.AddCircle),
-        BottomNavItem("History", Screen.History.route, Icons.Default.History),
+        BottomNavItem("Search", Screen.Search.route, Icons.Default.Search),
         BottomNavItem("Profile", Screen.Profile.route, Icons.Default.Person)
     )
 

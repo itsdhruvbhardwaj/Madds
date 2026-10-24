@@ -33,9 +33,10 @@ data class MessageResponse(
 
 data class ErrorResponse(
     val ok: Boolean,
-    val message: String,
+    val message: String? = null,
     val code: String? = null,
-    val deletionScheduledAt: String? = null
+    val deletionScheduledAt: String? = null,
+    val error: String? = null
 )
 
 /**
