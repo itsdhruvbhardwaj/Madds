@@ -17,6 +17,7 @@ import { Generation } from "./models/Generation.js";
 import { RewardedAdAttempt } from "./models/RewardedAdAttempt.js";
 import { authRouter } from "./routes/auth.js";
 import { favoritesRouter } from "./routes/favorites.js";
+import { googlePlayBillingRouter } from "./routes/googlePlayBilling.js";
 import { rewardedAdsRouter } from "./routes/rewardedAds.js";
 import { homeSections } from "./services/home/homeConfig.js";
 import {
@@ -194,6 +195,7 @@ app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Resp
 app.use("/api/auth", authRouter);
 app.use("/api/me", favoritesRouter);
 app.use("/api", rewardedAdsRouter);
+app.use("/api", googlePlayBillingRouter);
 
 app.post(
   "/api/generate",

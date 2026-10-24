@@ -15,6 +15,7 @@ vi.mock("express-rate-limit", () => ({
 
 const googleAuthMocks = vi.hoisted(() => ({
   verifyIdToken: vi.fn(),
+  playApiRequest: vi.fn(),
   sendEmail: vi.fn(),
 }));
 
@@ -25,6 +26,9 @@ const creditServiceMocks = vi.hoisted(() => ({
 vi.mock("google-auth-library", () => ({
   OAuth2Client: vi.fn().mockImplementation(() => ({
     verifyIdToken: googleAuthMocks.verifyIdToken,
+  })),
+  GoogleAuth: vi.fn().mockImplementation(() => ({
+    request: googleAuthMocks.playApiRequest,
   })),
 }));
 

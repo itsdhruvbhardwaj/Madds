@@ -12,6 +12,10 @@ const PurchaseSchema = new Schema(
       type: String,
       required: true,
     },
+    purchaseOptionId: {
+      type: String,
+      default: null,
+    },
     purchaseToken: {
       type: String,
       required: true,
@@ -44,6 +48,10 @@ const PurchaseSchema = new Schema(
       default: null,
     },
     verifiedAt: {
+      type: Date,
+      default: null,
+    },
+    consumedAt: {
       type: Date,
       default: null,
     },
