@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#111019">
+    <meta name="description" content="Explore AI photo styles from PicMee. Find a look you love and create it in the PicMee Android app.">
+    <link rel="canonical" href="https://picmee.ac.in/">
+    <link rel="icon" href="assets/picmee-icon.webp" type="image/webp">
+    <link rel="stylesheet" href="styles.css">
+    <title>PicMee — AI photo styles</title>
+    <script src="api-config.js" defer></script>
+    <script src="site.js" defer></script>
+  </head>
+  <body data-page="home">
+    <header class="site-header">
+      <a class="brand" href="index.html" aria-label="PicMee home">
+        <img src="assets/picmee-icon.webp" alt="" width="44" height="44">
+        <span>PicMee</span>
+      </a>
+      <button class="menu-toggle" type="button" aria-label="Open navigation" aria-expanded="false">☰</button>
+      <nav class="main-nav" aria-label="Main navigation">
+        <a class="active" href="index.html">Home</a>
+        <a href="app.html">App</a>
+        <a href="about.html">About Us</a>
+      </nav>
+      <a class="header-cta" href="app.html">Discover PicMee <span aria-hidden="true">↗</span></a>
+    </header>
+
+    <main>
+      <section class="hero page-width">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="eyebrow-dot"></span> YOUR PHOTO, A NEW POINT OF VIEW</p>
+          <h1>Find a look.<br><span>Make it PicMee.</span></h1>
+          <p class="hero-description">Explore creative AI photo styles, pick the one that feels like you, and bring it to life in the PicMee app.</p>
+          <a class="button button-primary" href="#styles">Explore styles <span aria-hidden="true">↓</span></a>
+          <div class="hero-note"><span class="sparkle">✦</span> New styles added regularly</div>
+        </div>
+        <div class="hero-art" aria-label="PicMee AI portrait style examples">
+          <div class="hero-glow"></div>
+          <div class="hero-photo hero-photo-one"></div>
+          <div class="hero-photo hero-photo-two"></div>
+          <div class="hero-photo hero-photo-three"></div>
+          <div class="hero-art-caption"><span class="live-dot"></span> A little inspiration goes a long way</div>
+        </div>
+      </section>
+
+      <section class="style-browser page-width" id="styles" aria-labelledby="styles-heading">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">THE PICMEE STYLE LIBRARY</p>
+            <h2 id="styles-heading">What are you creating today?</h2>
+          </div>
+          <p class="result-count" id="result-count" aria-live="polite">Loading styles…</p>
+        </div>
+
+        <div class="filter-toolbar">
+          <div class="filter-row" id="collection-filters" role="group" aria-label="Filter styles by collection">
+            <button class="filter-chip selected" type="button" data-collection="">All</button>
+          </div>
+          <label class="search-box">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m16 16 4 4"></path></svg>
+            <input id="style-search" type="search" placeholder="Search styles…" autocomplete="off">
+            <span class="search-shortcut">⌕</span>
+          </label>
+        </div>
+
+        <div class="style-grid" id="style-grid" aria-live="polite" aria-busy="true"></div>
+        <div class="load-state" id="load-state" role="status"></div>
+        <div class="load-sentinel" id="load-sentinel" aria-hidden="true"></div>
+        <button class="button button-secondary load-more" id="load-more" type="button" hidden>Load more styles <span aria-hidden="true">↓</span></button>
+      </section>
+
+      <section class="app-callout page-width">
+        <div class="callout-mark">✦</div>
+        <div>
+          <p class="eyebrow">READY WHEN YOU ARE</p>
+          <h2>Your next favorite photo is a few taps away.</h2>
+          <p>Choose a style in PicMee and create a fresh version of your photo.</p>
+        </div>
+        <a class="button button-light" href="app.html">Explore the app <span aria-hidden="true">↗</span></a>
+      </section>
+    </main>
+
+    <footer class="site-footer page-width">
+      <a class="brand footer-brand" href="index.html"><img src="assets/picmee-icon.webp" alt="" width="34" height="34"><span>PicMee</span></a>
+      <p>Make a little more of every picture.</p>
+      <nav aria-label="Footer navigation"><a href="index.html">Home</a><a href="app.html">App</a><a href="about.html">About Us</a></nav>
+      <span class="copyright">© <span data-year></span> PicMee</span>
+    </footer>
+  </body>
+</html>
