@@ -1081,6 +1081,8 @@ router.get("/me", authRateLimiter, requireAuth, async (req: AuthenticatedRequest
       emailVerified: user.emailVerified,
       profileImage: user.profileImage ?? null,
       credits: user.credits ?? 0,
+      hasPassword: user.hasPassword,
+      hasGoogleLogin: user.hasGoogleLogin,
     },
   });
 });

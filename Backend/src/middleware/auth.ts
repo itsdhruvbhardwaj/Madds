@@ -14,6 +14,8 @@ export type AuthenticatedRequest = Request & {
     isActive?: boolean;
     credits?: number;
     profileImage?: string | null;
+    hasPassword: boolean;
+    hasGoogleLogin: boolean;
   };
   sessionId?: string;
 };
@@ -36,7 +38,9 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
       return;
     }
 
-    const user = await User.findById(userId).select("-passwordHash").lean();
+    // Read the hash only to derive a boolean. The hash is never attached to req.user
+    // or returned by an API response.
+    const user = await User.findById(userId).select("+passwordHash").lean();
     if (!user) {
       res.status(401).json({ ok: false, error: "User not found." });
       return;
@@ -89,6 +93,8 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
         ? user.credits
         : 0,
       profileImage: user.profileImage ?? null,
+      hasPassword: Boolean(user.passwordHash),
+      hasGoogleLogin: Boolean(user.googleId),
     };
     req.sessionId = sessionId;
 
