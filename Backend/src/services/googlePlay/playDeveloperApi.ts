@@ -46,6 +46,56 @@ function getHttpStatus(error: unknown): number | undefined {
   return typeof response.status === "number" ? response.status : undefined;
 }
 
+function getGoogleApiErrorDetails(error: unknown): {
+  errorCode?: number | string;
+  message?: string;
+} {
+  if (typeof error !== "object" || error === null || !("response" in error)) {
+    return {};
+  }
+  const response = error.response;
+  if (typeof response !== "object" || response === null || !("data" in response)) {
+    return {};
+  }
+  const data = response.data;
+  if (typeof data !== "object" || data === null || !("error" in data)) {
+    return {};
+  }
+  const apiError = data.error;
+  if (typeof apiError !== "object" || apiError === null) {
+    return {};
+  }
+
+  return {
+    ...("code" in apiError && typeof apiError.code === "number" &&
+    Number.isSafeInteger(apiError.code)
+      ? { errorCode: apiError.code }
+      : {}),
+    ...("message" in apiError && typeof apiError.message === "string"
+      ? { message: apiError.message }
+      : {}),
+  };
+}
+
+function sanitizeGoogleApiErrorMessage(message: string | undefined, purchaseToken: string): string {
+  if (!message) {
+    return "Google API request failed.";
+  }
+  if (/"type"\s*:\s*"service_account"/i.test(message)) {
+    return "Google API request failed; service-account credentials were redacted.";
+  }
+
+  const encodedToken = encodeURIComponent(purchaseToken);
+  return message
+    .replaceAll(purchaseToken, "[REDACTED]")
+    .replaceAll(encodedToken, "[REDACTED]")
+    .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/gi, "[REDACTED PRIVATE KEY]")
+    .replace(/"private_key"\s*:\s*"(?:\\.|[^"\\])*"/gi, '"private_key":"[REDACTED]"')
+    .replace(/(?:ya29\.[A-Za-z0-9._-]+|Bearer\s+[A-Za-z0-9._~-]+)/gi, "[REDACTED CREDENTIAL]")
+    .replace(/[\r\n\t]+/g, " ")
+    .slice(0, 500);
+}
+
 const auth = new GoogleAuth({ scopes: [androidPublisherScope] });
 
 export async function getProductPurchaseV2(
@@ -59,7 +109,15 @@ export async function getProductPurchaseV2(
     const response = await auth.request<GooglePlayProductPurchase>({ url });
     return response.data;
   } catch (error) {
-    if (getHttpStatus(error) === 404 || getHttpStatus(error) === 400) {
+    const httpStatus = getHttpStatus(error);
+    const apiError = getGoogleApiErrorDetails(error);
+    console.error("Google Play product purchase verification API failed.", {
+      httpStatus: httpStatus ?? null,
+      errorCode: apiError.errorCode ?? null,
+      errorMessage: sanitizeGoogleApiErrorMessage(apiError.message, purchaseToken),
+    });
+
+    if (httpStatus === 404 || httpStatus === 400) {
       throw new GooglePlayPurchaseNotFoundError();
     }
     throw new GooglePlayApiError("verify");
