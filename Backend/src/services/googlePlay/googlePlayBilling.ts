@@ -11,7 +11,7 @@ import {
   type GooglePlayProductPurchase,
 } from "./playDeveloperApi.js";
 
-export const GOOGLE_PLAY_PACKAGE_NAME = "com.itsdhruvhardwaj.picme";
+export const GOOGLE_PLAY_PACKAGE_NAME = "com.itsdhruvbhardwaj.picme";
 
 const creditProducts = {
   "com.itsdhruvhardwaj.picme_credit_25": {
