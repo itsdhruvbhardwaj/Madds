@@ -21,7 +21,7 @@ export const homeSections: HomeSection[] = [
     title: "Popular",
     type: "collection",
     slug: "Popular",
-    visible: true,
+    visible: false,
     order: 2,
   },
   {
@@ -37,7 +37,7 @@ export const homeSections: HomeSection[] = [
     title: "Merge",
     type: "collection",
     slug: "Merge",
-    visible: true,
+    visible: false,
     order: 4,
   },
   {
@@ -45,7 +45,7 @@ export const homeSections: HomeSection[] = [
     title: "Professional",
     type: "collection",
     slug: "Professional",
-    visible: true,
+    visible: false,
     order: 5,
   },
   {
@@ -53,7 +53,7 @@ export const homeSections: HomeSection[] = [
     title: "Bhakti",
     type: "collection",
     slug: "Bhakti",
-    visible: true,
+    visible: false,
     order: 6,
   },
   {
@@ -71,5 +71,14 @@ export const homeSections: HomeSection[] = [
     slug: "Saree",
     visible: true,
     order: 1,
+  },
+  //Instagram Flash Filter
+  {
+    id: "instagram-flash-filter",
+    title: "Instagram Flash Filter",
+    type: "collection",
+    slug: "Instagram Flash Filter",
+    visible: true,
+    order: 2,
   },
 ];
