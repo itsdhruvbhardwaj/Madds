@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#11131a">
+  <title>PicMee Studio · Style Manager</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main id="login-view" class="login-shell">
+    <section class="login-card">
+      <div class="brand-mark">P</div>
+      <p class="eyebrow">PICMEE STUDIO</p>
+      <h1>Style manager</h1>
+      <p class="muted">Sign in with an approved PicMee team account.</p>
+      <form id="login-form" class="stack">
+        <label>Email address<input name="email" type="email" autocomplete="username" required></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="button primary" type="submit">Sign in</button>
+      </form>
+      <p id="login-message" class="message" role="status"></p>
+    </section>
+  </main>
+
+  <div id="app-view" class="app-shell" hidden>
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark small">P</span><span>PicMee <b>Studio</b></span></div>
+      <div class="side-label">WORKSPACE</div>
+      <button class="side-link active" data-panel="styles-panel"><span>▦</span> Styles <small id="style-count">0</small></button>
+      <button class="side-link" data-panel="collections-panel"><span>◈</span> Collections</button>
+      <div class="sidebar-note"><span class="live-dot"></span> Connected to live catalogue</div>
+      <button id="logout-button" class="side-logout">Sign out</button>
+    </aside>
+
+    <section class="main-area">
+      <header class="topbar"><div><div class="eyebrow">CATALOGUE CONTROL</div><div id="account-email" class="account-email"></div></div><div class="top-actions"><span class="live-pill"><i></i> Live data</span><button id="refresh-button" class="icon-button" title="Refresh catalogue">↻</button></div></header>
+      <div id="notice" class="notice" role="status" hidden></div>
+
+      <section id="styles-panel" class="panel-view">
+        <div class="page-heading"><div><p class="eyebrow">YOUR CREATIVE LIBRARY</p><h1>Styles</h1><p class="muted">Edit prompts and collections used by PicMee.</p></div><button id="add-style" class="button primary">＋ Add style</button></div>
+        <div class="toolbar"><label class="search-box"><span>⌕</span><input id="style-search" type="search" placeholder="Search styles or prompts"></label><select id="collection-filter" aria-label="Filter by collection"><option value="">All collections</option></select><span id="result-count" class="muted"></span></div>
+        <div id="styles-grid" class="styles-grid"></div>
+      </section>
+
+      <section id="collections-panel" class="panel-view" hidden>
+        <div class="page-heading"><div><p class="eyebrow">ORGANIZE YOUR LIBRARY</p><h1>Collections</h1><p class="muted">Create a collection, then assign it to styles in the editor.</p></div></div>
+        <form id="collection-form" class="collection-create"><label>New collection<input name="name" maxlength="60" placeholder="e.g. Festive Portraits" required></label><button class="button primary" type="submit">Create collection</button></form>
+        <div id="collections-list" class="collections-list"></div>
+      </section>
+    </section>
+  </div>
+
+  <dialog id="style-dialog" class="editor-dialog">
+    <form id="style-form" method="dialog">
+      <header class="dialog-header"><div><p class="eyebrow">STYLE DETAILS</p><h2 id="dialog-title">Add a style</h2></div><button type="button" class="icon-button" data-close="style-dialog" aria-label="Close">×</button></header>
+      <div class="form-grid">
+        <label>Style name<input name="name" maxlength="80" required placeholder="e.g. Golden Hour Portrait"></label>
+        <label>Style ID <span class="field-hint">Generated from the name when adding</span><input name="id" maxlength="80" required pattern="[a-z0-9-]+" placeholder="golden-hour-portrait"></label>
+        <label class="wide">Short description<textarea name="description" maxlength="300" rows="2" required></textarea></label>
+        <label class="wide">Generation prompt<textarea name="prompt" maxlength="10000" rows="6" required></textarea></label>
+        <label class="wide">Thumbnail URL<input name="thumbnail" type="url" placeholder="https://…"></label>
+        <label class="wide">Preview image URLs <span class="field-hint">One HTTPS URL per line</span><textarea name="previewImages" rows="3" placeholder="https://…"></textarea></label>
+        <label>Reference photos required<select name="imageCount"><option value="1">1 photo</option><option value="2">2 photos</option><option value="3">3 photos</option></select></label>
+        <label>Credits per generation<input name="tokensRequired" type="number" min="1" max="10000" value="10" required></label>
+        <fieldset class="wide"><legend>Collections</legend><div id="collection-checkboxes" class="checkbox-grid"></div></fieldset>
+      </div>
+      <footer class="dialog-footer"><span id="form-error" class="form-error"></span><button type="button" class="button secondary" data-close="style-dialog">Cancel</button><button class="button primary" type="submit">Save style</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="rename-dialog" class="editor-dialog compact-dialog">
+    <form id="rename-form" method="dialog"><header class="dialog-header"><div><p class="eyebrow">COLLECTION</p><h2>Rename collection</h2></div><button type="button" class="icon-button" data-close="rename-dialog">×</button></header><label>Collection name<input name="name" maxlength="60" required></label><footer class="dialog-footer"><button type="button" class="button secondary" data-close="rename-dialog">Cancel</button><button class="button primary" type="submit">Save name</button></footer></form>
+  </dialog>
+  <script src="config.js"></script>
+  <script src="app.js" defer></script>
+</body>
+</html>
