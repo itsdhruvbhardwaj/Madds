@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 
 import { CatalogStyle } from "../../models/CatalogStyle.js";
+import { CatalogState } from "../../models/CatalogState.js";
 import { StyleCollection } from "../../models/StyleCollection.js";
 import type { Style } from "./styleTypes.js";
 import { styles as bundledStyles } from "./index.js";
@@ -11,18 +12,18 @@ export function catalogDatabaseReady(): boolean {
 
 export async function initializeStyleCatalog(): Promise<void> {
   if (!catalogDatabaseReady()) return;
+  const state = await CatalogState.findById("styles-v1").lean();
+  if (state) return;
   const count = await CatalogStyle.countDocuments();
-  if (count > 0) return;
-
-  await CatalogStyle.insertMany(bundledStyles, { ordered: true });
-  const names = [...new Set(bundledStyles.flatMap((style) => style.collections))];
-  if (names.length) {
-    await StyleCollection.insertMany(
-      names.map((name) => ({ id: slugify(name), name })),
-      { ordered: false },
-    );
+  if (count === 0) {
+    await CatalogStyle.insertMany(bundledStyles, { ordered: true });
+    console.log(`Imported ${bundledStyles.length} styles into the editable catalogue.`);
   }
-  console.log(`Imported ${bundledStyles.length} styles into the editable catalogue.`);
+  const names = [...new Set(bundledStyles.flatMap((style) => style.collections))];
+  for (const name of names) {
+    await StyleCollection.updateOne({ id: slugify(name) }, { $setOnInsert: { id: slugify(name), name } }, { upsert: true });
+  }
+  await CatalogState.create({ _id: "styles-v1", initializedAt: new Date() });
 }
 
 export async function listCatalogStyles(): Promise<Style[]> {

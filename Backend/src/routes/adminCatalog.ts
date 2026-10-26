@@ -4,9 +4,12 @@ import { env } from "../config/env.js";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth.js";
 import { CatalogAuditLog } from "../models/CatalogAuditLog.js";
 import { CatalogStyle } from "../models/CatalogStyle.js";
+import { FavoriteStyle } from "../models/FavoriteStyle.js";
+import { HomeSectionConfig } from "../models/HomeSectionConfig.js";
 import { StyleCollection } from "../models/StyleCollection.js";
 import { catalogDatabaseReady, listCatalogCollections, listCatalogStyles, slugify } from "../services/styles/catalog.js";
 import type { Style } from "../services/styles/styleTypes.js";
+import { ensureHomeSection, renameHomeSectionCollection } from "../services/home/homeCatalog.js";
 
 const router = Router();
 const styleIdPattern = /^[a-z0-9](?:[a-z0-9-]{1,78}[a-z0-9])?$/;
@@ -25,18 +28,22 @@ router.use(requireAuth, (req: AuthenticatedRequest, res: Response, next: NextFun
 });
 
 router.get("/catalog", async (_req: Request, res: Response) => {
-  const [styles, collections, recentChanges] = await Promise.all([
+  const [styles, collections, sections, recentChanges] = await Promise.all([
     listCatalogStyles(),
     listCatalogCollections(),
+    HomeSectionConfig.find().sort({ order: 1, title: 1 }).lean(),
     CatalogAuditLog.find().sort({ createdAt: -1 }).limit(12).lean(),
   ]);
-  res.json({ ok: true, styles, collections, recentChanges });
+  res.json({ ok: true, styles, collections, sections, recentChanges });
 });
 
 router.post("/catalog/styles", async (req: AuthenticatedRequest, res: Response) => {
   const validation = validateStyle(req.body);
   if (validation.error) return res.status(400).json({ ok: false, error: validation.error });
   const style = validation.value!;
+  if (await CatalogAuditLog.exists({ action: "STYLE_DELETED", itemId: style.id })) {
+    return res.status(409).json({ ok: false, error: "This style ID was used before and cannot be reused." });
+  }
   const exists = await CatalogStyle.exists({ id: style.id });
   if (exists) return res.status(409).json({ ok: false, error: "That style ID is already in use." });
 
@@ -59,6 +66,27 @@ router.put("/catalog/styles/:id", async (req: AuthenticatedRequest, res: Respons
   return res.json({ ok: true, style });
 });
 
+router.delete("/catalog/styles/:id", async (req: AuthenticatedRequest, res: Response) => {
+  const { id } = req.params;
+  if (typeof id !== "string") return res.status(400).json({ ok: false, error: "Invalid style ID." });
+  const style = await CatalogStyle.findOneAndDelete({ id }).lean();
+  if (!style) return res.status(404).json({ ok: false, error: "Style not found." });
+  await FavoriteStyle.deleteMany({ styleId: id });
+  await logChange(req, "STYLE_DELETED", id, String(style.name));
+  return res.json({ ok: true, id });
+});
+
+router.patch("/catalog/home-sections/:id", async (req: AuthenticatedRequest, res: Response) => {
+  const { id } = req.params;
+  if (typeof id !== "string" || typeof req.body?.visible !== "boolean") {
+    return res.status(400).json({ ok: false, error: "Choose whether this collection should appear on Home." });
+  }
+  const section = await HomeSectionConfig.findOneAndUpdate({ id }, { $set: { visible: req.body.visible } }, { new: true }).lean();
+  if (!section) return res.status(404).json({ ok: false, error: "Home collection not found." });
+  await logChange(req, "HOME_SECTION_UPDATED", id, String(section.title));
+  return res.json({ ok: true, section });
+});
+
 router.post("/catalog/collections", async (req: AuthenticatedRequest, res: Response) => {
   const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
   if (name.length < 2 || name.length > 60) {
@@ -70,6 +98,7 @@ router.post("/catalog/collections", async (req: AuthenticatedRequest, res: Respo
     return res.status(409).json({ ok: false, error: "That collection already exists." });
   }
   const collection = await StyleCollection.create({ id, name });
+  await ensureHomeSection(name);
   await logChange(req, "COLLECTION_CREATED", id, name);
   return res.status(201).json({ ok: true, collection: { id: collection.id, name: collection.name } });
 });
@@ -87,6 +116,7 @@ router.put("/catalog/collections/:id", async (req: AuthenticatedRequest, res: Re
   if (collision) return res.status(409).json({ ok: false, error: "That collection name is already in use." });
   const oldName = collection.name;
   await CatalogStyle.updateMany({ collections: oldName }, { $set: { "collections.$[item]": name } }, { arrayFilters: [{ item: oldName }] });
+  await renameHomeSectionCollection(oldName, name);
   collection.name = name;
   collection.id = nextId;
   await collection.save();

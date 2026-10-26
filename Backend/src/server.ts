@@ -20,7 +20,7 @@ import { adminCatalogRouter } from "./routes/adminCatalog.js";
 import { favoritesRouter } from "./routes/favorites.js";
 import { googlePlayBillingRouter } from "./routes/googlePlayBilling.js";
 import { rewardedAdsRouter } from "./routes/rewardedAds.js";
-import { homeSections } from "./services/home/homeConfig.js";
+import { getHomeSectionCatalog, initializeHomeSectionCatalog } from "./services/home/homeCatalog.js";
 import {
   completeGeneration,
   fingerprintGenerationRequest,
@@ -135,8 +135,8 @@ app.get("/health", (_req: Request, res: Response) => {
   res.json({ ok: true, service: "ai-photo-studio-backend" });
 });
 
-app.get("/api/home/config", (_req: Request, res: Response) => {
-  res.json({ sections: homeSections });
+app.get("/api/home/config", async (_req: Request, res: Response) => {
+  res.json({ sections: await getHomeSectionCatalog() });
 });
 
 app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
@@ -513,6 +513,7 @@ if (isDirectExecution) {
         ]);
         const { initializeStyleCatalog } = await import("./services/styles/catalog.js");
         await initializeStyleCatalog();
+        await initializeHomeSectionCatalog();
         await cleanupScheduledAccountDeletions();
         const accountDeletionCleanupTimer = setInterval(() => {
           void cleanupScheduledAccountDeletions().catch((error: unknown) => {
