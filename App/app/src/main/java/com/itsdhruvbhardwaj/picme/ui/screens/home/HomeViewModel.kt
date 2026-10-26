@@ -1,5 +1,6 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.home
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.itsdhruvbhardwaj.picme.data.model.HomeSection
@@ -29,6 +30,10 @@ class HomeViewModel(
     private val styleRepository: StyleRepository
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG = "PicMeHome"
+    }
+
     private val _uiState = MutableStateFlow<HomeUiState>(HomeUiState.Loading)
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
     private val loadMutex = Mutex()
@@ -39,8 +44,12 @@ class HomeViewModel(
 
     fun loadHomeData() {
         viewModelScope.launch {
-            if (loadMutex.isLocked) return@launch
+            if (loadMutex.isLocked) {
+                Log.d(TAG, "Home load skipped because another load is still running")
+                return@launch
+            }
             loadMutex.withLock {
+                Log.d(TAG, "Loading Home configuration")
                 val currentState = _uiState.value
                 val previousSections = if (currentState is HomeUiState.Success) currentState.sections else emptyList()
                 if (currentState !is HomeUiState.Success) _uiState.value = HomeUiState.Loading
@@ -50,6 +59,7 @@ class HomeViewModel(
                         val visibleConfigs = configResponse.sections
                             .filter { it.visible }
                             .sortedBy { it.order }
+                        Log.d(TAG, "Home configuration loaded: ${visibleConfigs.size} visible sections")
                         val initialSections = visibleConfigs.map { config ->
                             previousSections.find { it.config.id == config.id }
                                 ?.copy(config = config)
@@ -61,6 +71,7 @@ class HomeViewModel(
                         }
                     },
                     onFailure = { error ->
+                        Log.e(TAG, "Home configuration request failed", error)
                         if (_uiState.value !is HomeUiState.Success) {
                             _uiState.value = HomeUiState.Error(mapErrorMessage(error.message))
                         }
@@ -71,10 +82,19 @@ class HomeViewModel(
     }
 
     private suspend fun loadSectionStyles(config: HomeSection) {
+        Log.d(TAG, "Loading styles for section '${config.title}' (${config.slug})")
         val stylesResult = styleRepository.getStyles(
             page = 1,
             limit = 10,
             collection = config.slug
+        )
+        stylesResult.fold(
+            onSuccess = { response ->
+                Log.d(TAG, "Loaded ${response.styles.size} styles for '${config.title}'")
+            },
+            onFailure = { error ->
+                Log.e(TAG, "Styles request failed for '${config.title}' (${config.slug})", error)
+            }
         )
         updateSection(config.id) {
             if (stylesResult.isSuccess) {

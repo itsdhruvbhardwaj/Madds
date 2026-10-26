@@ -11,8 +11,8 @@ android {
         applicationId = "com.itsdhruvbhardwaj.picme"
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -52,6 +52,8 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
+    // Activity Result APIs require FragmentActivity-compatible fragment versions.
+    implementation(libs.androidx.fragment.ktx)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
@@ -82,6 +84,10 @@ dependencies {
 
     // Google Play Billing
     implementation(libs.google.billing)
+
+    // Google Play in-app updates
+    implementation(libs.google.play.app.update)
+    implementation(libs.google.play.app.update.ktx)
 
     testImplementation(libs.junit)
     testImplementation(libs.mockito.core)

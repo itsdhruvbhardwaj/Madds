@@ -31,7 +31,6 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val authState by authViewModel.authState.collectAsState()
-    var searchQuery by remember { mutableStateOf("") }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Image(
@@ -70,13 +69,6 @@ fun HomeScreen(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(bottom = 100.dp)
                         ) {
-                            item {
-                                PicMeSearchBar(
-                                    query = searchQuery,
-                                    onQueryChange = { searchQuery = it },
-                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
-                                )
-                            }
                             items(state.sections, key = { it.config.id }) { sectionData ->
                                 if (sectionData.styles == null) {
                                     SectionSkeleton()

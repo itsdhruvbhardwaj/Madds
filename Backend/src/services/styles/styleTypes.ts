@@ -4,6 +4,7 @@ export interface Style {
   description: string;
   prompt: string;
   thumbnail: string | null;
+  thumbnailPublicId?: string | null;
   previewImages: string[];
   imageCount: 1 | 2 | 3;
   tokensRequired: number;

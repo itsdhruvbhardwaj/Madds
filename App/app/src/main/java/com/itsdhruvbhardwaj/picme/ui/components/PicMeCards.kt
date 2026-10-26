@@ -50,12 +50,12 @@ fun StyleCard(
             .height(height)
             .shadow(
                 elevation = 12.dp,
-                shape = RoundedCornerShape(28.dp),
+                shape = RoundedCornerShape(16.dp),
                 ambientColor = Color.Black.copy(alpha = 0.15f),
                 spotColor = Color.Black.copy(alpha = 0.2f)
             )
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(16.dp),
         color = Color.White,
         border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.5f))
     ) {
@@ -82,7 +82,7 @@ fun StyleCard(
                     .fillMaxWidth()
                     .align(Alignment.BottomStart)
                     // Clip to bottom corners to prevent square edges from leaking outside the parent Surface shape
-                    .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
+                    .clip(RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp))
                     .background(
                         brush = Brush.verticalGradient(
                             colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)),

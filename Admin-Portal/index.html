@@ -30,12 +30,13 @@
       <div class="side-label">WORKSPACE</div>
       <button class="side-link active" data-panel="styles-panel"><span>▦</span> Styles <small id="style-count">0</small></button>
       <button class="side-link" data-panel="collections-panel"><span>◈</span> Collections</button>
+      <button class="side-link" data-panel="logs-panel"><span>≡</span> Change logs</button>
       <div class="sidebar-note"><span class="live-dot"></span> Connected to live catalogue</div>
       <button id="logout-button" class="side-logout">Sign out</button>
     </aside>
 
     <section class="main-area">
-      <header class="topbar"><div><div class="eyebrow">CATALOGUE CONTROL</div><div id="account-email" class="account-email"></div></div><div class="top-actions"><span class="live-pill"><i></i> Live data</span><button id="refresh-button" class="icon-button" title="Refresh catalogue">↻</button></div></header>
+      <header class="topbar"><div><div class="eyebrow">CATALOGUE CONTROL</div><div id="account-email" class="account-email"></div></div><div class="top-actions"><button id="retry-cloudinary-cleanup" class="button secondary cleanup-button" type="button" hidden></button><span class="live-pill"><i></i> Live data</span><button id="refresh-button" class="icon-button" title="Refresh catalogue">↻</button></div></header>
       <div id="notice" class="notice" role="status" hidden></div>
 
       <section id="styles-panel" class="panel-view">
@@ -50,6 +51,13 @@
         <div class="collection-head"><span>Collection</span><span>Show on app Home</span><span>Styles</span><span></span></div>
         <div id="collections-list" class="collections-list"></div>
       </section>
+
+      <section id="logs-panel" class="panel-view" hidden>
+        <div class="page-heading"><div><p class="eyebrow">TEAM ACTIVITY</p><h1>Change logs</h1><p class="muted">Read-only history of catalogue and Home screen changes.</p></div></div>
+        <div class="logs-toolbar"><label>Team member<select id="log-member-filter"><option value="">All team members</option></select></label><label>Change type<select id="log-action-filter"><option value="">All changes</option><option value="STYLE_CREATED">Style created</option><option value="STYLE_UPDATED">Style updated</option><option value="STYLE_DELETED">Style deleted</option><option value="COLLECTION_CREATED">Collection created</option><option value="COLLECTION_RENAMED">Collection renamed</option><option value="HOME_SECTION_UPDATED">Home visibility changed</option></select></label><button id="logs-refresh" class="button secondary">Refresh logs</button></div>
+        <div class="logs-table-wrap"><table class="logs-table"><thead><tr><th>Date and time</th><th>Team member</th><th>Change</th><th>Item</th></tr></thead><tbody id="logs-body"></tbody></table></div>
+        <div class="logs-pagination"><span id="logs-page-label" class="muted"></span><div><button id="logs-previous" class="button secondary" disabled>Previous</button><button id="logs-next" class="button secondary" disabled>Next</button></div></div>
+      </section>
     </section>
   </div>
 
@@ -58,10 +66,11 @@
       <header class="dialog-header"><div><p class="eyebrow">STYLE DETAILS</p><h2 id="dialog-title">Add a style</h2></div><button type="button" class="icon-button" data-close="style-dialog" aria-label="Close">×</button></header>
       <div class="form-grid">
         <label>Style name<input name="name" maxlength="80" required placeholder="e.g. Golden Hour Portrait"></label>
-        <label>Style ID <span class="field-hint">Generated from the name when adding</span><input name="id" maxlength="80" required pattern="[a-z0-9-]+" placeholder="golden-hour-portrait"></label>
+        <div class="id-preview-field"><span class="field-label">Internal style ID</span><span id="style-id-preview" class="style-id-preview">style-id-from-name</span><span class="field-hint">Generated from the name on creation, then kept stable so app references and favorites keep working.</span></div>
         <label class="wide">Short description<textarea name="description" maxlength="300" rows="2" required></textarea></label>
         <label class="wide">Generation prompt<textarea name="prompt" maxlength="10000" rows="6" required></textarea></label>
-        <label class="wide">Thumbnail URL<input name="thumbnail" type="url" placeholder="https://…"></label>
+        <label class="wide">Thumbnail URL <span class="field-hint">Required · HTTPS · Used as the app card image</span><input name="thumbnail" type="url" placeholder="https://…" required></label>
+        <div class="wide image-upload-row"><input name="thumbnailPublicId" type="hidden"><input id="thumbnail-file" type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden><button id="upload-thumbnail" class="button secondary" type="button">Upload image to Cloudinary</button><span id="thumbnail-upload-status" class="field-hint" role="status">Images are organized under the first selected collection.</span></div>
         <label class="wide">Preview image URLs <span class="field-hint">One HTTPS URL per line</span><textarea name="previewImages" rows="3" placeholder="https://…"></textarea></label>
         <label>Reference photos required<select name="imageCount"><option value="1">1 photo</option><option value="2">2 photos</option><option value="3">3 photos</option></select></label>
         <label>Credits per generation<input name="tokensRequired" type="number" min="1" max="10000" value="10" required></label>

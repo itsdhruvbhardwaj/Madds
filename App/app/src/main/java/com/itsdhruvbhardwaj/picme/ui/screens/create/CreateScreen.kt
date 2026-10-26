@@ -1,5 +1,6 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.create
 
+import android.app.Activity
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -19,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -30,6 +32,7 @@ import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
 import com.itsdhruvbhardwaj.picme.ui.components.*
 import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 import com.itsdhruvbhardwaj.picme.ui.theme.TextSecondary
+import com.itsdhruvbhardwaj.picme.utils.AdManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,6 +42,7 @@ fun CreateScreen(
     onProfileClick: () -> Unit
 ) {
     val authState by authViewModel.authState.collectAsState()
+    val context = LocalContext.current
     var prompt by remember { mutableStateOf("") }
     var selectedPhotos by remember { mutableStateOf<List<Uri>>(emptyList()) }
     
@@ -78,7 +82,16 @@ fun CreateScreen(
                 Box(modifier = Modifier.padding(24.dp).padding(bottom = 80.dp)) {
                     PicMeButton(
                         text = "Generate (10 Credits)",
-                        onClick = { onGenerateClick(prompt, selectedPhotos) },
+                        onClick = {
+                            val activity = context as? Activity
+                            if (activity != null) {
+                                AdManager.showInterstitial(activity) {
+                                    onGenerateClick(prompt, selectedPhotos)
+                                }
+                            } else {
+                                onGenerateClick(prompt, selectedPhotos)
+                            }
+                        },
                         enabled = isPromptValid,
                         modifier = Modifier.fillMaxWidth()
                     )

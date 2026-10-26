@@ -381,7 +381,6 @@ fun NavGraph(
                     val genState by generationViewModel.uiState.collectAsState()
                     val statusMsg by generationViewModel.statusMessage.collectAsState()
                     val selectedPhotos by generationViewModel.selectedPhotos.collectAsState()
-                    val isAdVisible by generationViewModel.isInterstitialVisible.collectAsState()
 
                     LaunchedEffect(Unit) {
                         if (styleId == "custom" && prompt != null) {
@@ -395,9 +394,6 @@ fun NavGraph(
                         state = genState,
                         statusMessage = statusMsg,
                         selectedPhotos = selectedPhotos,
-                        isInterstitialVisible = isAdVisible,
-                        onAdShow = { generationViewModel.setInterstitialVisible(true) },
-                        onAdDismiss = { generationViewModel.setInterstitialVisible(false) },
                         onCancelClick = { 
                             generationViewModel.resetState()
                             navController.popBackStack() 

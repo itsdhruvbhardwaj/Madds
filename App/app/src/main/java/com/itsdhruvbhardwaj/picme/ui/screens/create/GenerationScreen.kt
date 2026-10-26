@@ -1,6 +1,5 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.create
 
-import android.app.Activity
 import android.net.Uri
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -41,7 +40,6 @@ import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 import com.itsdhruvbhardwaj.picme.ui.theme.Secondary
 import com.itsdhruvbhardwaj.picme.ui.theme.TextSecondary
-import com.itsdhruvbhardwaj.picme.utils.AdManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,29 +47,14 @@ fun GenerationScreen(
     state: GenerationUiState,
     statusMessage: String,
     selectedPhotos: List<Uri>,
-    isInterstitialVisible: Boolean,
-    onAdShow: () -> Unit,
-    onAdDismiss: () -> Unit,
     onCancelClick: () -> Unit,
     onRetryClick: () -> Unit,
     onSuccess: (String) -> Unit
 ) {
     val context = LocalContext.current
 
-    // Trigger interstitial ad once when the generation process starts
-    LaunchedEffect(Unit) {
-        val activity = context as? Activity
-        if (activity != null && AdManager.isInterstitialReady()) {
-            onAdShow()
-            AdManager.showInterstitial(activity) {
-                onAdDismiss()
-            }
-        }
-    }
-
-    // Wait for BOTH generation success and ad dismissal before navigating
-    LaunchedEffect(state, isInterstitialVisible) {
-        if (state is GenerationUiState.Success && !isInterstitialVisible) {
+    LaunchedEffect(state) {
+        if (state is GenerationUiState.Success) {
             onSuccess(state.imageBase64)
         }
     }

@@ -1,7 +1,7 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.home
 
+import android.app.Activity
 import android.widget.Toast
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,7 +14,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,6 +39,7 @@ import com.itsdhruvbhardwaj.picme.ui.components.PicMeCompactHeader
 import com.itsdhruvbhardwaj.picme.ui.components.TipsCard
 import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 import com.itsdhruvbhardwaj.picme.ui.theme.TextSecondary
+import com.itsdhruvbhardwaj.picme.utils.AdManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +56,7 @@ fun StyleDetailsScreen(
     val context = LocalContext.current
     
     var showInsufficientCreditsSheet by remember { mutableStateOf(false) }
+    val currentStyle = (uiState as? StyleDetailsUiState.Success)?.style
 
     LaunchedEffect(Unit) {
         viewModel.toastEvent.collect { message ->
@@ -75,13 +76,34 @@ fun StyleDetailsScreen(
         )
 
         Scaffold(
-            containerColor = Color.Transparent
-        ) { _ -> // Ignore innerPadding to allow true overlay behavior
+            containerColor = Color.Transparent,
+            bottomBar = {
+                currentStyle?.let { style ->
+                    GenerateActionBar(
+                        creditsRequired = style.tokensRequired,
+                        onGenerate = {
+                            val currentCredits = user?.credits ?: 0
+                            if (currentCredits >= style.tokensRequired) {
+                                val activity = context as? Activity
+                                if (activity != null) {
+                                    AdManager.showInterstitial(activity) { onTryStyleClick(style.id) }
+                                } else {
+                                    onTryStyleClick(style.id)
+                                }
+                            } else {
+                                showInsufficientCreditsSheet = true
+                            }
+                        }
+                    )
+                }
+            }
+        ) { innerPadding ->
             Box(modifier = Modifier.fillMaxSize()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
+                        .padding(bottom = innerPadding.calculateBottomPadding())
                         .padding(horizontal = 24.dp)
                 ) {
                     // Initial top spacing to start content below the floating pill
@@ -102,7 +124,7 @@ fun StyleDetailsScreen(
                         is StyleDetailsUiState.Success -> {
                             val style = state.style
                             
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
 
                             // 1. Hero Image
                             AsyncImage(
@@ -113,24 +135,24 @@ fun StyleDetailsScreen(
                                 contentDescription = style.name,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .aspectRatio(1.0f)
-                                    .shadow(12.dp, RoundedCornerShape(32.dp))
-                                    .clip(RoundedCornerShape(32.dp))
+                                    .aspectRatio(1.08f)
+                                    .shadow(12.dp, RoundedCornerShape(20.dp))
+                                    .clip(RoundedCornerShape(20.dp))
                                     .background(Color.White.copy(alpha = 0.2f))
-                                    .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(32.dp)),
+                                    .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(20.dp)),
                                 contentScale = ContentScale.Crop
                             )
                             
-                            Spacer(modifier = Modifier.height(32.dp))
+                            Spacer(modifier = Modifier.height(22.dp))
                             
                             Column(
-                                verticalArrangement = Arrangement.spacedBy(24.dp)
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
                                 Text(
                                     text = style.name,
                                     style = MaterialTheme.typography.headlineSmall.copy(
                                         fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 28.sp,
+                                        fontSize = 25.sp,
                                         color = Color(0xFF1E293B)
                                     ),
                                     modifier = Modifier.fillMaxWidth()
@@ -141,7 +163,7 @@ fun StyleDetailsScreen(
                                     text = style.description,
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = Color(0xFF374151),
-                                    lineHeight = 26.sp
+                                    lineHeight = 23.sp
                                 )
                                 
                                 // Glass Tips Card
@@ -177,10 +199,10 @@ fun StyleDetailsScreen(
                                                     modifier = Modifier
                                                         .width(140.dp)
                                                         .height(190.dp)
-                                                        .shadow(4.dp, RoundedCornerShape(20.dp))
-                                                        .clip(RoundedCornerShape(20.dp))
+                                                        .shadow(4.dp, RoundedCornerShape(14.dp))
+                                                        .clip(RoundedCornerShape(14.dp))
                                                         .background(Color.White.copy(alpha = 0.3f))
-                                                        .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(20.dp)),
+                                                        .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
                                                     contentScale = ContentScale.Crop
                                                 )
                                             }
@@ -188,61 +210,9 @@ fun StyleDetailsScreen(
                                     }
                                 }
 
-                                // Generate Button Section
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 16.dp)
-                                        .background(Color.White.copy(alpha = 0.6f), RoundedCornerShape(24.dp))
-                                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.7f)), RoundedCornerShape(24.dp))
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(20.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.weight(1f),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Star,
-                                                contentDescription = null,
-                                                tint = Color(0xFFF59E0B),
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(10.dp))
-                                            Column {
-                                                Text(
-                                                    text = "${style.tokensRequired} Credits",
-                                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                                    color = Color.Black
-                                                )
-                                                Text(
-                                                    text = "per generation",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = TextSecondary
-                                                )
-                                            }
-                                        }
-                                        
-                                        PicMeButton(
-                                            text = "Generate",
-                                            onClick = {
-                                                val currentCredits = user?.credits ?: 0
-                                                if (currentCredits >= style.tokensRequired) {
-                                                    onTryStyleClick(style.id)
-                                                } else {
-                                                    showInsufficientCreditsSheet = true
-                                                }
-                                            },
-                                            modifier = Modifier.width(140.dp).height(48.dp),
-                                            shadowElevation = 0.dp
-                                        )
-                                    }
-                                }
                             }
                             
-                            Spacer(modifier = Modifier.height(140.dp)) // Extra space to scroll past the ad banner
+                            Spacer(modifier = Modifier.height(20.dp))
                         }
                     }
                 }
@@ -285,6 +255,43 @@ fun StyleDetailsScreen(
             requiredCredits = style.tokensRequired,
             availableCredits = user?.credits ?: 0,
             onDismiss = { showInsufficientCreditsSheet = false }
+        )
+    }
+}
+
+@Composable
+private fun GenerateActionBar(
+    creditsRequired: Int,
+    onGenerate: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+            .shadow(10.dp, RoundedCornerShape(24.dp))
+            .background(Color.White.copy(alpha = 0.94f), RoundedCornerShape(24.dp))
+            .border(1.dp, Color.White, RoundedCornerShape(24.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "$creditsRequired credits",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = Color(0xFF1E293B)
+            )
+            Text(
+                text = "per generation",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary
+            )
+        }
+        PicMeButton(
+            text = "Generate",
+            onClick = onGenerate,
+            modifier = Modifier.width(144.dp).height(48.dp),
+            shadowElevation = 0.dp
         )
     }
 }

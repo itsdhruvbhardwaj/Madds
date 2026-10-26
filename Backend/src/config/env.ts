@@ -56,6 +56,15 @@ export const env = {
       .map((email) => email.trim().toLowerCase())
       .filter(Boolean);
   },
+  get cloudinaryCloudName() {
+    return (process.env.CLOUDINARY_CLOUD_NAME ?? "").trim();
+  },
+  get cloudinaryApiKey() {
+    return (process.env.CLOUDINARY_API_KEY ?? "").trim();
+  },
+  get cloudinaryApiSecret() {
+    return (process.env.CLOUDINARY_API_SECRET ?? "").trim();
+  },
   get imageModel() {
     return process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2.5-flare";
   },

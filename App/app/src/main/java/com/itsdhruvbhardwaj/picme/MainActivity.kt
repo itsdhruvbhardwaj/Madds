@@ -2,6 +2,8 @@ package com.itsdhruvbhardwaj.picme
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -17,6 +19,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.compose.rememberNavController
 import com.google.android.gms.ads.MobileAds
+import com.google.android.play.core.appupdate.AppUpdateInfo
+import com.google.android.play.core.appupdate.AppUpdateManager
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.appupdate.AppUpdateOptions
+import com.google.android.play.core.install.InstallStateUpdatedListener
+import com.google.android.play.core.install.model.AppUpdateType
+import com.google.android.play.core.install.model.InstallStatus
+import com.google.android.play.core.install.model.UpdateAvailability
 import com.itsdhruvbhardwaj.picme.data.local.AuthTokenStorage
 import com.itsdhruvbhardwaj.picme.data.remote.AuthApiService
 import com.itsdhruvbhardwaj.picme.data.remote.AuthAuthenticator
@@ -42,10 +52,30 @@ class MainActivity : ComponentActivity() {
     
     private var intentState by mutableStateOf<Intent?>(null)
     private lateinit var billingManager: BillingManager
+    private lateinit var appUpdateManager: AppUpdateManager
+    private var updatePromptStartedThisSession = false
+    private var updateReadyDialogShown = false
+
+    private val updateFlowLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode != RESULT_OK) {
+            Log.i(TAG, "User deferred or canceled the in-app update flow")
+        }
+    }
+
+    private val updateStateListener = InstallStateUpdatedListener { state ->
+        if (state.installStatus() == InstallStatus.DOWNLOADED) {
+            showUpdateReadyDialog()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        appUpdateManager = AppUpdateManagerFactory.create(this)
+        appUpdateManager.registerListener(updateStateListener)
 
         // Initialize Google Mobile Ads SDK
         MobileAds.initialize(this) {
@@ -134,9 +164,70 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        checkForAppUpdate()
         // Process any purchases that might have completed while the app was in background
         val authViewModel = ViewModelProvider(this)[AuthViewModel::class.java]
         authViewModel.processPendingPurchases()
+    }
+
+    override fun onDestroy() {
+        if (::appUpdateManager.isInitialized) {
+            appUpdateManager.unregisterListener(updateStateListener)
+        }
+        super.onDestroy()
+    }
+
+    private fun checkForAppUpdate() {
+        if (updatePromptStartedThisSession) return
+
+        appUpdateManager.appUpdateInfo
+            .addOnSuccessListener { updateInfo ->
+                if (updateInfo.installStatus() == InstallStatus.DOWNLOADED) {
+                    showUpdateReadyDialog()
+                } else if (
+                    updateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE &&
+                    updateInfo.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE)
+                ) {
+                    startFlexibleUpdate(updateInfo)
+                }
+            }
+            .addOnFailureListener { error ->
+                Log.w(TAG, "Could not check Google Play for an app update", error)
+            }
+    }
+
+    private fun startFlexibleUpdate(updateInfo: AppUpdateInfo) {
+        if (updatePromptStartedThisSession) return
+        updatePromptStartedThisSession = true
+        try {
+            appUpdateManager.startUpdateFlowForResult(
+                updateInfo,
+                updateFlowLauncher,
+                AppUpdateOptions.newBuilder(AppUpdateType.FLEXIBLE).build()
+            )
+        } catch (error: Exception) {
+            updatePromptStartedThisSession = false
+            Log.e(TAG, "Could not start the Google Play in-app update", error)
+        }
+    }
+
+    private fun showUpdateReadyDialog() {
+        if (updateReadyDialogShown || isFinishing || isDestroyed) return
+        updateReadyDialogShown = true
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Update ready")
+            .setMessage("PicMee has downloaded the latest update. Restart the app to install it.")
+            .setPositiveButton("Restart now") { _, _ ->
+                appUpdateManager.completeUpdate()
+            }
+            .setNegativeButton("Later", null)
+            .setOnDismissListener { updateReadyDialogShown = false }
+            .show()
+    }
+
+    companion object {
+        private const val TAG = "PicMeAppUpdate"
     }
 
     override fun onNewIntent(intent: Intent) {

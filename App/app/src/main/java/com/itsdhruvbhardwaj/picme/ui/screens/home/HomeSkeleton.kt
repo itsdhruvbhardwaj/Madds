@@ -18,18 +18,6 @@ fun HomeSkeleton() {
         contentPadding = PaddingValues(bottom = 24.dp),
         userScrollEnabled = false
     ) {
-        // Search Bar Placeholder
-        item {
-            Box(
-                modifier = Modifier
-                    .padding(horizontal = 24.dp, vertical = 8.dp)
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .clip(RoundedCornerShape(28.dp))
-                    .shimmer()
-            )
-        }
-
         // Category Chips Placeholder
         item {
             LazyRow(
@@ -94,7 +82,7 @@ fun SectionSkeleton() {
                     modifier = Modifier
                         .width(148.dp)
                         .height(208.dp)
-                        .clip(RoundedCornerShape(28.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .shimmer()
                 )
             }

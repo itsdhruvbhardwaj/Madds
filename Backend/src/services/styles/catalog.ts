@@ -13,17 +13,30 @@ export function catalogDatabaseReady(): boolean {
 export async function initializeStyleCatalog(): Promise<void> {
   if (!catalogDatabaseReady()) return;
   const state = await CatalogState.findById("styles-v1").lean();
-  if (state) return;
-  const count = await CatalogStyle.countDocuments();
-  if (count === 0) {
-    await CatalogStyle.insertMany(bundledStyles, { ordered: true });
-    console.log(`Imported ${bundledStyles.length} styles into the editable catalogue.`);
+  if (!state) {
+    const count = await CatalogStyle.countDocuments();
+    if (count === 0) {
+      await CatalogStyle.insertMany(bundledStyles, { ordered: true });
+      console.log(`Imported ${bundledStyles.length} styles into the editable catalogue.`);
+    }
+    const names = [...new Set(bundledStyles.flatMap((style) => style.collections))];
+    for (const name of names) {
+      await StyleCollection.updateOne({ id: slugify(name) }, { $setOnInsert: { id: slugify(name), name } }, { upsert: true });
+    }
+    await CatalogState.create({ _id: "styles-v1", initializedAt: new Date() });
   }
-  const names = [...new Set(bundledStyles.flatMap((style) => style.collections))];
-  for (const name of names) {
-    await StyleCollection.updateOne({ id: slugify(name) }, { $setOnInsert: { id: slugify(name), name } }, { upsert: true });
-  }
-  await CatalogState.create({ _id: "styles-v1", initializedAt: new Date() });
+
+  const otherCollection = await StyleCollection.findOne({ name: { $regex: "^Other$", $options: "i" } }).lean();
+  const otherName = otherCollection?.name ?? "Other";
+  await StyleCollection.updateOne(
+    { id: slugify(otherName) },
+    { $setOnInsert: { id: slugify(otherName), name: otherName } },
+    { upsert: true },
+  );
+  await CatalogStyle.updateMany(
+    { $or: [{ collections: { $exists: false } }, { collections: null }, { collections: { $size: 0 } }] },
+    { $set: { collections: [otherName] } },
+  );
 }
 
 export async function listCatalogStyles(): Promise<Style[]> {
@@ -62,6 +75,7 @@ function toStyle(record: Record<string, unknown>): Style {
     description: String(record.description),
     prompt: String(record.prompt),
     thumbnail: typeof record.thumbnail === "string" ? record.thumbnail : null,
+    thumbnailPublicId: typeof record.thumbnailPublicId === "string" ? record.thumbnailPublicId : null,
     previewImages: Array.isArray(record.previewImages) ? record.previewImages.map(String) : [],
     imageCount: Number(record.imageCount) as Style["imageCount"],
     tokensRequired: Number(record.tokensRequired),
