@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#11131a">
   <title>PicMee Studio · Style Manager</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="portal-overrides.css">
 </head>
 <body>
   <main id="login-view" class="login-shell">
@@ -46,6 +47,7 @@
       <section id="collections-panel" class="panel-view" hidden>
         <div class="page-heading"><div><p class="eyebrow">ORGANIZE YOUR LIBRARY</p><h1>Collections</h1><p class="muted">Create a collection, then assign it to styles in the editor.</p></div></div>
         <form id="collection-form" class="collection-create"><label>New collection<input name="name" maxlength="60" placeholder="e.g. Festive Portraits" required></label><button class="button primary" type="submit">Create collection</button></form>
+        <div class="collection-head"><span>Collection</span><span>Show on app Home</span><span>Styles</span><span></span></div>
         <div id="collections-list" class="collections-list"></div>
       </section>
     </section>

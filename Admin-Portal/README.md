@@ -19,5 +19,6 @@ Set `window.PICMEE_API_BASE` in `config.js` to the backend URL, then serve this 
 
 - Style edits and new styles are saved directly to MongoDB and are returned by the existing public `/api/styles` API. Generation and favorites also read the live catalogue.
 - Collection names are stored separately. Renaming one updates the collection labels on assigned styles.
-- Existing home screen sections remain curated in the backend home configuration; creating a collection makes it available for assignment and filtering, but does not automatically add a new home section.
+- The Collections screen controls whether each collection appears on the app Home screen. New collections start hidden; switch them on when you are ready to feature them.
+- Deleting a style removes it from the live catalogue and favorites. Its ID is retained in the audit history and cannot be reused; existing generation history is kept.
 - The backend writes a small audit record for each create, edit, and collection change.

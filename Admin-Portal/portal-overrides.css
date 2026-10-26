@@ -1,0 +1,9 @@
+[hidden]{display:none!important}
+.collection-head,.collection-row{display:grid;grid-template-columns:minmax(180px,1fr) 170px 85px 80px;align-items:center;gap:12px}
+.collection-head{padding:0 18px 9px;color:#828695;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.home-toggle{accent-color:#9560f1;width:17px;height:17px;cursor:pointer}
+.collection-count{color:#a4a6b3;font-size:12px}
+.delete-button{border:1px solid #593b43;color:#ff969e;background:#281b21;border-radius:8px;padding:7px 10px;font-size:11px;font-weight:700}
+.delete-button:hover{background:#3a2028}
+.danger-note{color:#ffadb3;font-size:11px}
+@media(max-width:650px){.collection-head{display:none}.collection-row{grid-template-columns:minmax(130px,1fr) auto;gap:9px}.collection-row .home-control{grid-column:1}.collection-row .collection-count{grid-column:2;grid-row:1}.collection-row .collection-actions{grid-column:2;grid-row:2}.collection-row .text-button,.collection-row .delete-button{margin-left:7px}}

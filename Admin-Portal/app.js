@@ -2,7 +2,7 @@
   const apiBase = String(window.PICMEE_API_BASE || "").replace(/\/$/, "");
   const tokenKey = "picmee_admin_access";
   const refreshKey = "picmee_admin_refresh";
-  const state = { styles: [], collections: [], recentChanges: [], editingId: null, renamingId: null };
+  const state = { styles: [], collections: [], sections: [], recentChanges: [], editingId: null, renamingId: null };
   const byId = (id) => document.getElementById(id);
 
   async function api(path, options = {}, retry = true) {
@@ -62,6 +62,7 @@
       const data = await api("/api/admin/catalog");
       state.styles = data.styles || [];
       state.collections = data.collections || [];
+      state.sections = data.sections || [];
       state.recentChanges = data.recentChanges || [];
       renderStyles();
       renderCollections();
@@ -96,9 +97,10 @@
         ? `<img src="${escapeHtml(style.thumbnail)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\'>Preview unavailable</div>'">`
         : '<div class="image-placeholder">No thumbnail yet</div>';
       const chips = (style.collections || []).map((name) => `<span class="chip">${escapeHtml(name)}</span>`).join("");
-      return `<article class="style-card"><div class="style-image">${img}</div><div class="style-body"><div class="style-title" title="${escapeHtml(style.name)}">${escapeHtml(style.name)}</div><div class="style-id">${escapeHtml(style.id)}</div><p class="style-description">${escapeHtml(style.description)}</p><div class="chips">${chips || '<span class="muted">No collection</span>'}</div><div class="card-footer"><span>${Number(style.tokensRequired)} credits · ${Number(style.imageCount)} photo${Number(style.imageCount) === 1 ? "" : "s"}</span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit →</button></div></div></article>`;
+      return `<article class="style-card"><div class="style-image">${img}</div><div class="style-body"><div class="style-title" title="${escapeHtml(style.name)}">${escapeHtml(style.name)}</div><div class="style-id">${escapeHtml(style.id)}</div><p class="style-description">${escapeHtml(style.description)}</p><div class="chips">${chips || '<span class="muted">No collection</span>'}</div><div class="card-footer"><span>${Number(style.tokensRequired)} credits · ${Number(style.imageCount)} photo${Number(style.imageCount) === 1 ? "" : "s"}</span><span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
     }).join("");
     grid.querySelectorAll("[data-edit]").forEach((button) => button.addEventListener("click", () => openStyleEditor(button.dataset.edit)));
+    grid.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", () => deleteStyle(button.dataset.delete)));
   }
 
   function renderCollectionOptions() {
@@ -115,9 +117,33 @@
     if (!state.collections.length) { root.innerHTML = '<div class="empty-state">No collections have been created.</div>'; return; }
     root.innerHTML = state.collections.map((collection) => {
       const count = state.styles.filter((style) => style.collections.includes(collection.name)).length;
-      return `<div class="collection-row"><div><div class="collection-name">${escapeHtml(collection.name)}</div><div class="collection-meta">${count} style${count === 1 ? "" : "s"} · ID: ${escapeHtml(collection.id)}</div></div><button class="text-button" data-rename="${escapeHtml(collection.id)}">Rename</button></div>`;
+      const section = state.sections.find((item) => String(item.slug).toLowerCase() === collection.name.toLowerCase());
+      const visible = Boolean(section?.visible);
+      return `<div class="collection-row"><div><div class="collection-name">${escapeHtml(collection.name)}</div><div class="collection-meta">ID: ${escapeHtml(collection.id)}</div></div><label class="home-control collection-check"><input class="home-toggle" type="checkbox" data-home="${escapeHtml(section?.id || "")}" ${visible ? "checked" : ""} ${section ? "" : "disabled"}>Show on Home</label><div class="collection-count">${count} style${count === 1 ? "" : "s"}</div><div class="collection-actions"><button class="text-button" data-rename="${escapeHtml(collection.id)}">Rename</button></div></div>`;
     }).join("");
     root.querySelectorAll("[data-rename]").forEach((button) => button.addEventListener("click", () => openRenameDialog(button.dataset.rename)));
+    root.querySelectorAll("[data-home]").forEach((input) => input.addEventListener("change", () => updateHomeVisibility(input.dataset.home, input.checked)));
+  }
+
+  async function updateHomeVisibility(id, visible) {
+    if (!id) return;
+    try {
+      const result = await api(`/api/admin/catalog/home-sections/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ visible }) });
+      const index = state.sections.findIndex((section) => section.id === id);
+      if (index >= 0) state.sections[index] = result.section;
+      notify(visible ? "Collection will appear on the app Home screen." : "Collection hidden from the app Home screen.");
+    } catch (error) { notify(error.message, true); await loadCatalog(); }
+  }
+
+  async function deleteStyle(id) {
+    const style = state.styles.find((item) => item.id === id);
+    if (!style) return;
+    if (!window.confirm(`Permanently delete “${style.name}”? It will disappear from the catalogue and users’ favorites. Existing generation history will remain.`)) return;
+    try {
+      await api(`/api/admin/catalog/styles/${encodeURIComponent(id)}`, { method: "DELETE" });
+      notify("Style permanently deleted.");
+      await loadCatalog();
+    } catch (error) { notify(error.message, true); }
   }
 
   function openStyleEditor(id = null) {
