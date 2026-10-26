@@ -50,6 +50,12 @@ export const env = {
       .map((origin) => origin.trim())
       .filter(Boolean);
   },
+  get adminEmails() {
+    return (process.env.ADMIN_EMAILS ?? "")
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean);
+  },
   get imageModel() {
     return process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2.5-flare";
   },

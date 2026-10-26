@@ -16,6 +16,7 @@ import { FavoriteStyle } from "./models/FavoriteStyle.js";
 import { Generation } from "./models/Generation.js";
 import { RewardedAdAttempt } from "./models/RewardedAdAttempt.js";
 import { authRouter } from "./routes/auth.js";
+import { adminCatalogRouter } from "./routes/adminCatalog.js";
 import { favoritesRouter } from "./routes/favorites.js";
 import { googlePlayBillingRouter } from "./routes/googlePlayBilling.js";
 import { rewardedAdsRouter } from "./routes/rewardedAds.js";
@@ -32,7 +33,9 @@ import {
   UserNotFoundError,
 } from "./services/credits/creditService.js";
 import { OpenAIImageGenerator } from "./services/openai/generation.js";
-import { buildCustomPrompt, buildPrompt, findStyle, styles } from "./services/styles/styles.js";
+import { buildCustomPrompt, buildPrompt } from "./services/styles/styles.js";
+import { getCatalogStyle, listCatalogCollections, listCatalogStyles } from "./services/styles/catalog.js";
+import type { Style } from "./services/styles/styleTypes.js";
 import type { UploadedImage } from "./types/generation.js";
 
 const upload = multer({
@@ -147,7 +150,8 @@ app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Resp
     .filter((value): value is string => typeof value === "string");
 
   // Apply collection filters before pagination
-  let filteredStyles = styles;
+  const catalogueStyles = await listCatalogStyles();
+  let filteredStyles = catalogueStyles;
   if (collections.length > 0) {
     filteredStyles = filteredStyles.filter((style) =>
       style.collections.some((collection) =>
@@ -192,6 +196,10 @@ app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Resp
       ...style,
       isFavorite: favoriteIds.has(style.id),
     })),
+    collections: [...new Set([
+      ...(await listCatalogCollections()).map((collection) => collection.name),
+      ...catalogueStyles.flatMap((style) => style.collections),
+    ])],
     pagination: {
       currentPage: page,
       totalPages: totalPages,
@@ -202,6 +210,7 @@ app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Resp
 });
 
 app.use("/api/auth", authRouter);
+app.use("/api/admin", adminCatalogRouter);
 app.use("/api/me", favoritesRouter);
 app.use("/api", rewardedAdsRouter);
 app.use("/api", googlePlayBillingRouter);
@@ -235,11 +244,11 @@ app.post(
       });
     }
 
-    let style: ReturnType<typeof findStyle>;
+    let style: Style | undefined;
     let customPrompt: string | undefined;
     if (hasStyleId) {
       const styleId = typeof body.styleId === "string" ? body.styleId.trim() : "";
-      style = findStyle(styleId);
+      style = await getCatalogStyle(styleId);
       if (!style) {
         return res.status(400).json({
           ok: false,
@@ -502,6 +511,8 @@ if (isDirectExecution) {
           FavoriteStyle.init(),
           RewardedAdAttempt.init(),
         ]);
+        const { initializeStyleCatalog } = await import("./services/styles/catalog.js");
+        await initializeStyleCatalog();
         await cleanupScheduledAccountDeletions();
         const accountDeletionCleanupTimer = setInterval(() => {
           void cleanupScheduledAccountDeletions().catch((error: unknown) => {

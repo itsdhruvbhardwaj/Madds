@@ -2,7 +2,7 @@ import { Router, type Response } from "express";
 
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth.js";
 import { FavoriteStyle } from "../models/FavoriteStyle.js";
-import { findStyle, styles } from "../services/styles/styles.js";
+import { getCatalogStyle, listCatalogStyles } from "../services/styles/catalog.js";
 
 const router = Router();
 
@@ -16,10 +16,11 @@ router.get("/favorites", async (req: AuthenticatedRequest, res: Response) => {
 
   const favorites = await FavoriteStyle.find({ userId }).select("styleId -_id").lean();
   const favoriteIds = new Set(favorites.map(({ styleId }) => styleId));
+  const catalog = await listCatalogStyles();
 
   return res.json({
     ok: true,
-    favorites: styles.filter((style) => favoriteIds.has(style.id)),
+    favorites: catalog.filter((style) => favoriteIds.has(style.id)),
   });
 });
 
@@ -30,7 +31,7 @@ router.put("/favorites/:styleId", async (req: AuthenticatedRequest, res: Respons
   }
 
   const { styleId } = req.params;
-  if (typeof styleId !== "string" || !findStyle(styleId)) {
+  if (typeof styleId !== "string" || !await getCatalogStyle(styleId)) {
     return res.status(404).json({ ok: false, error: "Style not found." });
   }
 
@@ -50,7 +51,7 @@ router.delete("/favorites/:styleId", async (req: AuthenticatedRequest, res: Resp
   }
 
   const { styleId } = req.params;
-  if (typeof styleId !== "string" || !findStyle(styleId)) {
+  if (typeof styleId !== "string" || !await getCatalogStyle(styleId)) {
     return res.status(404).json({ ok: false, error: "Style not found." });
   }
 
