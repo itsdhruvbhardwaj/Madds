@@ -137,8 +137,11 @@
       const img = style.thumbnail
         ? `<img src="${escapeHtml(style.thumbnail)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\'>Preview unavailable</div>'">`
         : '';
-      const chips = (style.collections || []).map((name) => `<span class="chip">${escapeHtml(name)}</span>`).join("");
-      return `<article class="style-card"><div class="style-image ${style.thumbnail ? "" : "missing-image"}">${img}<div class="app-preview-plus">＋</div><div class="app-preview-caption"><strong>${escapeHtml(style.name)}</strong><span>Try now</span></div></div><div class="style-body"><div class="style-description">${escapeHtml(style.description)}</div><div class="style-id">ID · ${escapeHtml(style.id)}</div><div class="chips">${chips || '<span class="muted">No collection</span>'}</div><div class="card-footer"><span>${Number(style.tokensRequired)} credits · ${Number(style.imageCount)} photo${Number(style.imageCount) === 1 ? "" : "s"}</span><span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
+      const collection = (style.collections || [])[0];
+      const collectionBadge = collection
+        ? `<span class="style-collection-pill">${escapeHtml(collection)}</span>`
+        : '<span class="style-collection-pill">No collection</span>';
+      return `<article class="style-card website-style-card"><div class="style-image ${style.thumbnail ? "" : "missing-image"}">${img}${collectionBadge}</div><div class="style-body"><h3 class="style-card-title">${escapeHtml(style.name)}</h3><div class="style-description">${escapeHtml(style.description)}</div><a class="try-in-picmee" href="https://picmee.co.in" target="_blank" rel="noopener noreferrer">Try in PicMee ↗</a><div class="style-admin-footer"><span class="style-id">ID · ${escapeHtml(style.id)}</span><span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
     }).join("");
     grid.querySelectorAll("[data-edit]").forEach((button) => button.addEventListener("click", () => openStyleEditor(button.dataset.edit)));
     grid.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", () => deleteStyle(button.dataset.delete)));
@@ -211,10 +214,6 @@
     updateIdPreview(form.elements.name.value, style?.id);
     renderCollectionOptions();
     if (style) for (const input of form.querySelectorAll('input[name="collections"]')) input.checked = style.collections.includes(input.value);
-    else {
-      const fallback = [...form.querySelectorAll('input[name="collections"]')].find((input) => input.value.toLowerCase() === "other");
-      if (fallback) fallback.checked = true;
-    }
     byId("style-dialog").showModal();
   }
 

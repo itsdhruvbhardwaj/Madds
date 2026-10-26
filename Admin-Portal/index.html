@@ -68,13 +68,13 @@
         <label>Style name<input name="name" maxlength="80" required placeholder="e.g. Golden Hour Portrait"></label>
         <div class="id-preview-field"><span class="field-label">Internal style ID</span><span id="style-id-preview" class="style-id-preview">style-id-from-name</span><span class="field-hint">Generated from the name on creation, then kept stable so app references and favorites keep working.</span></div>
         <label class="wide">Short description<textarea name="description" maxlength="300" rows="2" required></textarea></label>
+        <fieldset class="wide"><legend>Collections</legend><div id="collection-checkboxes" class="checkbox-grid"></div></fieldset>
         <label class="wide">Generation prompt<textarea name="prompt" maxlength="10000" rows="6" required></textarea></label>
         <label class="wide">Thumbnail URL <span class="field-hint">Required · HTTPS · Used as the app card image</span><input name="thumbnail" type="url" placeholder="https://…" required></label>
         <div class="wide image-upload-row"><input name="thumbnailPublicId" type="hidden"><input id="thumbnail-file" type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden><button id="upload-thumbnail" class="button secondary" type="button">Upload image to Cloudinary</button><span id="thumbnail-upload-status" class="field-hint" role="status">Images are organized under the first selected collection.</span></div>
         <label class="wide">Preview image URLs <span class="field-hint">One HTTPS URL per line</span><textarea name="previewImages" rows="3" placeholder="https://…"></textarea></label>
         <label>Reference photos required<select name="imageCount"><option value="1">1 photo</option><option value="2">2 photos</option><option value="3">3 photos</option></select></label>
         <label>Credits per generation<input name="tokensRequired" type="number" min="1" max="10000" value="10" required></label>
-        <fieldset class="wide"><legend>Collections</legend><div id="collection-checkboxes" class="checkbox-grid"></div></fieldset>
       </div>
       <footer class="dialog-footer"><span id="form-error" class="form-error"></span><button type="button" class="button secondary" data-close="style-dialog">Cancel</button><button class="button primary" type="submit">Save style</button></footer>
     </form>
