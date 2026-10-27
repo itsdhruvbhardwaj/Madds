@@ -40,13 +40,19 @@ export async function initializeStyleCatalog(): Promise<void> {
 }
 
 export async function listCatalogStyles(): Promise<Style[]> {
-  if (!catalogDatabaseReady()) return bundledStyles;
+  if (!catalogDatabaseReady()) return bundledStyles.map((style) => ({
+    ...style,
+    thumbnail: style.thumbnail ? optimizeCloudinaryThumbnailUrl(style.thumbnail) : null,
+  }));
   const records = await CatalogStyle.find().sort({ name: 1 }).lean();
   return records.map(toStyle);
 }
 
 export async function getCatalogStyle(id: string): Promise<Style | undefined> {
-  if (!catalogDatabaseReady()) return bundledStyles.find((style) => style.id === id);
+  if (!catalogDatabaseReady()) {
+    const style = bundledStyles.find((item) => item.id === id);
+    return style ? { ...style, thumbnail: style.thumbnail ? optimizeCloudinaryThumbnailUrl(style.thumbnail) : null } : undefined;
+  }
   const record = await CatalogStyle.findOne({ id }).lean();
   return record ? toStyle(record) : undefined;
 }
@@ -68,13 +74,38 @@ export function slugify(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+export function optimizeCloudinaryThumbnailUrl(source: string): string {
+  try {
+    const url = new URL(source);
+    if (url.hostname !== "res.cloudinary.com") return source;
+    const path = url.pathname.split("/");
+    const uploadIndex = path.findIndex((part, index) => part === "upload" && path[index - 1] === "image");
+    if (uploadIndex < 0) return source;
+
+    const transform = "c_limit,w_900,h_1200,q_auto,f_auto";
+    const versionIndex = path.findIndex((part, index) => index > uploadIndex && /^v\d+$/.test(part));
+    if (versionIndex > uploadIndex) {
+      path.splice(uploadIndex + 1, versionIndex - uploadIndex - 1, transform);
+    } else {
+      const firstAfterUpload = uploadIndex + 1;
+      const isTransformation = /^(?:a|ar|b|bo|c|d|e|fl|g|h|ki|l|o|q|r|t|u|vc|w|x|y|z|ac|af|br|cs|dn|du|fps|pg|so|sp|vs)_/.test(path[firstAfterUpload] ?? "");
+      if (isTransformation) path[firstAfterUpload] = transform;
+      else path.splice(firstAfterUpload, 0, transform);
+    }
+    url.pathname = path.join("/");
+    return url.toString();
+  } catch {
+    return source;
+  }
+}
+
 function toStyle(record: Record<string, unknown>): Style {
   return {
     id: String(record.id),
     name: String(record.name),
     description: String(record.description),
     prompt: String(record.prompt),
-    thumbnail: typeof record.thumbnail === "string" ? record.thumbnail : null,
+    thumbnail: typeof record.thumbnail === "string" ? optimizeCloudinaryThumbnailUrl(record.thumbnail) : null,
     thumbnailPublicId: typeof record.thumbnailPublicId === "string" ? record.thumbnailPublicId : null,
     previewImages: Array.isArray(record.previewImages) ? record.previewImages.map(String) : [],
     imageCount: Number(record.imageCount) as Style["imageCount"],

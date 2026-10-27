@@ -89,3 +89,8 @@
 @media(max-width:1100px){.catalogue-skeleton{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:760px){.catalogue-skeleton{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:460px){.catalogue-skeleton{grid-template-columns:1fr}}
+
+/* Match the main website's 3:4 style thumbnail frame. */
+.style-card .style-image{height:auto;aspect-ratio:3/4}
+.style-card .style-image img{object-fit:contain}
+.skeleton-image{aspect-ratio:3/4}

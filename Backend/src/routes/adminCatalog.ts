@@ -8,7 +8,7 @@ import { CloudinaryCleanup } from "../models/CloudinaryCleanup.js";
 import { FavoriteStyle } from "../models/FavoriteStyle.js";
 import { HomeSectionConfig } from "../models/HomeSectionConfig.js";
 import { StyleCollection } from "../models/StyleCollection.js";
-import { catalogDatabaseReady, listCatalogCollections, listCatalogStyles, slugify } from "../services/styles/catalog.js";
+import { catalogDatabaseReady, listCatalogCollections, listCatalogStyles, optimizeCloudinaryThumbnailUrl, slugify } from "../services/styles/catalog.js";
 import type { Style } from "../services/styles/styleTypes.js";
 import { ensureHomeSection, renameHomeSectionCollection } from "../services/home/homeCatalog.js";
 import { cloudinaryIsConfigured, createStyleImageUploadSignature, destroyManagedStyleImage } from "../services/cloudinaryAssets.js";
@@ -259,7 +259,8 @@ function validateStyle(body: unknown, fixedId?: string): { value?: Style; error?
   const id = fixedId ?? (typeof source.id === "string" ? source.id.trim().toLowerCase() : slugify(name));
   const description = typeof source.description === "string" ? source.description.trim() : "";
   const prompt = typeof source.prompt === "string" ? source.prompt.trim() : "";
-  const thumbnail = typeof source.thumbnail === "string" ? source.thumbnail.trim() : "";
+  const thumbnailSource = typeof source.thumbnail === "string" ? source.thumbnail.trim() : "";
+  const thumbnail = thumbnailSource ? optimizeCloudinaryThumbnailUrl(thumbnailSource) : "";
   const thumbnailPublicId = typeof source.thumbnailPublicId === "string" && source.thumbnailPublicId.trim()
     ? source.thumbnailPublicId.trim()
     : null;
