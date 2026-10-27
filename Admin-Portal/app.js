@@ -2,7 +2,7 @@
   const apiBase = String(window.PICMEE_API_BASE || "").replace(/\/$/, "");
   const tokenKey = "picmee_admin_access";
   const refreshKey = "picmee_admin_refresh";
-  const state = { styles: [], collections: [], sections: [], logs: [], logMembers: [], logPage: 1, logPagination: null, pendingCloudinaryCleanup: 0, activePanel: "styles-panel", editingId: null, renamingId: null };
+  const state = { styles: [], collections: [], sections: [], logs: [], logMembers: [], logPage: 1, logPagination: null, pendingCloudinaryCleanup: 0, activePanel: "styles-panel", editingId: null, renamingId: null, catalogLoaded: false, catalogLoading: false, logsLoading: false };
   const byId = (id) => document.getElementById(id);
 
   async function api(path, options = {}, retry = true) {
@@ -58,6 +58,18 @@
   }
 
   async function loadCatalog() {
+    if (state.catalogLoading) return;
+    state.catalogLoading = true;
+    const refreshButton = byId("refresh-button");
+    refreshButton.disabled = true;
+    refreshButton.classList.add("is-loading");
+    refreshButton.setAttribute("aria-label", "Refreshing catalogue");
+    byId("styles-grid").setAttribute("aria-busy", "true");
+    byId("collections-list").setAttribute("aria-busy", "true");
+    if (!state.catalogLoaded) {
+      byId("styles-grid").innerHTML = `<div class="catalogue-skeleton" aria-label="Loading styles">${Array.from({ length: 8 }, () => '<div class="skeleton-card"><div class="skeleton-image"></div><div class="skeleton-lines"><i></i><i></i><i></i></div></div>').join("")}</div>`;
+      byId("collections-list").innerHTML = '<div class="loading-message"><span class="loading-spinner"></span>Loading collections…</div>';
+    }
     try {
       const data = await api("/api/admin/catalog");
       state.styles = data.styles || [];
@@ -71,20 +83,39 @@
       renderStyles();
       renderCollections();
       renderCollectionOptions();
+      state.catalogLoaded = true;
     } catch (error) {
       if (error.message.includes("not allowed")) {
         clearSession();
-        showLogin("This account can sign in, but it has not been approved for catalogue access. Ask the owner to add its email to the backend ADMIN_EMAILS setting.");
+        showLogin("This account can sign in, but it has not been approved for catalogue access. Ask the Madds Studio owner to add its email to the backend ADMIN_EMAILS setting.");
       } else if (!byId("login-view").hidden) {
         showLogin(error.message);
       } else notify(error.message, true);
+      if (!state.catalogLoaded) {
+        byId("styles-grid").innerHTML = '<div class="empty-state">Could not load the catalogue. Use the refresh button to try again.</div>';
+        byId("collections-list").innerHTML = '<div class="empty-state">Could not load collections. Use the refresh button to try again.</div>';
+      }
+    } finally {
+      state.catalogLoading = false;
+      refreshButton.disabled = false;
+      refreshButton.classList.remove("is-loading");
+      refreshButton.setAttribute("aria-label", "Refresh catalogue");
+      byId("styles-grid").setAttribute("aria-busy", "false");
+      byId("collections-list").setAttribute("aria-busy", "false");
     }
   }
 
   async function loadLogs(page = state.logPage) {
+    if (state.logsLoading) return;
+    state.logsLoading = true;
     const params = new URLSearchParams({ page: String(page), limit: "50" });
     if (byId("log-member-filter").value) params.set("member", byId("log-member-filter").value);
     if (byId("log-action-filter").value) params.set("action", byId("log-action-filter").value);
+    const refreshButton = byId("logs-refresh");
+    refreshButton.disabled = true;
+    refreshButton.textContent = "Loading…";
+    byId("logs-body").setAttribute("aria-busy", "true");
+    byId("logs-body").innerHTML = '<tr><td colspan="4" class="logs-loading"><span class="loading-spinner"></span>Loading change logs…</td></tr>';
     try {
       const data = await api(`/api/admin/catalog/logs?${params}`);
       state.logs = data.logs || [];
@@ -92,7 +123,13 @@
       state.logPage = data.pagination?.page || page;
       state.logPagination = data.pagination || { page, total: 0, totalPages: 0 };
       renderLogs();
-    } catch (error) { notify(error.message, true); }
+    } catch (error) { notify(error.message, true); renderLogs(); }
+    finally {
+      state.logsLoading = false;
+      refreshButton.disabled = false;
+      refreshButton.textContent = "Refresh logs";
+      byId("logs-body").setAttribute("aria-busy", "false");
+    }
   }
 
   function renderLogs() {
@@ -141,7 +178,7 @@
       const collectionBadge = collection
         ? `<span class="style-collection-pill">${escapeHtml(collection)}</span>`
         : '<span class="style-collection-pill">No collection</span>';
-      return `<article class="style-card website-style-card"><div class="style-image ${style.thumbnail ? "" : "missing-image"}">${img}${collectionBadge}</div><div class="style-body"><h3 class="style-card-title">${escapeHtml(style.name)}</h3><div class="style-description">${escapeHtml(style.description)}</div><a class="try-in-picmee" href="https://picmee.co.in" target="_blank" rel="noopener noreferrer">Try in PicMee ↗</a><div class="style-admin-footer"><span class="style-id">ID · ${escapeHtml(style.id)}</span><span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
+      return `<article class="style-card website-style-card"><div class="style-image ${style.thumbnail ? "" : "missing-image"}">${img}${collectionBadge}</div><div class="style-body"><h3 class="style-card-title">${escapeHtml(style.name)}</h3><div class="style-description">${escapeHtml(style.description)}</div><div class="style-admin-footer"><span class="style-id">ID · ${escapeHtml(style.id)}</span><span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
     }).join("");
     grid.querySelectorAll("[data-edit]").forEach((button) => button.addEventListener("click", () => openStyleEditor(button.dataset.edit)));
     grid.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", () => deleteStyle(button.dataset.delete)));
@@ -171,25 +208,36 @@
 
   async function updateHomeVisibility(id, visible) {
     if (!id) return;
+    const input = document.querySelector(`[data-home="${CSS.escape(id)}"]`);
+    if (input) input.disabled = true;
     try {
       const result = await api(`/api/admin/catalog/home-sections/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ visible }) });
       const index = state.sections.findIndex((section) => section.id === id);
       if (index >= 0) state.sections[index] = result.section;
       notify(visible ? "Collection will appear on the app Home screen." : "Collection hidden from the app Home screen.");
     } catch (error) { notify(error.message, true); await loadCatalog(); }
+    finally { if (input?.isConnected) input.disabled = false; }
   }
 
   async function deleteStyle(id) {
     const style = state.styles.find((item) => item.id === id);
     if (!style) return;
     if (!window.confirm(`Permanently delete “${style.name}”? It will disappear from the catalogue and users’ favorites. Existing generation history will remain.`)) return;
+    const deleteButton = [...document.querySelectorAll("[data-delete]")].find((button) => button.dataset.delete === id);
+    if (deleteButton) { deleteButton.disabled = true; deleteButton.textContent = "Deleting…"; }
     try {
       const result = await api(`/api/admin/catalog/styles/${encodeURIComponent(id)}`, { method: "DELETE" });
+      state.styles = state.styles.filter((item) => item.id !== id);
+      if (result.cloudinaryCleanupPending) state.pendingCloudinaryCleanup += 1;
+      const cleanupButton = byId("retry-cloudinary-cleanup");
+      cleanupButton.hidden = state.pendingCloudinaryCleanup === 0;
+      cleanupButton.textContent = `Retry image cleanup (${state.pendingCloudinaryCleanup})`;
+      renderStyles();
+      renderCollections();
       notify(result.cloudinaryCleanupPending
         ? "Style deleted. Cloudinary cleanup is pending and will be retried from the portal."
         : "Style permanently deleted.", Boolean(result.cloudinaryCleanupPending));
-      await loadCatalog();
-    } catch (error) { notify(error.message, true); }
+    } catch (error) { notify(error.message, true); if (deleteButton) { deleteButton.disabled = false; deleteButton.textContent = "Delete"; } }
   }
 
   function openStyleEditor(id = null) {
@@ -228,6 +276,9 @@
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     byId("login-message").textContent = "Signing in…";
+    const submit = event.currentTarget.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    submit.textContent = "Signing in…";
     try {
       const data = await api("/api/auth/login", { method: "POST", body: JSON.stringify({ email: form.get("email"), password: form.get("password") }) }, false);
       sessionStorage.setItem(tokenKey, data.accessToken);
@@ -235,6 +286,7 @@
       showApp(data.user?.email);
       await loadCatalog();
     } catch (error) { showLogin(error.message); }
+    finally { submit.disabled = false; submit.textContent = "Sign in"; }
   });
 
   byId("style-search").addEventListener("input", renderStyles);
@@ -333,32 +385,63 @@
     const save = form.querySelector('button[type="submit"]');
     save.disabled = true; save.textContent = "Saving…";
     try {
+      const wasEditing = Boolean(state.editingId);
       const result = await api(state.editingId ? `/api/admin/catalog/styles/${encodeURIComponent(state.editingId)}` : "/api/admin/catalog/styles", { method: state.editingId ? "PUT" : "POST", body: JSON.stringify(style) });
+      if (wasEditing) state.styles = state.styles.map((item) => item.id === result.style.id ? result.style : item);
+      else state.styles = [result.style, ...state.styles];
+      if (result.cloudinaryCleanupPending) state.pendingCloudinaryCleanup += 1;
+      const cleanupButton = byId("retry-cloudinary-cleanup");
+      cleanupButton.hidden = state.pendingCloudinaryCleanup === 0;
+      cleanupButton.textContent = `Retry image cleanup (${state.pendingCloudinaryCleanup})`;
+      renderStyles();
+      renderCollections();
       byId("style-dialog").close();
       notify(result.cloudinaryCleanupPending
         ? "Style saved. The replaced Cloudinary image cleanup is pending and will be retried from the portal."
         : state.editingId ? "Style saved. App and site will receive the new catalogue data from the backend." : "Style added to the live catalogue.", Boolean(result.cloudinaryCleanupPending));
-      await loadCatalog();
     } catch (error) { byId("form-error").textContent = error.message; }
     finally { save.disabled = false; save.textContent = "Save style"; }
   });
 
   byId("collection-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const collectionForm = event.currentTarget;
+    const form = new FormData(collectionForm);
+    const submit = collectionForm.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    submit.textContent = "Creating…";
+    collectionForm.setAttribute("aria-busy", "true");
     try {
-      await api("/api/admin/catalog/collections", { method: "POST", body: JSON.stringify({ name: form.get("name") }) });
-      event.currentTarget.reset(); notify("Collection created."); await loadCatalog();
+      const result = await api("/api/admin/catalog/collections", { method: "POST", body: JSON.stringify({ name: form.get("name") }) });
+      state.collections = [...state.collections, result.collection].sort((a, b) => a.name.localeCompare(b.name));
+      if (result.section && !state.sections.some((section) => section.id === result.section.id)) state.sections.push(result.section);
+      collectionForm.reset();
+      renderCollections();
+      renderCollectionOptions();
+      notify("Collection created and ready to assign.");
     } catch (error) { notify(error.message, true); }
+    finally { submit.disabled = false; submit.textContent = "Create collection"; collectionForm.setAttribute("aria-busy", "false"); }
   });
 
   byId("rename-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const name = new FormData(event.currentTarget).get("name");
+    const renameForm = event.currentTarget;
+    const name = new FormData(renameForm).get("name");
+    const submit = renameForm.querySelector('button[type="submit"]');
+    submit.disabled = true; submit.textContent = "Saving…";
     try {
-      await api(`/api/admin/catalog/collections/${encodeURIComponent(state.renamingId)}`, { method: "PUT", body: JSON.stringify({ name }) });
-      byId("rename-dialog").close(); notify("Collection renamed and assigned styles were updated."); await loadCatalog();
+      const result = await api(`/api/admin/catalog/collections/${encodeURIComponent(state.renamingId)}`, { method: "PUT", body: JSON.stringify({ name }) });
+      const previous = state.collections.find((item) => item.id === state.renamingId);
+      const oldName = previous?.name;
+      state.collections = state.collections.map((item) => item.id === state.renamingId ? result.collection : item).sort((a, b) => a.name.localeCompare(b.name));
+      if (oldName) {
+        state.styles = state.styles.map((style) => ({ ...style, collections: style.collections.map((collection) => collection === oldName ? result.collection.name : collection) }));
+        state.sections = state.sections.map((section) => String(section.slug).toLowerCase() === oldName.toLowerCase() ? { ...section, title: result.collection.name, slug: result.collection.name } : section);
+      }
+      renderStyles(); renderCollections(); renderCollectionOptions();
+      byId("rename-dialog").close(); notify("Collection renamed and assigned styles were updated.");
     } catch (error) { notify(error.message, true); }
+    finally { submit.disabled = false; submit.textContent = "Save name"; }
   });
 
   byId("logout-button").addEventListener("click", async () => {

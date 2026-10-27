@@ -31,7 +31,9 @@ router.use(requireAuth, (req: AuthenticatedRequest, res: Response, next: NextFun
 });
 
 router.get("/catalog", async (_req: Request, res: Response) => {
-  await retryPendingCloudinaryCleanup(3);
+  void retryPendingCloudinaryCleanup(3).catch((error: unknown) => {
+    console.warn("Background Cloudinary cleanup retry failed.", error instanceof Error ? error.message : "UNKNOWN");
+  });
   const [styles, collections, sections] = await Promise.all([
     listCatalogStyles(),
     listCatalogCollections(),
@@ -116,9 +118,6 @@ router.post("/catalog/styles", async (req: AuthenticatedRequest, res: Response) 
   const validation = validateStyle(req.body);
   if (validation.error) return res.status(400).json({ ok: false, error: validation.error });
   const style = validation.value!;
-  if (await CatalogAuditLog.exists({ action: "STYLE_DELETED", itemId: style.id })) {
-    return res.status(409).json({ ok: false, error: "This style ID was used before and cannot be reused." });
-  }
   const exists = await CatalogStyle.exists({ id: style.id });
   if (exists) return res.status(409).json({ ok: false, error: "That style ID is already in use." });
 
@@ -184,8 +183,16 @@ router.post("/catalog/collections", async (req: AuthenticatedRequest, res: Respo
   }
   const collection = await StyleCollection.create({ id, name });
   await ensureHomeSection(name);
+  const section = await HomeSectionConfig.findOne({ slug: { $regex: `^${escapeRegex(name)}$`, $options: "i" } }).lean();
   await logChange(req, "COLLECTION_CREATED", id, name);
-  return res.status(201).json({ ok: true, collection: { id: collection.id, name: collection.name } });
+  return res.status(201).json({
+    ok: true,
+    collection: { id: collection.id, name: collection.name },
+    section: section ? {
+      id: String(section.id), title: String(section.title), type: "collection",
+      slug: String(section.slug), visible: Boolean(section.visible), order: Number(section.order),
+    } : null,
+  });
 });
 
 router.put("/catalog/collections/:id", async (req: AuthenticatedRequest, res: Response) => {
