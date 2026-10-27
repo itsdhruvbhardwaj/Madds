@@ -1,6 +1,6 @@
-# PicMee website
+# Madds website
 
-Static, dependency-free website for `picmee.ac.in` with Home, App, and About Us pages.
+Static, dependency-free website for `maddsofficial.com` with Home, App, and About Us pages.
 
 ## Local preview
 
@@ -8,10 +8,10 @@ From this folder, run `py -m http.server 8080` and open `http://localhost:8080`.
 
 ## Hosting
 
-Deploy the contents of this folder as a static site, then connect `picmee.ac.in` and `www.picmee.ac.in` in the hosting provider's domain settings. Configure the backend's `CLIENT_ORIGIN` environment variable to include the website origins if the backend uses an origin allowlist, for example:
+Deploy the contents of this folder as a static site, then connect `maddsofficial.com` and `www.maddsofficial.com` in the hosting provider's domain settings. Configure the backend's `CLIENT_ORIGIN` environment variable to include the website origins if the backend uses an origin allowlist, for example:
 
 ```text
-https://picmee.ac.in,https://www.picmee.ac.in
+https://maddsofficial.com,https://www.maddsofficial.com
 ```
 
 The page requests 18 styles at a time and loads more as visitors scroll. The backend's `/api/styles` response includes the available collection labels so filter chips stay in sync with the catalogue.

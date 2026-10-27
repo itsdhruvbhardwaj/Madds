@@ -37,7 +37,7 @@ function initStyleLibrary() {
     imageWrap.className = "style-card-image";
     const image = document.createElement("img");
     image.src = style.thumbnail || "";
-    image.alt = style.name || "PicMee photo style";
+    image.alt = style.name || "Madds photo style";
     image.loading = "lazy";
     image.decoding = "async";
     image.onerror = () => {
@@ -57,12 +57,12 @@ function initStyleLibrary() {
     const title = document.createElement("h3");
     title.textContent = style.name || "Untitled style";
     const description = document.createElement("p");
-    description.textContent = style.description || "Explore this PicMee style.";
+    description.textContent = style.description || "Explore this Madds style.";
     const action = document.createElement("a");
     action.className = "card-action";
     action.href = "app.html";
-    action.setAttribute("aria-label", `Explore PicMee to try ${title.textContent}`);
-    action.textContent = "Try in PicMee ↗";
+    action.setAttribute("aria-label", `Explore Madds to try ${title.textContent}`);
+    action.textContent = "Try in Madds ↗";
     details.append(title, description, action);
     card.append(imageWrap, details);
     return card;
@@ -148,7 +148,7 @@ function initStyleLibrary() {
       }
     } catch (error) {
       if (requestId !== state.requestId) return;
-      console.error("Unable to load PicMee styles", error);
+      console.error("Unable to load Madds styles", error);
       grid.setAttribute("aria-busy", "false");
       showMessage("Styles couldn’t load right now. Check your connection and try again.", "error-state");
       loadMore.hidden = false;
