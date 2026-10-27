@@ -90,7 +90,7 @@
 @media(max-width:760px){.catalogue-skeleton{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:460px){.catalogue-skeleton{grid-template-columns:1fr}}
 
-/* Match the main website's 3:4 style thumbnail frame. */
-.style-card .style-image{height:auto;aspect-ratio:3/4}
+/* Match the app's near-5:7 portrait card frame. */
+.style-card .style-image{height:auto;aspect-ratio:5/7}
 .style-card .style-image img{object-fit:contain}
-.skeleton-image{aspect-ratio:3/4}
+.skeleton-image{aspect-ratio:5/7}

@@ -82,7 +82,7 @@ export function optimizeCloudinaryThumbnailUrl(source: string): string {
     const uploadIndex = path.findIndex((part, index) => part === "upload" && path[index - 1] === "image");
     if (uploadIndex < 0) return source;
 
-    const transform = "c_limit,w_900,h_1200,q_auto,f_auto";
+    const transform = "c_limit,w_900,h_1260,q_auto,f_auto";
     const versionIndex = path.findIndex((part, index) => index > uploadIndex && /^v\d+$/.test(part));
     if (versionIndex > uploadIndex) {
       path.splice(uploadIndex + 1, versionIndex - uploadIndex - 1, transform);
