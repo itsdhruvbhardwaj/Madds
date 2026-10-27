@@ -140,7 +140,7 @@
 
     const actions = {
       STYLE_CREATED: "Style created", STYLE_UPDATED: "Style updated", STYLE_DELETED: "Style deleted",
-      COLLECTION_CREATED: "Collection created", COLLECTION_RENAMED: "Collection renamed",
+      COLLECTION_CREATED: "Collection created", COLLECTION_RENAMED: "Collection renamed", COLLECTION_DELETED: "Collection deleted",
       HOME_SECTION_UPDATED: "Home visibility changed",
     };
     const body = byId("logs-body");
@@ -163,6 +163,7 @@
       const searchable = `${style.name} ${style.id} ${style.description} ${style.prompt}`.toLowerCase();
       return matchesCollection && (!query || searchable.includes(query));
     });
+    sortItems(filtered, byId("style-sort").value);
     byId("style-count").textContent = String(state.styles.length);
     byId("result-count").textContent = `${filtered.length} shown`;
     const grid = byId("styles-grid");
@@ -196,14 +197,56 @@
   function renderCollections() {
     const root = byId("collections-list");
     if (!state.collections.length) { root.innerHTML = '<div class="empty-state">No collections have been created.</div>'; return; }
-    root.innerHTML = state.collections.map((collection) => {
+    const collections = [...state.collections];
+    sortItems(collections, byId("collection-sort").value);
+    root.innerHTML = collections.map((collection) => {
       const count = state.styles.filter((style) => style.collections.includes(collection.name)).length;
       const section = state.sections.find((item) => String(item.slug).toLowerCase() === collection.name.toLowerCase());
       const visible = Boolean(section?.visible);
-      return `<div class="collection-row"><div><div class="collection-name">${escapeHtml(collection.name)}</div><div class="collection-meta">ID: ${escapeHtml(collection.id)}</div></div><label class="home-control collection-check"><input class="home-toggle" type="checkbox" data-home="${escapeHtml(section?.id || "")}" ${visible ? "checked" : ""} ${section ? "" : "disabled"}>Show on Home</label><div class="collection-count">${count} style${count === 1 ? "" : "s"}</div><div class="collection-actions"><button class="text-button" data-rename="${escapeHtml(collection.id)}">Rename</button></div></div>`;
+      const isFallback = collection.name.trim().toLowerCase() === "other";
+      return `<div class="collection-row"><div><div class="collection-name">${escapeHtml(collection.name)}</div><div class="collection-meta">ID: ${escapeHtml(collection.id)}</div></div><label class="home-control collection-check"><input class="home-toggle" type="checkbox" data-home="${escapeHtml(section?.id || "")}" ${visible ? "checked" : ""} ${section ? "" : "disabled"}>Show on Home</label><div class="collection-count">${count} style${count === 1 ? "" : "s"}</div><div class="collection-actions"><button class="text-button" data-rename="${escapeHtml(collection.id)}">Rename</button><button class="delete-button collection-delete" data-delete-collection="${escapeHtml(collection.id)}" ${isFallback ? 'disabled title="Other is the protected fallback collection."' : ""}>Delete</button></div></div>`;
     }).join("");
     root.querySelectorAll("[data-rename]").forEach((button) => button.addEventListener("click", () => openRenameDialog(button.dataset.rename)));
+    root.querySelectorAll("[data-delete-collection]").forEach((button) => button.addEventListener("click", () => deleteCollection(button.dataset.deleteCollection)));
     root.querySelectorAll("[data-home]").forEach((input) => input.addEventListener("change", () => updateHomeVisibility(input.dataset.home, input.checked)));
+  }
+
+  function sortItems(items, sort) {
+    const [field, direction] = String(sort || "name-asc").split("-");
+    const multiplier = direction === "desc" ? -1 : 1;
+    items.sort((left, right) => {
+      if (field === "created" || field === "updated") {
+        const key = field === "created" ? "createdAt" : "updatedAt";
+        const leftTime = Date.parse(left[key] || "") || 0;
+        const rightTime = Date.parse(right[key] || "") || 0;
+        return (leftTime - rightTime) * multiplier || left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+      }
+      return left.name.localeCompare(right.name, undefined, { sensitivity: "base" }) * multiplier;
+    });
+  }
+
+  async function deleteCollection(id) {
+    const collection = state.collections.find((item) => item.id === id);
+    if (!collection || collection.name.trim().toLowerCase() === "other") return;
+    const affectedCount = state.styles.filter((style) => style.collections.includes(collection.name)).length;
+    if (!window.confirm(`Delete the “${collection.name}” collection? ${affectedCount} assigned style(s) will be updated: styles assigned only here move to Other, while styles assigned to other collections keep those assignments. Styles and Cloudinary images will not be deleted.`)) return;
+    const button = [...document.querySelectorAll("[data-delete-collection]")].find((item) => item.dataset.deleteCollection === id);
+    if (button) { button.disabled = true; button.textContent = "Deleting…"; }
+    try {
+      const result = await api(`/api/admin/catalog/collections/${encodeURIComponent(id)}`, { method: "DELETE" });
+      state.collections = state.collections.filter((item) => item.id !== id);
+      if (!state.collections.some((item) => item.name.trim().toLowerCase() === "other")) state.collections.push({ id: "other", name: "Other" });
+      state.styles = state.styles.map((style) => {
+        const remaining = style.collections.filter((name) => name !== collection.name);
+        return { ...style, collections: remaining.length ? remaining : ["Other"] };
+      });
+      state.sections = state.sections.filter((section) => String(section.slug).toLowerCase() !== collection.name.toLowerCase());
+      renderStyles(); renderCollections(); renderCollectionOptions();
+      notify(`Collection deleted. ${Number(result.stylesMovedToOther || 0)} style(s) moved to Other; other collection assignments and images were kept.`);
+    } catch (error) {
+      notify(error.message, true);
+      if (button) { button.disabled = false; button.textContent = "Delete"; }
+    }
   }
 
   async function updateHomeVisibility(id, visible) {
@@ -291,6 +334,8 @@
 
   byId("style-search").addEventListener("input", renderStyles);
   byId("collection-filter").addEventListener("change", renderStyles);
+  byId("style-sort").addEventListener("change", renderStyles);
+  byId("collection-sort").addEventListener("change", renderCollections);
   byId("add-style").addEventListener("click", () => openStyleEditor());
   byId("refresh-button").addEventListener("click", () => {
     if (state.activePanel === "logs-panel") void loadLogs(1);
@@ -387,8 +432,10 @@
     try {
       const wasEditing = Boolean(state.editingId);
       const result = await api(state.editingId ? `/api/admin/catalog/styles/${encodeURIComponent(state.editingId)}` : "/api/admin/catalog/styles", { method: state.editingId ? "PUT" : "POST", body: JSON.stringify(style) });
-      if (wasEditing) state.styles = state.styles.map((item) => item.id === result.style.id ? result.style : item);
-      else state.styles = [result.style, ...state.styles];
+      const savedAt = new Date().toISOString();
+      const savedStyle = { ...result.style, createdAt: wasEditing ? state.styles.find((item) => item.id === result.style.id)?.createdAt : savedAt, updatedAt: savedAt };
+      if (wasEditing) state.styles = state.styles.map((item) => item.id === result.style.id ? savedStyle : item);
+      else state.styles = [savedStyle, ...state.styles];
       if (result.cloudinaryCleanupPending) state.pendingCloudinaryCleanup += 1;
       const cleanupButton = byId("retry-cloudinary-cleanup");
       cleanupButton.hidden = state.pendingCloudinaryCleanup === 0;
@@ -413,7 +460,8 @@
     collectionForm.setAttribute("aria-busy", "true");
     try {
       const result = await api("/api/admin/catalog/collections", { method: "POST", body: JSON.stringify({ name: form.get("name") }) });
-      state.collections = [...state.collections, result.collection].sort((a, b) => a.name.localeCompare(b.name));
+      const createdAt = new Date().toISOString();
+      state.collections = [...state.collections, { ...result.collection, createdAt, updatedAt: createdAt }].sort((a, b) => a.name.localeCompare(b.name));
       if (result.section && !state.sections.some((section) => section.id === result.section.id)) state.sections.push(result.section);
       collectionForm.reset();
       renderCollections();
@@ -433,7 +481,8 @@
       const result = await api(`/api/admin/catalog/collections/${encodeURIComponent(state.renamingId)}`, { method: "PUT", body: JSON.stringify({ name }) });
       const previous = state.collections.find((item) => item.id === state.renamingId);
       const oldName = previous?.name;
-      state.collections = state.collections.map((item) => item.id === state.renamingId ? result.collection : item).sort((a, b) => a.name.localeCompare(b.name));
+      const renamedAt = new Date().toISOString();
+      state.collections = state.collections.map((item) => item.id === state.renamingId ? { ...result.collection, createdAt: item.createdAt, updatedAt: renamedAt } : item).sort((a, b) => a.name.localeCompare(b.name));
       if (oldName) {
         state.styles = state.styles.map((style) => ({ ...style, collections: style.collections.map((collection) => collection === oldName ? result.collection.name : collection) }));
         state.sections = state.sections.map((section) => String(section.slug).toLowerCase() === oldName.toLowerCase() ? { ...section, title: result.collection.name, slug: result.collection.name } : section);

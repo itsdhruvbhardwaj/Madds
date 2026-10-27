@@ -15,7 +15,7 @@ import { cloudinaryIsConfigured, createStyleImageUploadSignature, destroyManaged
 
 const router = Router();
 const styleIdPattern = /^[a-z0-9](?:[a-z0-9-]{1,78}[a-z0-9])?$/;
-const auditActions = ["STYLE_CREATED", "STYLE_UPDATED", "STYLE_DELETED", "COLLECTION_CREATED", "COLLECTION_RENAMED", "HOME_SECTION_UPDATED"] as const;
+const auditActions = ["STYLE_CREATED", "STYLE_UPDATED", "STYLE_DELETED", "COLLECTION_CREATED", "COLLECTION_RENAMED", "COLLECTION_DELETED", "HOME_SECTION_UPDATED"] as const;
 
 router.use(requireAuth, (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   const email = req.user?.email?.toLowerCase();
@@ -34,13 +34,23 @@ router.get("/catalog", async (_req: Request, res: Response) => {
   void retryPendingCloudinaryCleanup(3).catch((error: unknown) => {
     console.warn("Background Cloudinary cleanup retry failed.", error instanceof Error ? error.message : "UNKNOWN");
   });
-  const [styles, collections, sections] = await Promise.all([
+  const [styles, collections, sections, styleTimestamps, collectionTimestamps] = await Promise.all([
     listCatalogStyles(),
     listCatalogCollections(),
     HomeSectionConfig.find().sort({ order: 1, title: 1 }).lean(),
+    CatalogStyle.find().select("id createdAt updatedAt").lean(),
+    StyleCollection.find().select("id createdAt updatedAt").lean(),
   ]);
   const pendingCloudinaryCleanup = await CloudinaryCleanup.countDocuments({ cleanupAfter: { $lte: new Date() } });
-  res.json({ ok: true, styles, collections, sections, pendingCloudinaryCleanup });
+  const styleTimes = new Map(styleTimestamps.map((item) => [String(item.id), { createdAt: item.createdAt, updatedAt: item.updatedAt }]));
+  const collectionTimes = new Map(collectionTimestamps.map((item) => [String(item.id), { createdAt: item.createdAt, updatedAt: item.updatedAt }]));
+  res.json({
+    ok: true,
+    styles: styles.map((style) => ({ ...style, ...(styleTimes.get(style.id) ?? {}) })),
+    collections: collections.map((collection) => ({ ...collection, ...(collectionTimes.get(collection.id) ?? {}) })),
+    sections,
+    pendingCloudinaryCleanup,
+  });
 });
 
 router.post("/catalog/cloudinary/signature", async (req: Request, res: Response) => {
@@ -214,6 +224,28 @@ router.put("/catalog/collections/:id", async (req: AuthenticatedRequest, res: Re
   await collection.save();
   await logChange(req, "COLLECTION_RENAMED", nextId, name);
   return res.json({ ok: true, collection: { id: collection.id, name: collection.name } });
+});
+
+router.delete("/catalog/collections/:id", async (req: AuthenticatedRequest, res: Response) => {
+  const { id } = req.params;
+  if (typeof id !== "string") return res.status(400).json({ ok: false, error: "Invalid collection ID." });
+  const collection = await StyleCollection.findOne({ id });
+  if (!collection) return res.status(404).json({ ok: false, error: "Collection not found." });
+  if (collection.name.trim().toLowerCase() === "other") {
+    return res.status(400).json({ ok: false, error: "Other is the fallback collection and cannot be deleted." });
+  }
+
+  const fallbackId = slugify("Other");
+  await StyleCollection.updateOne({ id: fallbackId }, { $setOnInsert: { id: fallbackId, name: "Other" } }, { upsert: true });
+  const moved = await CatalogStyle.updateMany(
+    { collections: { $size: 1, $all: [collection.name] } },
+    { $set: { collections: ["Other"] } },
+  );
+  await CatalogStyle.updateMany({ collections: collection.name }, { $pull: { collections: collection.name } });
+  await HomeSectionConfig.deleteMany({ slug: { $regex: `^${escapeRegex(collection.name)}$`, $options: "i" } });
+  await StyleCollection.deleteOne({ _id: collection._id });
+  await logChange(req, "COLLECTION_DELETED", id, collection.name);
+  return res.json({ ok: true, id, name: collection.name, stylesMovedToOther: moved.modifiedCount });
 });
 
 router.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
