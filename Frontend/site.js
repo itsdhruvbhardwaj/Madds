@@ -13,41 +13,72 @@ menuToggle?.addEventListener("click", () => {
 
 const grid = document.querySelector("#style-grid");
 if (grid) initStyleLibrary();
-const heroTrendingTrack = document.querySelector("#hero-trending-track");
-if (heroTrendingTrack) loadHeroTrendingStyles(heroTrendingTrack);
+const heroTrendingCards = document.querySelector("#hero-trending-cards");
+if (heroTrendingCards) loadHeroTrendingStyles(heroTrendingCards);
 
-async function loadHeroTrendingStyles(track) {
+async function loadHeroTrendingStyles(container) {
   try {
-    const params = new URLSearchParams({ collection: "Trending", limit: "3", page: "1" });
-    const response = await fetch(`${API_BASE}/api/styles?${params.toString()}`, {
-      headers: { Accept: "application/json" },
-    });
-    if (!response.ok) throw new Error(`Trending style service returned ${response.status}`);
-    const payload = await response.json();
-    const styles = Array.isArray(payload.styles) ? payload.styles.filter((style) =>
-      Array.isArray(style.collections) && style.collections.some((collection) => collection.toLowerCase() === "trending")
-    ).slice(0, 3) : [];
+    const styles = [];
+    let page = 1;
+    let hasNextPage = true;
+    while (hasNextPage) {
+      const params = new URLSearchParams({ collection: "Trending", limit: "50", page: String(page) });
+      const response = await fetch(`${API_BASE}/api/styles?${params.toString()}`, {
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) throw new Error(`Trending style service returned ${response.status}`);
+      const payload = await response.json();
+      if (Array.isArray(payload.styles)) styles.push(...payload.styles.filter((style) =>
+        Array.isArray(style.collections) && style.collections.some((collection) =>
+          typeof collection === "string" && collection.toLowerCase() === "trending"
+        )
+      ));
+      hasNextPage = Boolean(payload.pagination?.hasNextPage);
+      page += 1;
+    }
     if (styles.length === 0) {
-      track.closest(".hero-art")?.classList.add("hero-trending-empty");
+      container.closest(".hero-art")?.classList.add("hero-trending-empty");
       return;
     }
 
-    for (let copy = 0; copy < 2; copy += 1) {
-      const set = document.createElement("div");
-      set.className = "hero-trending-set";
-      set.setAttribute("aria-hidden", "true");
-      styles.forEach((style, index) => {
-        const card = document.createElement("div");
-        card.className = `hero-photo hero-photo-${["one", "two", "three"][index]}`;
-        card.style.backgroundImage = `linear-gradient(180deg,transparent 65%,rgba(0,0,0,.32)),url("${style.thumbnail || ""}")`;
-        set.append(card);
-      });
-      track.append(set);
+    const positions = ["left", "center", "right"];
+    let cards = positions.map((position, slot) => {
+      const card = document.createElement("div");
+      card.className = "hero-photo";
+      card.dataset.position = position;
+      const initialStyleIndex = slot === 0 ? 1 : slot === 1 ? 0 : 2;
+      setHeroCardStyle(card, styles[initialStyleIndex % styles.length]);
+      container.append(card);
+      return card;
+    });
+
+    let nextStyleIndex = 2;
+    if (styles.length > 1 && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      window.setInterval(() => {
+        const [leftCard, centerCard, rightCard] = cards;
+        setHeroCardStyle(rightCard, styles[nextStyleIndex % styles.length]);
+        nextStyleIndex = (nextStyleIndex + 1) % styles.length;
+
+        rightCard.classList.add("is-no-transition");
+        rightCard.dataset.position = "left";
+        rightCard.classList.add("is-entering");
+        leftCard.dataset.position = "center";
+        centerCard.dataset.position = "right";
+        cards = [rightCard, leftCard, centerCard];
+        void rightCard.offsetWidth;
+        rightCard.classList.remove("is-no-transition");
+        requestAnimationFrame(() => rightCard.classList.remove("is-entering"));
+      }, 2000);
     }
   } catch (error) {
     console.error("Unable to load Madds trending styles", error);
-    track.closest(".hero-art")?.classList.add("hero-trending-empty");
+    container.closest(".hero-art")?.classList.add("hero-trending-empty");
   }
+}
+
+function setHeroCardStyle(card, style) {
+  card.style.backgroundImage = `linear-gradient(180deg,transparent 65%,rgba(0,0,0,.32)),url("${style.thumbnail || ""}")`;
+  card.setAttribute("aria-label", style.name || "Trending style");
 }
 
 function initStyleLibrary() {
