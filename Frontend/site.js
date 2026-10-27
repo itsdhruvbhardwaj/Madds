@@ -13,6 +13,42 @@ menuToggle?.addEventListener("click", () => {
 
 const grid = document.querySelector("#style-grid");
 if (grid) initStyleLibrary();
+const heroTrendingTrack = document.querySelector("#hero-trending-track");
+if (heroTrendingTrack) loadHeroTrendingStyles(heroTrendingTrack);
+
+async function loadHeroTrendingStyles(track) {
+  try {
+    const params = new URLSearchParams({ collection: "Trending", limit: "3", page: "1" });
+    const response = await fetch(`${API_BASE}/api/styles?${params.toString()}`, {
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) throw new Error(`Trending style service returned ${response.status}`);
+    const payload = await response.json();
+    const styles = Array.isArray(payload.styles) ? payload.styles.filter((style) =>
+      Array.isArray(style.collections) && style.collections.some((collection) => collection.toLowerCase() === "trending")
+    ).slice(0, 3) : [];
+    if (styles.length === 0) {
+      track.closest(".hero-art")?.classList.add("hero-trending-empty");
+      return;
+    }
+
+    for (let copy = 0; copy < 2; copy += 1) {
+      const set = document.createElement("div");
+      set.className = "hero-trending-set";
+      set.setAttribute("aria-hidden", "true");
+      styles.forEach((style, index) => {
+        const card = document.createElement("div");
+        card.className = `hero-photo hero-photo-${["one", "two", "three"][index]}`;
+        card.style.backgroundImage = `linear-gradient(180deg,transparent 65%,rgba(0,0,0,.32)),url("${style.thumbnail || ""}")`;
+        set.append(card);
+      });
+      track.append(set);
+    }
+  } catch (error) {
+    console.error("Unable to load Madds trending styles", error);
+    track.closest(".hero-art")?.classList.add("hero-trending-empty");
+  }
+}
 
 function initStyleLibrary() {
   const filters = document.querySelector("#collection-filters");
