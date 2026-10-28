@@ -2,7 +2,7 @@
   const apiBase = String(window.PICMEE_API_BASE || "").replace(/\/$/, "");
   const tokenKey = "picmee_admin_access";
   const refreshKey = "picmee_admin_refresh";
-  const state = { styles: [], collections: [], sections: [], logs: [], logMembers: [], logPage: 1, logPagination: null, pendingCloudinaryCleanup: 0, activePanel: "styles-panel", editingId: null, renamingId: null, catalogLoaded: false, catalogLoading: false, logsLoading: false, promptTestFile: null, promptTestOriginalUrl: null, promptTestResultUrl: null, promptTestDownloadUrl: null };
+  const state = { styles: [], collections: [], sections: [], logs: [], logMembers: [], logPage: 1, logPagination: null, pendingCloudinaryCleanup: 0, activePanel: "styles-panel", editingId: null, renamingId: null, catalogLoaded: false, catalogLoading: false, logsLoading: false, promptTestFile: null, promptTestOriginalUrl: null, promptTestResultUrl: null, promptTestDownloadUrl: null, promptTestGenerating: false };
   const byId = (id) => document.getElementById(id);
 
   async function api(path, options = {}, retry = true) {
@@ -172,31 +172,20 @@
       return;
     }
     grid.innerHTML = filtered.map((style) => {
-      const beforeUrl = style.exampleBeforeUrl || style.thumbnail;
-      const afterUrl = style.exampleAfterUrl;
-      const img = beforeUrl
-        ? `<img class="style-image-before" src="${escapeHtml(beforeUrl)}" alt="Before: ${escapeHtml(style.name)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\'>Preview unavailable</div>'">${afterUrl ? `<img class="style-image-after" src="${escapeHtml(afterUrl)}" alt="After: ${escapeHtml(style.name)}" loading="lazy" referrerpolicy="no-referrer">` : ""}`
+      const coverUrl = style.thumbnail || "";
+      const img = coverUrl
+        ? `<img src="${escapeHtml(coverUrl)}" alt="${escapeHtml(style.name)} cover" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\'>Preview unavailable</div>'">`
         : '';
       const collection = (style.collections || [])[0];
       const collectionBadge = collection
         ? `<span class="style-collection-pill">${escapeHtml(collection)}</span>`
         : '<span class="style-collection-pill">No collection</span>';
-      return `<article class="style-card website-style-card"><div class="style-image ${beforeUrl ? "" : "missing-image"} ${afterUrl ? "has-before-after" : ""}" ${afterUrl ? `tabindex="0" role="button" aria-label="Show before and after examples for ${escapeHtml(style.name)}" aria-pressed="false"` : ""}>${img}${collectionBadge}${afterUrl ? '<span class="style-image-state">Before</span><span class="style-image-state after-state">After</span>' : ""}</div><div class="style-body"><h3 class="style-card-title">${escapeHtml(style.name)}</h3><div class="style-description">${escapeHtml(style.description)}</div><div class="style-admin-footer"><span class="style-id">ID · ${escapeHtml(style.id)}</span><span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
+      return `<article class="style-card website-style-card" data-style-open="${escapeHtml(style.id)}"><div class="style-image ${coverUrl ? "" : "missing-image"}">${img}${collectionBadge}</div><div class="style-body"><h3 class="style-card-title">${escapeHtml(style.name)}</h3><div class="style-description">${escapeHtml(style.description)}</div><div class="style-admin-footer"><span class="style-id">ID · ${escapeHtml(style.id)}</span><span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
     }).join("");
-    grid.querySelectorAll(".style-image.has-before-after").forEach((image) => {
-      const toggle = () => {
-        if (!window.matchMedia("(hover: none)").matches) return;
-        const showingAfter = image.classList.toggle("show-after");
-        image.setAttribute("aria-pressed", String(showingAfter));
-      };
-      image.addEventListener("click", toggle);
-      image.addEventListener("keydown", (event) => {
-        if ((event.key === "Enter" || event.key === " ") && window.matchMedia("(hover: none)").matches) {
-          event.preventDefault();
-          toggle();
-        }
-      });
-    });
+    grid.querySelectorAll("[data-style-open]").forEach((card) => card.addEventListener("click", (event) => {
+      if (event.target.closest("button, a")) return;
+      openStyleEditor(card.dataset.styleOpen);
+    }));
     grid.querySelectorAll("[data-edit]").forEach((button) => button.addEventListener("click", () => openStyleEditor(button.dataset.edit)));
     grid.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", () => deleteStyle(button.dataset.delete)));
   }
@@ -204,10 +193,12 @@
   async function uploadStyleExampleImage(kind, fileInput) {
     const file = fileInput.files?.[0];
     if (!file) return;
+    const cover = kind === "cover";
     const before = kind === "before";
-    const button = byId(before ? "upload-before-image" : "upload-after-image");
-    const status = byId(before ? "before-image-status" : "after-image-status");
-    const preview = byId(before ? "before-image-preview" : "after-image-preview");
+    const prefix = cover ? "cover" : (before ? "before" : "after");
+    const button = byId(`upload-${prefix}-image`);
+    const status = byId(`${prefix}-image-status`);
+    const preview = byId(`${prefix}-image-preview`);
     const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/avif"];
     if (!allowedTypes.includes(file.type) || file.size > 10 * 1024 * 1024) {
       status.textContent = "Choose a JPG, PNG, WebP or AVIF image up to 10 MB.";
@@ -236,14 +227,11 @@
       if (!response.ok || !uploaded.secure_url || !uploaded.public_id) throw new Error(uploaded.error?.message || "Cloudinary upload failed.");
 
       const form = byId("style-form");
-      const urlField = before ? "exampleBeforeUrl" : "exampleAfterUrl";
-      const idField = before ? "exampleBeforePublicId" : "exampleAfterPublicId";
+      const urlField = cover ? "thumbnail" : (before ? "exampleBeforeUrl" : "exampleAfterUrl");
+      const idField = cover ? "thumbnailPublicId" : (before ? "exampleBeforePublicId" : "exampleAfterPublicId");
       form.elements[urlField].value = uploaded.secure_url;
       form.elements[idField].value = uploaded.public_id;
-      if (before) {
-        form.elements.thumbnail.value = uploaded.secure_url;
-        form.elements.thumbnailPublicId.value = uploaded.public_id;
-      }
+      if (cover) form.elements.thumbnail.value = uploaded.secure_url;
       preview.src = uploaded.secure_url;
       preview.hidden = false;
       status.textContent = `Uploaded to ${signed.folder}. Save the style to keep it.`;
@@ -251,7 +239,7 @@
       status.textContent = error.message || "Cloudinary upload failed.";
     } finally {
       button.disabled = false;
-      button.textContent = before ? "Upload original image" : "Upload generated image";
+      button.textContent = cover ? "Upload cover image" : (before ? "Upload before preview" : "Upload after preview");
       fileInput.value = "";
     }
   }
@@ -270,8 +258,21 @@
       return;
     }
 
+    if (state.promptTestGenerating) return;
+    state.promptTestGenerating = true;
     button.disabled = true;
     button.textContent = "Generating with Qwen…";
+    byId("prompt-test-progress").hidden = false;
+    if (!state.promptTestResultUrl) byId("prompt-test-empty").hidden = true;
+    byId("prompt-test-progress-status").textContent = "Sending your image and prompt to Qwen…";
+    byId("prompt-test-nav-status").hidden = false;
+    byId("prompt-test-nav-status").textContent = "Generating";
+    const progressMessages = ["Qwen is creating your style preview…", "Working on the details…", "Still generating. You can keep using the other Studio sections."];
+    let messageIndex = 0;
+    const progressTimer = window.setInterval(() => {
+      messageIndex = Math.min(messageIndex + 1, progressMessages.length - 1);
+      byId("prompt-test-progress-status").textContent = progressMessages[messageIndex];
+    }, 7000);
     try {
       const body = new FormData();
       body.append("image", state.promptTestFile);
@@ -285,10 +286,17 @@
       byId("prompt-test-result-image").hidden = false;
       byId("prompt-test-empty").hidden = true;
       byId("test-export-controls").hidden = false;
+      byId("prompt-test-progress").hidden = true;
+      byId("prompt-test-nav-status").textContent = "Ready";
       byId("download-test-status").textContent = "";
     } catch (cause) {
       error.textContent = cause.message || "Could not generate a test image.";
+      byId("prompt-test-progress").hidden = true;
+      byId("prompt-test-nav-status").textContent = "Failed";
+      if (!state.promptTestResultUrl) byId("prompt-test-empty").hidden = false;
     } finally {
+      window.clearInterval(progressTimer);
+      state.promptTestGenerating = false;
       button.disabled = false;
       button.textContent = "Generate test image";
     }
@@ -489,8 +497,13 @@
     byId("before-image-preview").hidden = true;
     byId("after-image-preview").removeAttribute("src");
     byId("after-image-preview").hidden = true;
-    byId("before-image-status").textContent = "Required";
-    byId("after-image-status").textContent = "Required";
+    for (const image of ["cover", "before", "after"]) {
+      byId(`${image}-image-preview`).removeAttribute("src");
+      byId(`${image}-image-preview`).hidden = true;
+    }
+    byId("cover-image-status").textContent = "Required";
+    byId("before-image-status").textContent = "Optional";
+    byId("after-image-status").textContent = "Optional";
     form.elements.tokensRequired.value = "10";
     byId("form-error").textContent = "";
     const style = state.styles.find((item) => item.id === id);
@@ -499,23 +512,32 @@
       form.elements.name.value = style.name;
       form.elements.description.value = style.description;
       form.elements.prompt.value = style.prompt;
-      const beforeUrl = style.exampleBeforeUrl || style.thumbnail || "";
-      form.elements.thumbnail.value = beforeUrl;
-      form.elements.thumbnailPublicId.value = style.exampleBeforePublicId || style.thumbnailPublicId || "";
+      const hasPreviewPair = (style.previewImages || []).length >= 2;
+      const beforeUrl = (hasPreviewPair ? style.previewImages[0] : style.exampleBeforeUrl) || "";
+      const afterUrl = (hasPreviewPair ? style.previewImages[1] : style.exampleAfterUrl) || "";
+      form.elements.thumbnail.value = style.thumbnail || style.exampleBeforeUrl || "";
+      form.elements.thumbnailPublicId.value = style.thumbnailPublicId || style.exampleBeforePublicId || "";
       form.elements.exampleBeforeUrl.value = beforeUrl;
-      form.elements.exampleBeforePublicId.value = style.exampleBeforePublicId || style.thumbnailPublicId || "";
-      form.elements.exampleAfterUrl.value = style.exampleAfterUrl || "";
-      form.elements.exampleAfterPublicId.value = style.exampleAfterPublicId || "";
+      form.elements.exampleBeforePublicId.value = style.previewImagePublicIds?.[0] || style.exampleBeforePublicId || "";
+      form.elements.exampleAfterUrl.value = afterUrl;
+      form.elements.exampleAfterPublicId.value = style.previewImagePublicIds?.[1] || style.exampleAfterPublicId || "";
       form.elements.previewImages.value = (style.previewImages || []).join("\n");
+      form.elements.previewImagePublicIds.value = (style.previewImagePublicIds || []).join("\n");
+      const coverUrl = style.thumbnail || style.exampleBeforeUrl || "";
+      if (coverUrl) {
+        byId("cover-image-preview").src = coverUrl;
+        byId("cover-image-preview").hidden = false;
+        byId("cover-image-status").textContent = "Current cover image";
+      }
       if (beforeUrl) {
         byId("before-image-preview").src = beforeUrl;
         byId("before-image-preview").hidden = false;
-        byId("before-image-status").textContent = "Current original image";
+        byId("before-image-status").textContent = "Current before preview";
       }
-      if (style.exampleAfterUrl) {
-        byId("after-image-preview").src = style.exampleAfterUrl;
+      if (afterUrl) {
+        byId("after-image-preview").src = afterUrl;
         byId("after-image-preview").hidden = false;
-        byId("after-image-status").textContent = "Current generated example";
+        byId("after-image-status").textContent = "Current after preview";
       }
       form.elements.imageCount.value = String(style.imageCount);
       form.elements.tokensRequired.value = String(style.tokensRequired);
@@ -559,7 +581,19 @@
     if (state.activePanel === "logs-panel") void loadLogs(1);
     else void loadCatalog();
   });
-  document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => byId(button.dataset.close).close()));
+  document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => {
+    if (button.dataset.close === "style-dialog") byId("discard-confirm-dialog").showModal();
+    else byId(button.dataset.close).close();
+  }));
+  byId("style-dialog").addEventListener("cancel", (event) => {
+    event.preventDefault();
+    byId("discard-confirm-dialog").showModal();
+  });
+  byId("keep-style-editing").addEventListener("click", () => byId("discard-confirm-dialog").close());
+  byId("discard-style-editing").addEventListener("click", () => {
+    byId("discard-confirm-dialog").close();
+    byId("style-dialog").close();
+  });
   document.querySelectorAll(".side-link").forEach((button) => button.addEventListener("click", () => {
     state.activePanel = button.dataset.panel;
     document.querySelectorAll(".side-link").forEach((item) => item.classList.toggle("active", item === button));
@@ -571,8 +605,10 @@
   byId("logs-refresh").addEventListener("click", () => loadLogs(1));
   byId("logs-previous").addEventListener("click", () => loadLogs(Math.max(1, state.logPage - 1)));
   byId("logs-next").addEventListener("click", () => loadLogs(state.logPage + 1));
+  byId("cover-image-file").addEventListener("change", (event) => uploadStyleExampleImage("cover", event.currentTarget));
   byId("before-image-file").addEventListener("change", (event) => uploadStyleExampleImage("before", event.currentTarget));
   byId("after-image-file").addEventListener("change", (event) => uploadStyleExampleImage("after", event.currentTarget));
+  byId("upload-cover-image").addEventListener("click", () => byId("cover-image-file").click());
   byId("upload-before-image").addEventListener("click", () => byId("before-image-file").click());
   byId("upload-after-image").addEventListener("click", () => byId("after-image-file").click());
   byId("prompt-test-image").addEventListener("change", (event) => {
@@ -621,22 +657,34 @@
     event.preventDefault();
     const form = event.currentTarget;
     const fields = new FormData(form);
-    if (!fields.get("exampleBeforeUrl") || !fields.get("exampleAfterUrl") ||
-        !fields.get("exampleBeforePublicId") || !fields.get("exampleAfterPublicId")) {
-      byId("form-error").textContent = "Upload both the before and after images before saving.";
+    if (!fields.get("thumbnail") || !fields.get("thumbnailPublicId")) {
+      byId("form-error").textContent = "Upload a cover image before saving.";
       return;
     }
-    const exampleBeforeUrl = fields.get("exampleBeforeUrl");
-    const exampleBeforePublicId = fields.get("exampleBeforePublicId");
+    const beforeUrl = String(fields.get("exampleBeforeUrl") || "");
+    const afterUrl = String(fields.get("exampleAfterUrl") || "");
+    const beforeId = String(fields.get("exampleBeforePublicId") || "");
+    const afterId = String(fields.get("exampleAfterPublicId") || "");
+    if (Boolean(beforeUrl || beforeId) !== Boolean(afterUrl || afterId) || (beforeUrl && !beforeId) || (afterUrl && !afterId)) {
+      byId("form-error").textContent = "Before and after previews are optional, but upload both together.";
+      return;
+    }
+    const previewImages = beforeUrl && afterUrl
+      ? [beforeUrl, afterUrl]
+      : String(fields.get("previewImages") || "").split(/\r?\n/).map((url) => url.trim()).filter(Boolean);
+    const previewImagePublicIds = beforeUrl && afterUrl
+      ? [beforeId, afterId]
+      : String(fields.get("previewImagePublicIds") || "").split(/\r?\n/).map((id) => id.trim()).filter(Boolean);
     const style = {
       id: String(fields.get("name") || "").normalize("NFKD").toLowerCase().trim().replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""), name: fields.get("name"), description: fields.get("description"), prompt: fields.get("prompt"),
-      thumbnail: exampleBeforeUrl,
-      thumbnailPublicId: exampleBeforePublicId,
-      exampleBeforeUrl,
-      exampleBeforePublicId,
-      exampleAfterUrl: fields.get("exampleAfterUrl"),
-      exampleAfterPublicId: fields.get("exampleAfterPublicId"),
-      previewImages: String(fields.get("previewImages") || "").split(/\r?\n/).map((url) => url.trim()).filter(Boolean),
+      thumbnail: fields.get("thumbnail"),
+      thumbnailPublicId: fields.get("thumbnailPublicId"),
+      exampleBeforeUrl: beforeUrl || null,
+      exampleBeforePublicId: beforeId || null,
+      exampleAfterUrl: afterUrl || null,
+      exampleAfterPublicId: afterId || null,
+      previewImages,
+      previewImagePublicIds,
       imageCount: Number(fields.get("imageCount")), tokensRequired: Number(fields.get("tokensRequired")),
       collections: [...form.querySelectorAll('input[name="collections"]:checked')].map((input) => input.value),
     };

@@ -198,7 +198,7 @@ router.put("/catalog/styles/:id", async (req: AuthenticatedRequest, res: Respons
   if (validation.error) return res.status(400).json({ ok: false, error: validation.error });
   const style = validation.value!;
   const previous = await CatalogStyle.findOne({ id })
-    .select("thumbnailPublicId exampleBeforePublicId exampleAfterPublicId name").lean();
+    .select("thumbnailPublicId exampleBeforePublicId exampleAfterPublicId previewImagePublicIds name").lean();
   if (!previous) return res.status(404).json({ ok: false, error: "Style not found." });
   await ensureCollections(style.collections);
   const updated = await CatalogStyle.findOneAndUpdate({ id }, style, { new: true, runValidators: true }).lean();
@@ -318,19 +318,24 @@ function validateStyle(body: unknown, fixedId?: string): { value?: Style; error?
   const id = fixedId ?? (typeof source.id === "string" ? source.id.trim().toLowerCase() : slugify(name));
   const description = typeof source.description === "string" ? source.description.trim() : "";
   const prompt = typeof source.prompt === "string" ? source.prompt.trim() : "";
-  const beforeSource = typeof source.exampleBeforeUrl === "string" ? source.exampleBeforeUrl.trim() : "";
-  const afterSource = typeof source.exampleAfterUrl === "string" ? source.exampleAfterUrl.trim() : "";
-  const exampleBeforeUrl = beforeSource ? optimizeCloudinaryThumbnailUrl(beforeSource) : "";
-  const exampleAfterUrl = afterSource ? optimizeCloudinaryThumbnailUrl(afterSource) : "";
-  const exampleBeforePublicId = typeof source.exampleBeforePublicId === "string" && source.exampleBeforePublicId.trim()
-    ? source.exampleBeforePublicId.trim()
-    : null;
-  const exampleAfterPublicId = typeof source.exampleAfterPublicId === "string" && source.exampleAfterPublicId.trim()
-    ? source.exampleAfterPublicId.trim()
-    : null;
-  const thumbnail = exampleBeforeUrl;
-  const thumbnailPublicId = exampleBeforePublicId;
-  const previewImages = Array.isArray(source.previewImages) ? source.previewImages.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean) : [];
+  // Legacy styles used exampleBefore/After as the card image pair. Preserve them
+  // when editing an old record, while new styles use thumbnail + previewImages.
+  const thumbnailSource = typeof source.thumbnail === "string" && source.thumbnail.trim()
+    ? source.thumbnail.trim() : (typeof source.exampleBeforeUrl === "string" ? source.exampleBeforeUrl.trim() : "");
+  const thumbnail = thumbnailSource ? optimizeCloudinaryThumbnailUrl(thumbnailSource) : "";
+  const thumbnailPublicId = typeof source.thumbnailPublicId === "string" && source.thumbnailPublicId.trim()
+    ? source.thumbnailPublicId.trim()
+    : (typeof source.exampleBeforePublicId === "string" && !source.thumbnail ? source.exampleBeforePublicId.trim() : null);
+  const legacyBefore = typeof source.exampleBeforeUrl === "string" ? source.exampleBeforeUrl.trim() : "";
+  const legacyAfter = typeof source.exampleAfterUrl === "string" ? source.exampleAfterUrl.trim() : "";
+  const previewImagesInput = Array.isArray(source.previewImages) ? source.previewImages.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean) : [];
+  const previewImagePublicIds = Array.isArray(source.previewImagePublicIds) ? source.previewImagePublicIds.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean) : [];
+  const previewImages = (previewImagesInput.length ? previewImagesInput : (legacyBefore && legacyAfter ? [legacyBefore, legacyAfter] : []))
+    .map(optimizeCloudinaryThumbnailUrl);
+  const exampleBeforeUrl = previewImages[0] ? optimizeCloudinaryThumbnailUrl(previewImages[0]) : null;
+  const exampleAfterUrl = previewImages[1] ? optimizeCloudinaryThumbnailUrl(previewImages[1]) : null;
+  const exampleBeforePublicId = previewImagePublicIds[0] ?? (legacyBefore && legacyAfter ? String(source.exampleBeforePublicId || "") || null : null);
+  const exampleAfterPublicId = previewImagePublicIds[1] ?? (legacyBefore && legacyAfter ? String(source.exampleAfterPublicId || "") || null : null);
   const collections = Array.isArray(source.collections) ? [...new Set(source.collections.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))] : [];
   const imageCount = Number(source.imageCount);
   const tokensRequired = Number(source.tokensRequired);
@@ -339,29 +344,19 @@ function validateStyle(body: unknown, fixedId?: string): { value?: Style; error?
   if (name.length < 2 || name.length > 80) return { error: "Style names must be 2 to 80 characters." };
   if (!description || description.length > 300) return { error: "Add a description of up to 300 characters." };
   if (!prompt || prompt.length > 10000) return { error: "Add a prompt of up to 10,000 characters." };
-  if (!exampleBeforeUrl || !exampleAfterUrl) return { error: "Upload both the before and after style images." };
-  for (const publicId of [exampleBeforePublicId, exampleAfterPublicId]) {
-    if (!publicId || !publicId.startsWith("picmee/styles/") || publicId.includes("..") || publicId.length > 255) {
-      return { error: "Both example images must be uploaded to Cloudinary before saving." };
-    }
+  if (!thumbnail || !thumbnailPublicId) return { error: "Upload a cover image to Cloudinary before saving." };
+  if (previewImages.length > 10 || (previewImagePublicIds.length > 0 && previewImagePublicIds.length !== previewImages.length)) return { error: "Preview images must have matching Cloudinary IDs." };
+  const imagePairs: Array<[string, string | null]> = [[thumbnail, thumbnailPublicId], ...previewImages.map((url, index) => [optimizeCloudinaryThumbnailUrl(url), previewImagePublicIds[index] ?? (index === 0 ? exampleBeforePublicId : (index === 1 ? exampleAfterPublicId : null))] as [string, string | null])];
+  for (const [url, publicId] of imagePairs) {
+    try {
+      const parsedUrl = new URL(url);
+      if (parsedUrl.protocol !== "https:") return { error: "Image links must use HTTPS." };
+      if (publicId && (!publicId.startsWith("picmee/styles/") || publicId.includes("..") || publicId.length > 255 || parsedUrl.hostname !== "res.cloudinary.com" || !parsedUrl.pathname.includes(`/${publicId}.`))) return { error: "Each Cloudinary image ID must match its uploaded image URL." };
+      if (url === thumbnail && (!publicId || parsedUrl.hostname !== "res.cloudinary.com")) return { error: "Upload a cover image to Cloudinary before saving." };
+    } catch { return { error: "Enter valid HTTPS Cloudinary image links." }; }
   }
   if (![1, 2, 3].includes(imageCount)) return { error: "Image count must be 1, 2, or 3." };
   if (!Number.isInteger(tokensRequired) || tokensRequired < 1 || tokensRequired > 10000) return { error: "Credit cost must be a whole number from 1 to 10,000." };
-  for (const url of [exampleBeforeUrl, exampleAfterUrl, ...previewImages]) {
-    try { if (new URL(url).protocol !== "https:") return { error: "Image links must use HTTPS." }; }
-    catch { return { error: "Enter valid HTTPS image links." }; }
-  }
-  for (const [url, publicId] of [
-    [exampleBeforeUrl, exampleBeforePublicId],
-    [exampleAfterUrl, exampleAfterPublicId],
-  ] as const) {
-    if (publicId) {
-      const parsedUrl = new URL(url);
-      if (parsedUrl.hostname !== "res.cloudinary.com" || !parsedUrl.pathname.includes(`/${publicId}.`)) {
-        return { error: "Each Cloudinary image ID must match its uploaded image URL." };
-      }
-    }
-  }
   if (collections.some((collection) => collection.length > 60)) return { error: "Collection names must be 60 characters or fewer." };
   return {
     value: {
@@ -376,6 +371,7 @@ function validateStyle(body: unknown, fixedId?: string): { value?: Style; error?
       exampleAfterUrl,
       exampleAfterPublicId,
       previewImages,
+      previewImagePublicIds,
       imageCount: imageCount as Style["imageCount"],
       tokensRequired,
       collections: collections.length ? collections : ["Other"],
@@ -398,11 +394,13 @@ function getStyleImageIds(style: {
   thumbnailPublicId?: unknown;
   exampleBeforePublicId?: unknown;
   exampleAfterPublicId?: unknown;
+  previewImagePublicIds?: unknown;
 }): string[] {
   return [...new Set([
     style.thumbnailPublicId,
     style.exampleBeforePublicId,
     style.exampleAfterPublicId,
+    ...(Array.isArray(style.previewImagePublicIds) ? style.previewImagePublicIds : []),
   ].filter((value): value is string => typeof value === "string" && Boolean(value)))];
 }
 
@@ -422,6 +420,7 @@ async function deleteImageIfUnused(publicId: string, styleId: string, styleName:
       { thumbnailPublicId: publicId },
       { exampleBeforePublicId: publicId },
       { exampleAfterPublicId: publicId },
+      { previewImagePublicIds: publicId },
     ],
   })) return false;
   try {
@@ -448,6 +447,7 @@ async function retryPendingCloudinaryCleanup(limit: number): Promise<void> {
         { thumbnailPublicId: item.publicId },
         { exampleBeforePublicId: item.publicId },
         { exampleAfterPublicId: item.publicId },
+        { previewImagePublicIds: item.publicId },
       ],
     })) {
       await CloudinaryCleanup.deleteOne({ _id: item._id });

@@ -102,19 +102,10 @@ function initStyleLibrary() {
 
     const imageWrap = document.createElement("div");
     imageWrap.className = "style-card-image";
-    const beforeUrl = style.exampleBeforeUrl || style.thumbnail || "";
-    const afterUrl = style.exampleAfterUrl || "";
-    imageWrap.classList.toggle("has-before-after", Boolean(afterUrl));
-    if (afterUrl) {
-      imageWrap.tabIndex = 0;
-      imageWrap.setAttribute("role", "button");
-      imageWrap.setAttribute("aria-label", `Show before and after examples for ${style.name || "this style"}`);
-      imageWrap.setAttribute("aria-pressed", "false");
-    }
+    const coverUrl = style.thumbnail || "";
     const beforeImage = document.createElement("img");
-    beforeImage.className = "style-image-before";
-    beforeImage.src = beforeUrl;
-    beforeImage.alt = afterUrl ? `Before: ${style.name || "Madds photo style"}` : (style.name || "Madds photo style");
+    beforeImage.src = coverUrl;
+    beforeImage.alt = style.name || "Madds photo style";
     beforeImage.loading = "lazy";
     beforeImage.decoding = "async";
     beforeImage.onerror = () => {
@@ -123,36 +114,6 @@ function initStyleLibrary() {
       imageWrap.setAttribute("aria-label", "Preview unavailable");
     };
     imageWrap.append(beforeImage);
-    if (afterUrl) {
-      const afterImage = document.createElement("img");
-      afterImage.className = "style-image-after";
-      afterImage.src = afterUrl;
-      afterImage.alt = `After: ${style.name || "Madds photo style"}`;
-      afterImage.loading = "lazy";
-      afterImage.decoding = "async";
-      afterImage.onerror = () => afterImage.remove();
-      imageWrap.append(afterImage);
-      const beforeLabel = document.createElement("span");
-      beforeLabel.className = "style-image-state";
-      beforeLabel.textContent = "Before";
-      const afterLabel = document.createElement("span");
-      afterLabel.className = "style-image-state after-state";
-      afterLabel.textContent = "After";
-      imageWrap.append(beforeLabel, afterLabel);
-      imageWrap.addEventListener("click", () => {
-        if (window.matchMedia("(hover: none)").matches) {
-          const showingAfter = imageWrap.classList.toggle("show-after");
-          imageWrap.setAttribute("aria-pressed", String(showingAfter));
-        }
-      });
-      imageWrap.addEventListener("keydown", (event) => {
-        if ((event.key === "Enter" || event.key === " ") && window.matchMedia("(hover: none)").matches) {
-          event.preventDefault();
-          imageWrap.click();
-        }
-      });
-    }
-
     const tag = document.createElement("span");
     tag.className = "style-card-tag";
     tag.textContent = (style.collections || ["Style"])[0];

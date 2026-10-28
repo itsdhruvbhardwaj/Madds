@@ -10,6 +10,7 @@ export interface Style {
   exampleAfterUrl?: string | null;
   exampleAfterPublicId?: string | null;
   previewImages: string[];
+  previewImagePublicIds?: string[];
   imageCount: 1 | 2 | 3;
   tokensRequired: number;
   collections: string[];

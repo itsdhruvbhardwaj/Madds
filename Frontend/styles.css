@@ -101,11 +101,3 @@ h1,h2{font-family:Manrope,"DM Sans",sans-serif;letter-spacing:-1.7px}
 /* Match the app's near-5:7 portrait cards and show the complete thumbnail. */
 .style-card-image{height:auto;aspect-ratio:5/7}
 .style-card-image img{object-fit:contain}
-.style-card-image.has-before-after{cursor:pointer}
-.style-card-image.has-before-after .style-image-before{z-index:1}
-.style-card-image.has-before-after .style-image-after{position:absolute;inset:0;z-index:2;opacity:0;object-fit:contain;transition:opacity .24s ease}
-.style-card-image.has-before-after:hover .style-image-after,.style-card-image.has-before-after:focus .style-image-after,.style-card-image.has-before-after.show-after .style-image-after,.style-card:focus-within .style-card-image.has-before-after .style-image-after{opacity:1}
-.style-image-state{position:absolute;left:12px;bottom:12px;z-index:4;padding:5px 9px;border:1px solid #ffffff40;border-radius:999px;background:#14111dcc;color:#fff;font-size:10px;font-weight:700;letter-spacing:.04em;transition:opacity .2s ease;pointer-events:none}
-.style-image-state.after-state{opacity:0}
-.style-card-image.has-before-after:hover .after-state,.style-card-image.has-before-after:focus .after-state,.style-card-image.has-before-after.show-after .after-state,.style-card:focus-within .style-card-image.has-before-after .after-state{opacity:1}
-.style-card-image.has-before-after:hover .style-image-state:not(.after-state),.style-card-image.has-before-after:focus .style-image-state:not(.after-state),.style-card-image.has-before-after.show-after .style-image-state:not(.after-state),.style-card:focus-within .style-card-image.has-before-after .style-image-state:not(.after-state){opacity:0}

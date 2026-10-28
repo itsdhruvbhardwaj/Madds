@@ -119,6 +119,7 @@ function toStyle(record: Record<string, unknown>): Style {
     exampleAfterUrl: typeof record.exampleAfterUrl === "string" ? optimizeCloudinaryThumbnailUrl(record.exampleAfterUrl) : null,
     exampleAfterPublicId: typeof record.exampleAfterPublicId === "string" ? record.exampleAfterPublicId : null,
     previewImages: Array.isArray(record.previewImages) ? record.previewImages.map(String) : [],
+    previewImagePublicIds: Array.isArray(record.previewImagePublicIds) ? record.previewImagePublicIds.map(String) : [],
     imageCount: Number(record.imageCount) as Style["imageCount"],
     tokensRequired: Number(record.tokensRequired),
     collections: Array.isArray(record.collections) ? record.collections.map(String) : [],

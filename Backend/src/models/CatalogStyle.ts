@@ -8,6 +8,7 @@ const CatalogStyleSchema = new Schema(
     prompt: { type: String, required: true, trim: true },
     thumbnail: { type: String, required: true, trim: true },
     thumbnailPublicId: { type: String, default: null, trim: true },
+    previewImagePublicIds: { type: [String], default: [] },
     exampleBeforeUrl: { type: String, default: null, trim: true },
     exampleBeforePublicId: { type: String, default: null, trim: true },
     exampleAfterUrl: { type: String, default: null, trim: true },
