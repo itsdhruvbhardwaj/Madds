@@ -39,28 +39,28 @@ export async function initializeStyleCatalog(): Promise<void> {
   );
 }
 
-export async function listCatalogStyles(): Promise<Style[]> {
-  if (!catalogDatabaseReady()) return bundledStyles.map((style) => ({
+export async function listCatalogStyles(includeUnverified = false): Promise<Style[]> {
+  if (!catalogDatabaseReady()) return bundledStyles.filter((style) => includeUnverified && style.verified === true).map((style) => ({
     ...style,
     thumbnail: style.thumbnail ? optimizeCloudinaryThumbnailUrl(style.thumbnail) : null,
     exampleBeforeUrl: style.exampleBeforeUrl ? optimizeCloudinaryThumbnailUrl(style.exampleBeforeUrl) : null,
     exampleAfterUrl: style.exampleAfterUrl ? optimizeCloudinaryThumbnailUrl(style.exampleAfterUrl) : null,
   }));
-  const records = await CatalogStyle.find().sort({ name: 1 }).lean();
+  const records = await CatalogStyle.find(includeUnverified ? {} : { verified: true }).sort({ name: 1 }).lean();
   return records.map(toStyle);
 }
 
 export async function getCatalogStyle(id: string): Promise<Style | undefined> {
   if (!catalogDatabaseReady()) {
     const style = bundledStyles.find((item) => item.id === id);
-    return style ? {
+    return style && style.verified === true ? {
       ...style,
       thumbnail: style.thumbnail ? optimizeCloudinaryThumbnailUrl(style.thumbnail) : null,
       exampleBeforeUrl: style.exampleBeforeUrl ? optimizeCloudinaryThumbnailUrl(style.exampleBeforeUrl) : null,
       exampleAfterUrl: style.exampleAfterUrl ? optimizeCloudinaryThumbnailUrl(style.exampleAfterUrl) : null,
     } : undefined;
   }
-  const record = await CatalogStyle.findOne({ id }).lean();
+  const record = await CatalogStyle.findOne({ id, verified: true }).lean();
   return record ? toStyle(record) : undefined;
 }
 
@@ -112,6 +112,7 @@ function toStyle(record: Record<string, unknown>): Style {
     name: String(record.name),
     description: String(record.description),
     prompt: String(record.prompt),
+    verified: record.verified === true,
     thumbnail: typeof record.thumbnail === "string" ? optimizeCloudinaryThumbnailUrl(record.thumbnail) : null,
     thumbnailPublicId: typeof record.thumbnailPublicId === "string" ? record.thumbnailPublicId : null,
     exampleBeforeUrl: typeof record.exampleBeforeUrl === "string" ? optimizeCloudinaryThumbnailUrl(record.exampleBeforeUrl) : null,

@@ -42,7 +42,7 @@
 
       <section id="styles-panel" class="panel-view">
         <div class="page-heading"><div><p class="eyebrow">YOUR CREATIVE LIBRARY</p><h1>Styles</h1><p class="muted">Edit prompts and collections used by Madds.</p></div><button id="add-style" class="button primary">＋ Add style</button></div>
-        <div class="toolbar"><label class="search-box"><span>⌕</span><input id="style-search" type="search" placeholder="Search styles or prompts"></label><select id="collection-filter" aria-label="Filter by collection"><option value="">All collections</option></select><select id="style-sort" aria-label="Sort styles"><option value="name-asc">Name: A to Z</option><option value="name-desc">Name: Z to A</option><option value="created-desc">Newest added</option><option value="created-asc">Oldest added</option><option value="updated-desc">Recently modified</option><option value="updated-asc">Least recently modified</option></select><span id="result-count" class="muted"></span></div>
+        <div class="toolbar"><label class="search-box"><span>⌕</span><input id="style-search" type="search" placeholder="Search styles or prompts"></label><select id="collection-filter" aria-label="Filter by collection"><option value="">All collections</option></select><select id="verification-filter" aria-label="Filter by verification"><option value="all">All verification states</option><option value="verified">Verified</option><option value="unverified">Unverified</option></select><select id="style-sort" aria-label="Sort styles"><option value="name-asc">Name: A to Z</option><option value="name-desc">Name: Z to A</option><option value="created-desc">Newest added</option><option value="created-asc">Oldest added</option><option value="updated-desc">Recently modified</option><option value="updated-asc">Least recently modified</option></select><span id="result-count" class="muted"></span></div>
         <div id="styles-grid" class="styles-grid"></div>
       </section>
 
@@ -98,7 +98,8 @@
         <div class="id-preview-field"><span class="field-label">Internal style ID</span><span id="style-id-preview" class="style-id-preview">style-id-from-name</span><span class="field-hint">Generated from the name on creation, then kept stable so app references and favorites keep working.</span></div>
         <label class="wide">Short description<textarea name="description" maxlength="300" rows="2" required></textarea></label>
         <fieldset class="wide"><legend>Collections</legend><div id="collection-checkboxes" class="checkbox-grid"></div></fieldset>
-        <label class="wide">Generation prompt<textarea name="prompt" maxlength="10000" rows="6" required></textarea></label>
+        <div class="wide prompt-editor"><div class="prompt-editor-heading"><label for="style-prompt">Generation prompt</label><button id="copy-style-prompt" class="button secondary" type="button">Copy prompt</button></div><textarea id="style-prompt" name="prompt" maxlength="10000" rows="6" required></textarea><span id="copy-prompt-status" class="field-hint" role="status"></span></div>
+        <label class="wide verification-control"><span class="verification-check"><input name="verified" type="checkbox"><b>Verified</b></span><small>Mark verified only after reviewing the cover image, any before/after previews, and testing the prompt in Prompt testing. Verified styles are the only styles shown in the app and on the website.</small></label>
         <input name="thumbnail" type="hidden">
         <input name="thumbnailPublicId" type="hidden">
         <input name="previewImages" type="hidden">

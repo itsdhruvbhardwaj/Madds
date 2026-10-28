@@ -3,6 +3,7 @@ export interface Style {
   name: string;
   description: string;
   prompt: string;
+  verified?: boolean;
   thumbnail: string | null;
   thumbnailPublicId?: string | null;
   exampleBeforeUrl?: string | null;

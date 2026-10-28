@@ -6,6 +6,7 @@ const CatalogStyleSchema = new Schema(
     name: { type: String, required: true, trim: true },
     description: { type: String, required: true, trim: true },
     prompt: { type: String, required: true, trim: true },
+    verified: { type: Boolean, default: false, index: true },
     thumbnail: { type: String, required: true, trim: true },
     thumbnailPublicId: { type: String, default: null, trim: true },
     previewImagePublicIds: { type: [String], default: [] },

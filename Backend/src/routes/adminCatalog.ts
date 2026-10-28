@@ -83,7 +83,7 @@ router.get("/catalog", async (_req: Request, res: Response) => {
     console.warn("Background Cloudinary cleanup retry failed.", error instanceof Error ? error.message : "UNKNOWN");
   });
   const [styles, collections, sections, styleTimestamps, collectionTimestamps] = await Promise.all([
-    listCatalogStyles(),
+    listCatalogStyles(true),
     listCatalogCollections(),
     HomeSectionConfig.find().sort({ order: 1, title: 1 }).lean(),
     CatalogStyle.find().select("id createdAt updatedAt").lean(),
@@ -318,6 +318,7 @@ function validateStyle(body: unknown, fixedId?: string): { value?: Style; error?
   const id = fixedId ?? (typeof source.id === "string" ? source.id.trim().toLowerCase() : slugify(name));
   const description = typeof source.description === "string" ? source.description.trim() : "";
   const prompt = typeof source.prompt === "string" ? source.prompt.trim() : "";
+  const verified = source.verified === true;
   // Legacy styles used exampleBefore/After as the card image pair. Preserve them
   // when editing an old record, while new styles use thumbnail + previewImages.
   const thumbnailSource = typeof source.thumbnail === "string" && source.thumbnail.trim()
@@ -364,6 +365,7 @@ function validateStyle(body: unknown, fixedId?: string): { value?: Style; error?
       name,
       description,
       prompt,
+      verified,
       thumbnail,
       thumbnailPublicId,
       exampleBeforeUrl,

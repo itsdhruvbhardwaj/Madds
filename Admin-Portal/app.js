@@ -2,7 +2,7 @@
   const apiBase = String(window.PICMEE_API_BASE || "").replace(/\/$/, "");
   const tokenKey = "picmee_admin_access";
   const refreshKey = "picmee_admin_refresh";
-  const state = { styles: [], collections: [], sections: [], logs: [], logMembers: [], logPage: 1, logPagination: null, pendingCloudinaryCleanup: 0, activePanel: "styles-panel", editingId: null, renamingId: null, catalogLoaded: false, catalogLoading: false, logsLoading: false, promptTestFile: null, promptTestOriginalUrl: null, promptTestResultUrl: null, promptTestDownloadUrl: null, promptTestGenerating: false };
+  const state = { styles: [], collections: [], sections: [], logs: [], logMembers: [], logPage: 1, logPagination: null, pendingCloudinaryCleanup: 0, activePanel: "styles-panel", editingId: null, renamingId: null, styleEditorBaseline: null, catalogLoaded: false, catalogLoading: false, logsLoading: false, promptTestFile: null, promptTestOriginalUrl: null, promptTestResultUrl: null, promptTestDownloadUrl: null, promptTestGenerating: false };
   const byId = (id) => document.getElementById(id);
 
   async function api(path, options = {}, retry = true) {
@@ -158,10 +158,12 @@
   function renderStyles() {
     const query = byId("style-search").value.trim().toLowerCase();
     const collection = byId("collection-filter").value;
+    const verification = byId("verification-filter").value;
     const filtered = state.styles.filter((style) => {
       const matchesCollection = !collection || style.collections.includes(collection);
+      const matchesVerification = verification === "all" || (verification === "verified" ? style.verified === true : style.verified !== true);
       const searchable = `${style.name} ${style.id} ${style.description} ${style.prompt}`.toLowerCase();
-      return matchesCollection && (!query || searchable.includes(query));
+      return matchesCollection && matchesVerification && (!query || searchable.includes(query));
     });
     sortItems(filtered, byId("style-sort").value);
     byId("style-count").textContent = String(state.styles.length);
@@ -180,7 +182,10 @@
       const collectionBadge = collection
         ? `<span class="style-collection-pill">${escapeHtml(collection)}</span>`
         : '<span class="style-collection-pill">No collection</span>';
-      return `<article class="style-card website-style-card" data-style-open="${escapeHtml(style.id)}"><div class="style-image ${coverUrl ? "" : "missing-image"}">${img}${collectionBadge}</div><div class="style-body"><h3 class="style-card-title">${escapeHtml(style.name)}</h3><div class="style-description">${escapeHtml(style.description)}</div><div class="style-admin-footer"><span class="style-id">ID · ${escapeHtml(style.id)}</span><span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
+      const verificationBadge = style.verified === true
+        ? '<span class="verification-badge is-verified">✓ Verified</span>'
+        : '<span class="verification-badge is-unverified">Unverified</span>';
+      return `<article class="style-card website-style-card" data-style-open="${escapeHtml(style.id)}"><div class="style-image ${coverUrl ? "" : "missing-image"}">${img}${collectionBadge}</div><div class="style-body"><h3 class="style-card-title">${escapeHtml(style.name)}</h3><div class="style-description">${escapeHtml(style.description)}</div><div class="style-admin-footer"><span class="style-id">ID · ${escapeHtml(style.id)}</span>${verificationBadge}<span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
     }).join("");
     grid.querySelectorAll("[data-style-open]").forEach((card) => card.addEventListener("click", (event) => {
       if (event.target.closest("button, a")) return;
@@ -512,6 +517,7 @@
       form.elements.name.value = style.name;
       form.elements.description.value = style.description;
       form.elements.prompt.value = style.prompt;
+      form.elements.verified.checked = style.verified === true;
       const hasPreviewPair = (style.previewImages || []).length >= 2;
       const beforeUrl = (hasPreviewPair ? style.previewImages[0] : style.exampleBeforeUrl) || "";
       const afterUrl = (hasPreviewPair ? style.previewImages[1] : style.exampleAfterUrl) || "";
@@ -545,7 +551,28 @@
     updateIdPreview(form.elements.name.value, style?.id);
     renderCollectionOptions();
     if (style) for (const input of form.querySelectorAll('input[name="collections"]')) input.checked = style.collections.includes(input.value);
+    state.styleEditorBaseline = styleEditorSnapshot();
+    byId("copy-prompt-status").textContent = "";
     byId("style-dialog").showModal();
+  }
+
+  function styleEditorSnapshot() {
+    const form = byId("style-form");
+    const entries = [...new FormData(form).entries()];
+    const selectedFiles = ["cover-image-file", "before-image-file", "after-image-file"].map((id) => {
+      const file = byId(id).files?.[0];
+      return file ? [file.name, file.size, file.lastModified] : null;
+    });
+    return JSON.stringify({ entries, selectedFiles });
+  }
+
+  function requestCloseStyleEditor() {
+    if (state.styleEditorBaseline !== null && styleEditorSnapshot() !== state.styleEditorBaseline) {
+      byId("discard-confirm-dialog").showModal();
+      return;
+    }
+    state.styleEditorBaseline = null;
+    byId("style-dialog").close();
   }
 
   function openRenameDialog(id) {
@@ -574,6 +601,7 @@
 
   byId("style-search").addEventListener("input", renderStyles);
   byId("collection-filter").addEventListener("change", renderStyles);
+  byId("verification-filter").addEventListener("change", renderStyles);
   byId("style-sort").addEventListener("change", renderStyles);
   byId("collection-sort").addEventListener("change", renderCollections);
   byId("add-style").addEventListener("click", () => openStyleEditor());
@@ -582,17 +610,40 @@
     else void loadCatalog();
   });
   document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => {
-    if (button.dataset.close === "style-dialog") byId("discard-confirm-dialog").showModal();
+    if (button.dataset.close === "style-dialog") requestCloseStyleEditor();
     else byId(button.dataset.close).close();
   }));
   byId("style-dialog").addEventListener("cancel", (event) => {
     event.preventDefault();
-    byId("discard-confirm-dialog").showModal();
+    requestCloseStyleEditor();
   });
   byId("keep-style-editing").addEventListener("click", () => byId("discard-confirm-dialog").close());
   byId("discard-style-editing").addEventListener("click", () => {
     byId("discard-confirm-dialog").close();
+    state.styleEditorBaseline = null;
     byId("style-dialog").close();
+  });
+  byId("copy-style-prompt").addEventListener("click", async () => {
+    const prompt = byId("style-prompt").value;
+    const status = byId("copy-prompt-status");
+    if (!prompt) {
+      status.textContent = "There is no prompt to copy yet.";
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(prompt);
+    } catch {
+      const textarea = byId("style-prompt");
+      textarea.focus();
+      textarea.select();
+      const copied = document.execCommand("copy");
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+      if (!copied) {
+        status.textContent = "Copy was blocked by the browser. Select the prompt and copy it manually.";
+        return;
+      }
+    }
+    status.textContent = "Prompt copied.";
   });
   document.querySelectorAll(".side-link").forEach((button) => button.addEventListener("click", () => {
     state.activePanel = button.dataset.panel;
@@ -676,7 +727,7 @@
       ? [beforeId, afterId]
       : String(fields.get("previewImagePublicIds") || "").split(/\r?\n/).map((id) => id.trim()).filter(Boolean);
     const style = {
-      id: String(fields.get("name") || "").normalize("NFKD").toLowerCase().trim().replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""), name: fields.get("name"), description: fields.get("description"), prompt: fields.get("prompt"),
+      id: String(fields.get("name") || "").normalize("NFKD").toLowerCase().trim().replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""), name: fields.get("name"), description: fields.get("description"), prompt: fields.get("prompt"), verified: fields.get("verified") === "on",
       thumbnail: fields.get("thumbnail"),
       thumbnailPublicId: fields.get("thumbnailPublicId"),
       exampleBeforeUrl: beforeUrl || null,
@@ -703,6 +754,7 @@
       cleanupButton.textContent = `Retry image cleanup (${state.pendingCloudinaryCleanup})`;
       renderStyles();
       renderCollections();
+      state.styleEditorBaseline = null;
       byId("style-dialog").close();
       notify(result.cloudinaryCleanupPending
         ? "Style saved. The replaced Cloudinary image cleanup is pending and will be retried from the portal."
