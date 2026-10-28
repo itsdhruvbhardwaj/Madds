@@ -32,7 +32,7 @@ import {
   reserveGenerationCredits,
   UserNotFoundError,
 } from "./services/credits/creditService.js";
-import { OpenAIImageGenerator } from "./services/openai/generation.js";
+import { createImageGenerator } from "./services/generationProvider.js";
 import { buildCustomPrompt, buildPrompt } from "./services/styles/styles.js";
 import { getCatalogStyle, listCatalogCollections, listCatalogStyles } from "./services/styles/catalog.js";
 import type { Style } from "./services/styles/styleTypes.js";
@@ -384,7 +384,7 @@ app.post(
 
     let result;
     try {
-      const generator = new OpenAIImageGenerator();
+      const generator = createImageGenerator();
       result = await generator.generate({
         prompt: style
           ? buildPrompt(style, validatedImages.length)
@@ -463,7 +463,7 @@ app.post(
 
     return res.status(200).json({
       ok: true,
-      image: `data:image/${env.imageFormat};base64,${result.base64}`,
+      image: `data:${result.mimeType ?? `image/${env.imageFormat}`};base64,${result.base64}`,
       usage: result.usage,
     });
   },

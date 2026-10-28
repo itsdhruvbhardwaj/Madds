@@ -11,6 +11,9 @@ function positiveInteger(name: string, fallback: number): number {
 const outputFormats = ["jpeg", "png", "webp"] as const;
 
 export const env = {
+  get imageGenerationProvider() {
+    return (process.env.IMAGE_GENERATION_PROVIDER ?? "openai").trim().toLowerCase();
+  },
   get openAiApiKey() {
     return process.env.OPENAI_API_KEY ?? "";
   },
@@ -79,6 +82,18 @@ export const env = {
     return outputFormats.includes(configuredFormat as (typeof outputFormats)[number])
       ? (configuredFormat as (typeof outputFormats)[number])
       : "jpeg";
+  },
+  get openRouterApiKey() {
+    return process.env.OPENROUTER_API_KEY ?? "";
+  },
+  get openRouterImageModel() {
+    return process.env.OPENROUTER_IMAGE_MODEL ?? "qwen/qwen-image-2.1-turbo";
+  },
+  get openRouterImageResolution() {
+    return process.env.OPENROUTER_IMAGE_RESOLUTION ?? "1K";
+  },
+  get openRouterImageAspectRatio() {
+    return process.env.OPENROUTER_IMAGE_ASPECT_RATIO ?? "2:3";
   },
   get openAiTimeoutMs() {
     return positiveInteger("OPENAI_TIMEOUT_MS", 120_000);

@@ -115,6 +115,7 @@ export class OpenAIImageGenerator implements GenerationProvider {
 
       return {
         base64,
+        mimeType: `image/${env.imageFormat}`,
         usage: extractUsage(response),
       };
     }
@@ -130,6 +131,7 @@ export class OpenAIImageGenerator implements GenerationProvider {
 
     return {
       base64,
+      mimeType: `image/${env.imageFormat}`,
       usage: extractUsage(response),
     };
   }
