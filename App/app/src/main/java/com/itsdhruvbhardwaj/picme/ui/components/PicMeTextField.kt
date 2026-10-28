@@ -45,9 +45,9 @@ fun PicMeTextField(
         shape = RoundedCornerShape(16.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = Primary,
-            unfocusedBorderColor = Color(0xFFE5E7EB),
+        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
             cursorColor = Primary,
-            disabledBorderColor = Color(0xFFF3F4F6),
+        disabledBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
             disabledLabelColor = TextSecondary.copy(alpha = 0.5f),
             disabledLeadingIconColor = Primary.copy(alpha = 0.5f)
         )

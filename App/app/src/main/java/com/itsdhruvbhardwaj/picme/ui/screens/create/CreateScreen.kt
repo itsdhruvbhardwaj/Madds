@@ -1,5 +1,7 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.create
 
+import androidx.compose.material3.MaterialTheme
+
 import android.app.Activity
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -45,7 +47,7 @@ fun CreateScreen(
     val context = LocalContext.current
     var prompt by remember { mutableStateOf("") }
     var selectedPhotos by remember { mutableStateOf<List<Uri>>(emptyList()) }
-    
+
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri ->
@@ -60,14 +62,7 @@ fun CreateScreen(
     }
     val isPromptValid = wordCount in 1..150
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Image(
-            painter = painterResource(id = R.drawable.glassmorphismwallpaper),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize().blur(20.dp),
-            contentScale = ContentScale.Crop
-        )
-        Box(modifier = Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.15f)))
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
 
         Scaffold(
             containerColor = Color.Transparent,
@@ -106,21 +101,21 @@ fun CreateScreen(
                     .padding(horizontal = 24.dp)
             ) {
                 Spacer(modifier = Modifier.height(24.dp))
-                
+
                 Text(
                     text = "Describe your vision",
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
                     color = Color(0xFF1E293B)
                 )
-                
+
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Custom Prompt TextField with word count
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color.White.copy(alpha = 0.4f), RoundedCornerShape(24.dp))
-                        .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
+                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(24.dp))
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(24.dp))
                         .padding(4.dp)
                 ) {
                     Column {
@@ -191,7 +186,7 @@ fun CreateScreen(
                         "Reference photos help with composition"
                     )
                 )
-                
+
                 Spacer(modifier = Modifier.height(140.dp))
             }
         }

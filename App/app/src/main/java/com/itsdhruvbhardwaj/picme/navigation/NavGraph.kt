@@ -62,12 +62,12 @@ fun NavGraph(
 ) {
     val context = LocalContext.current
     val prefs = context.getSharedPreferences("picme_prefs", Context.MODE_PRIVATE)
-    
+
     val authState by authViewModel.authState.collectAsState()
     val passwordSetupState by authViewModel.passwordSetupState.collectAsState()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    
+
     val scope = rememberCoroutineScope()
     val googleAuthHelper = remember { GoogleAuthHelper(context) }
 
@@ -92,7 +92,7 @@ fun NavGraph(
         Screen.Search.route,
         Screen.Profile.route
     )
-    
+
     val isBottomBarVisible = currentRoute in bottomBarScreens
 
     // Global Layout: Banner pushes content up physically.
@@ -155,8 +155,8 @@ fun NavGraph(
                     )
                     LaunchedEffect(authState) {
                         if (authState is AuthState.Authenticated) {
-                            navController.navigate(Screen.Home.route) { 
-                                popUpTo(Screen.Login.route) { inclusive = true } 
+                            navController.navigate(Screen.Home.route) {
+                                popUpTo(Screen.Login.route) { inclusive = true }
                             }
                         }
                     }
@@ -179,8 +179,8 @@ fun NavGraph(
                     LaunchedEffect(authState) {
                         val state = authState
                         if (state is AuthState.Authenticated) {
-                            navController.navigate(Screen.Home.route) { 
-                                popUpTo(Screen.Signup.route) { inclusive = true } 
+                            navController.navigate(Screen.Home.route) {
+                                popUpTo(Screen.Signup.route) { inclusive = true }
                             }
                         } else if (state is AuthState.VerifyEmailRequired) {
                             navController.navigate(Screen.VerifyEmail.createRoute(state.email)) {
@@ -295,7 +295,7 @@ fun NavGraph(
                         onRequestPasswordSetup = { password, confirm -> authViewModel.requestGooglePasswordSetup(password, confirm) },
                         onRefreshPasswordSetup = { authViewModel.refreshGooglePasswordSetupStatus() }
                     )
-                    
+
                     // Exit flow on successful deletion request (Unauthenticated means tokens cleared)
                     LaunchedEffect(authState) {
                         if (authState is AuthState.Unauthenticated) {
@@ -329,7 +329,7 @@ fun NavGraph(
                                 PasswordSetupState.Verifying -> "Verifying your email and setting your password…"
                                 PasswordSetupState.Verified -> "Email verified. Your password is set. Return to account deletion and confirm with this password."
                                 is PasswordSetupState.Error -> (passwordSetupState as PasswordSetupState.Error).message
-                                else -> "Open PicMee to finish verifying your password."
+                                else -> "Open madds to finish verifying your password."
                             },
                             style = MaterialTheme.typography.bodyLarge
                         )
@@ -362,9 +362,9 @@ fun NavGraph(
                         styleId = styleId,
                         styleRepository = styleRepository,
                         onBackClick = { navController.popBackStack() },
-                        onContinueClick = { uris -> 
+                        onContinueClick = { uris ->
                             generationViewModel.setSelectedPhotos(uris)
-                            navController.navigate(Screen.Generation.createRoute(styleId)) 
+                            navController.navigate(Screen.Generation.createRoute(styleId))
                         }
                     )
                 }
@@ -394,9 +394,9 @@ fun NavGraph(
                         state = genState,
                         statusMessage = statusMsg,
                         selectedPhotos = selectedPhotos,
-                        onCancelClick = { 
+                        onCancelClick = {
                             generationViewModel.resetState()
-                            navController.popBackStack() 
+                            navController.popBackStack()
                         },
                         onRetryClick = {
                             if (styleId == "custom" && prompt != null) {
@@ -406,13 +406,13 @@ fun NavGraph(
                             }
                         },
                         onSuccess = { _ ->
-                            navController.navigate(Screen.Result.route) { 
-                                popUpTo(Screen.Generation.route) { inclusive = true } 
+                            navController.navigate(Screen.Result.route) {
+                                popUpTo(Screen.Generation.route) { inclusive = true }
                             }
                         }
                     )
                 }
-                
+
                 composable(Screen.Result.route) {
                     val genState by generationViewModel.uiState.collectAsState()
                     val isActionLoading by generationViewModel.isActionLoading.collectAsState()
@@ -422,9 +422,9 @@ fun NavGraph(
                         imageBase64 = imageBase64,
                         isActionLoading = isActionLoading,
                         viewModel = generationViewModel,
-                        onBackClick = { 
+                        onBackClick = {
                             generationViewModel.resetState()
-                            navController.navigate(Screen.Home.route) { popUpTo(Screen.Home.route) { inclusive = true } } 
+                            navController.navigate(Screen.Home.route) { popUpTo(Screen.Home.route) { inclusive = true } }
                         },
                         onSaveClick = { generationViewModel.saveImageToGallery(context) },
                         onShareClick = { generationViewModel.shareImage(context) },
@@ -477,9 +477,9 @@ fun NavGraph(
                         initialEmail = email,
                         authState = authState,
                         onSubmitClick = { authViewModel.forgotPassword(it) },
-                        onBackClick = { 
+                        onBackClick = {
                             authViewModel.resetAuthState()
-                            navController.popBackStack() 
+                            navController.popBackStack()
                         }
                     )
                 }
@@ -500,9 +500,9 @@ fun NavGraph(
                         token = token,
                         authState = authState,
                         onSubmitClick = { t, p -> authViewModel.resetPassword(t, p) },
-                        onBackClick = { 
+                        onBackClick = {
                             authViewModel.resetAuthState()
-                            navController.popBackStack() 
+                            navController.popBackStack()
                         },
                         onSuccess = {
                             Toast.makeText(context, "Password reset successfully. Please sign in.", Toast.LENGTH_LONG).show()
@@ -561,9 +561,9 @@ fun NavGraph(
     }
 }
 
-private fun canNavigateFromSplash(authState: AuthState): Boolean = 
-    authState is AuthState.Authenticated || 
-    authState is AuthState.Unauthenticated || 
+private fun canNavigateFromSplash(authState: AuthState): Boolean =
+    authState is AuthState.Authenticated ||
+    authState is AuthState.Unauthenticated ||
     authState is AuthState.RestoringSession
 
 private fun navigateFromSplash(navController: NavHostController, authState: AuthState, prefs: SharedPreferences) {

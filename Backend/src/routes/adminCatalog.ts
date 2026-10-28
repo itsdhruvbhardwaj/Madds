@@ -13,7 +13,7 @@ import { StyleCollection } from "../models/StyleCollection.js";
 import { catalogDatabaseReady, listCatalogCollections, listCatalogStyles, optimizeCloudinaryThumbnailUrl, slugify } from "../services/styles/catalog.js";
 import type { Style } from "../services/styles/styleTypes.js";
 import { ensureHomeSection, renameHomeSectionCollection } from "../services/home/homeCatalog.js";
-import { cloudinaryIsConfigured, createStyleImageUploadSignature, destroyManagedStyleImage } from "../services/cloudinaryAssets.js";
+import { cloudinaryIsConfigured, createStyleImageUploadSignature, destroyManagedStyleImage, resolveLegacyStyleImagePublicIds } from "../services/cloudinaryAssets.js";
 import { OpenRouterImageGenerator } from "../services/openrouter/generation.js";
 
 const router = Router();
@@ -116,9 +116,9 @@ router.post("/catalog/cloudinary/signature", async (req: Request, res: Response)
   }
   const signature = createStyleImageUploadSignature(resolvedNames as string[]);
   await CloudinaryCleanup.updateOne(
-    { publicId: signature.publicId },
+    { publicId: signature.expectedPublicId },
     { $setOnInsert: {
-      publicId: signature.publicId,
+      publicId: signature.expectedPublicId,
       styleId: "pending-upload",
       styleName: "Image awaiting style save",
       cleanupAfter: new Date(Date.now() + 24 * 60 * 60 * 1000),
@@ -129,7 +129,7 @@ router.post("/catalog/cloudinary/signature", async (req: Request, res: Response)
 });
 
 router.post("/catalog/cloudinary/retry-cleanup", async (_req: Request, res: Response) => {
-  await retryPendingCloudinaryCleanup(20);
+  await retryPendingCloudinaryCleanup(100);
   const dueFilter = { cleanupAfter: { $lte: new Date() } };
   const [pending, failures] = await Promise.all([
     CloudinaryCleanup.countDocuments(dueFilter),
@@ -330,8 +330,15 @@ function validateStyle(body: unknown, fixedId?: string): { value?: Style; error?
   const legacyBefore = typeof source.exampleBeforeUrl === "string" ? source.exampleBeforeUrl.trim() : "";
   const legacyAfter = typeof source.exampleAfterUrl === "string" ? source.exampleAfterUrl.trim() : "";
   const previewImagesInput = Array.isArray(source.previewImages) ? source.previewImages.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean) : [];
-  const previewImagePublicIds = Array.isArray(source.previewImagePublicIds) ? source.previewImagePublicIds.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean) : [];
-  const previewImages = (previewImagesInput.length ? previewImagesInput : (legacyBefore && legacyAfter ? [legacyBefore, legacyAfter] : []))
+  const previewImagePublicIdsInput = Array.isArray(source.previewImagePublicIds) ? source.previewImagePublicIds.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean) : [];
+  const hasExplicitPreviewPair = Boolean(legacyBefore && legacyAfter);
+  const explicitPreviewIds = [source.exampleBeforePublicId, source.exampleAfterPublicId]
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim());
+  const previewImagePublicIds = hasExplicitPreviewPair && explicitPreviewIds.length === 2 && explicitPreviewIds.every(Boolean)
+    ? explicitPreviewIds
+    : previewImagePublicIdsInput;
+  const previewImages = (hasExplicitPreviewPair ? [legacyBefore, legacyAfter] : previewImagesInput)
     .map(optimizeCloudinaryThumbnailUrl);
   const exampleBeforeUrl = previewImages[0] ? optimizeCloudinaryThumbnailUrl(previewImages[0]) : null;
   const exampleAfterUrl = previewImages[1] ? optimizeCloudinaryThumbnailUrl(previewImages[1]) : null;
@@ -443,26 +450,62 @@ async function deleteImageIfUnused(publicId: string, styleId: string, styleName:
 
 async function retryPendingCloudinaryCleanup(limit: number): Promise<void> {
   const pending = await CloudinaryCleanup.find({ cleanupAfter: { $lte: new Date() } }).sort({ createdAt: 1 }).limit(limit).lean();
-  for (const item of pending) {
-    if (await CatalogStyle.exists({
-      $or: [
-        { thumbnailPublicId: item.publicId },
-        { exampleBeforePublicId: item.publicId },
-        { exampleAfterPublicId: item.publicId },
-        { previewImagePublicIds: item.publicId },
-      ],
-    })) {
-      await CloudinaryCleanup.deleteOne({ _id: item._id });
-      continue;
-    }
+  const legacyUploadIds = pending
+    .filter((item) => item.styleId === "pending-upload" && /^img-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.publicId))
+    .map((item) => item.publicId);
+  let legacyPublicIds = new Map<string, string>();
+  let legacyLookupError: string | null = null;
+  if (legacyUploadIds.length) {
     try {
-      await destroyManagedStyleImage(item.publicId);
-      await CloudinaryCleanup.deleteOne({ _id: item._id });
+      legacyPublicIds = await resolveLegacyStyleImagePublicIds(legacyUploadIds);
     } catch (error) {
-      const message = error instanceof Error ? error.message.slice(0, 500) : "Unknown Cloudinary deletion error.";
-      await CloudinaryCleanup.updateOne({ _id: item._id }, { $set: { lastError: message }, $inc: { attempts: 1 } });
+      legacyLookupError = error instanceof Error ? error.message.slice(0, 500) : "Cloudinary could not look up the legacy upload.";
     }
   }
+
+  let nextPendingIndex = 0;
+  const workers = Array.from({ length: Math.min(5, pending.length) }, async () => {
+    while (true) {
+      const index = nextPendingIndex++;
+      if (index >= pending.length) return;
+      const item = pending[index];
+      try {
+        let publicId = item.publicId;
+        if (!publicId.startsWith("picmee/styles/")) {
+          if (item.styleId !== "pending-upload" || !/^img-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(publicId)) {
+            throw new Error("Cleanup record has an invalid Cloudinary public ID.");
+          }
+          if (legacyLookupError) throw new Error(legacyLookupError);
+          const resolved = legacyPublicIds.get(publicId);
+          if (!resolved) {
+            // A completed search confirms the old signed upload never reached Cloudinary.
+            await CloudinaryCleanup.deleteOne({ _id: item._id });
+            continue;
+          }
+          publicId = resolved;
+        }
+
+        if (await CatalogStyle.exists({
+          $or: [
+            { thumbnailPublicId: publicId },
+            { exampleBeforePublicId: publicId },
+            { exampleAfterPublicId: publicId },
+            { previewImagePublicIds: publicId },
+          ],
+        })) {
+          await CloudinaryCleanup.deleteOne({ _id: item._id });
+          continue;
+        }
+
+        await destroyManagedStyleImage(publicId);
+        await CloudinaryCleanup.deleteOne({ _id: item._id });
+      } catch (error) {
+        const message = error instanceof Error ? error.message.slice(0, 500) : "Unknown Cloudinary deletion error.";
+        await CloudinaryCleanup.updateOne({ _id: item._id }, { $set: { lastError: message }, $inc: { attempts: 1 } });
+      }
+    }
+  });
+  await Promise.all(workers);
 }
 
 function escapeRegex(value: string): string {

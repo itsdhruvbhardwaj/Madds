@@ -1,5 +1,7 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.create
 
+import androidx.compose.material3.MaterialTheme
+
 import android.net.Uri
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -59,21 +61,14 @@ fun GenerationScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // Softly Blurred Glassmorphism Background
-        Image(
-            painter = painterResource(id = R.drawable.glassmorphismwallpaper),
-            contentDescription = null,
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(20.dp),
-            contentScale = ContentScale.Crop
-        )
-        
+
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.White.copy(alpha = 0.15f))
+                .background(MaterialTheme.colorScheme.background)
         )
 
         Scaffold(
@@ -109,7 +104,7 @@ fun GenerationScreen(
                     ),
                     textAlign = TextAlign.Center
                 )
-                
+
                 Spacer(modifier = Modifier.height(32.dp))
 
                 // Main Preview Area - Visual Focus
@@ -124,8 +119,8 @@ fun GenerationScreen(
                             spotColor = Primary.copy(alpha = 0.3f)
                         )
                         .clip(RoundedCornerShape(32.dp))
-                        .background(Color.White.copy(alpha = 0.3f))
-                        .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(32.dp)),
+                        .background(MaterialTheme.colorScheme.surface)
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(32.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     if (state is GenerationUiState.Error) {
@@ -133,10 +128,10 @@ fun GenerationScreen(
                     } else {
                         // 1. Display selected photos
                         PhotoComposition(selectedPhotos = selectedPhotos)
-                        
+
                         // 2. Premium Processing layer (Shimmer + Laser Scan)
                         PremiumProcessingOverlay()
-                        
+
                         // 3. Central pulsing AI centerpiece
                         PremiumPulsingIcon()
                     }
@@ -165,7 +160,7 @@ fun GenerationScreen(
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
-                
+
                 LinearProgressIndicator(
                     modifier = Modifier
                         .fillMaxWidth(0.6f)
@@ -184,8 +179,8 @@ fun GenerationScreen(
                         .padding(bottom = 32.dp)
                         .shadow(8.dp, RoundedCornerShape(24.dp)),
                     shape = RoundedCornerShape(24.dp),
-                    color = Color.White.copy(alpha = 0.5f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.6f))
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Row(
                         modifier = Modifier.padding(20.dp),
@@ -206,7 +201,7 @@ fun GenerationScreen(
                         )
                     }
                 }
-                
+
                 // Bottom spacing for global banner ad
                 Spacer(modifier = Modifier.height(100.dp))
             }
@@ -275,8 +270,10 @@ fun PhotoComposition(selectedPhotos: List<Uri>) {
 
 @Composable
 fun PremiumProcessingOverlay() {
+    val primaryAccent = MaterialTheme.colorScheme.primary
+    val secondaryAccent = MaterialTheme.colorScheme.secondary
     val infiniteTransition = rememberInfiniteTransition(label = "premiumProcessing")
-    
+
     // Smooth Crystal Shimmer
     val shimmerTranslate by infiniteTransition.animateFloat(
         initialValue = -1000f,
@@ -322,14 +319,14 @@ fun PremiumProcessingOverlay() {
         // Animated Neon Laser Scan
         Canvas(modifier = Modifier.fillMaxSize()) {
             val y = size.height * scanLineY
-            
+
             // Outer glow of the laser
             drawRect(
                 brush = Brush.verticalGradient(
                     colors = listOf(
                         Color.Transparent,
-                        Primary.copy(alpha = 0.1f),
-                        Primary.copy(alpha = 0.1f),
+                        primaryAccent.copy(alpha = 0.1f),
+                        primaryAccent.copy(alpha = 0.1f),
                         Color.Transparent
                     )
                 ),
@@ -342,9 +339,9 @@ fun PremiumProcessingOverlay() {
                 brush = Brush.horizontalGradient(
                     colors = listOf(
                         Color.Transparent,
-                        Primary,
-                        Secondary,
-                        Primary,
+                        primaryAccent,
+                        secondaryAccent,
+                        primaryAccent,
                         Color.Transparent
                     )
                 ),
@@ -372,7 +369,7 @@ fun PremiumProcessingOverlay() {
 @Composable
 fun PremiumPulsingIcon() {
     val infiniteTransition = rememberInfiniteTransition(label = "premiumGlow")
-    
+
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 0.95f,
         targetValue = 1.1f,
@@ -392,7 +389,7 @@ fun PremiumPulsingIcon() {
         ),
         label = "glowAlpha"
     )
-    
+
     Box(contentAlignment = Alignment.Center) {
         // Outer glow halo
         Box(
@@ -448,9 +445,9 @@ fun GenerationErrorView(message: String, onRetry: () -> Unit) {
                 )
             }
         }
-        
+
         Spacer(modifier = Modifier.height(24.dp))
-        
+
         Text(
             text = "Something went wrong",
             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),

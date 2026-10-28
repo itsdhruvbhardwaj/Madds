@@ -20,7 +20,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.itsdhruvbhardwaj.picme.navigation.Screen
-import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 
 data class BottomNavItem(
     val name: String,
@@ -60,9 +59,8 @@ fun PicMeBottomNavigationBar(
                     spotColor = Color.Black.copy(alpha = 0.25f)
                 ),
             shape = CircleShape,
-            // Translucent glass surface
-            color = Color.White.copy(alpha = 0.35f),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f))
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
         ) {
             Row(
                 modifier = Modifier
@@ -73,12 +71,15 @@ fun PicMeBottomNavigationBar(
             ) {
                 items.forEach { item ->
                     val selected = currentRoute == item.route
-                    
+
                     Box(
                         modifier = Modifier
                             .size(54.dp, 50.dp)
                             .clip(RoundedCornerShape(25.dp))
-                            .background(if (selected) Primary else Color.Transparent)
+                            .background(
+                                if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                RoundedCornerShape(25.dp)
+                            )
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = ripple(),
@@ -90,8 +91,8 @@ fun PicMeBottomNavigationBar(
                             imageVector = item.icon,
                             contentDescription = item.name,
                             modifier = Modifier.size(28.dp),
-                            // Increased alpha for unselected icons to maintain contrast against blurred background
-                            tint = if (selected) Color.White else Color.Black.copy(alpha = 0.5f)
+                            tint = if (selected) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }

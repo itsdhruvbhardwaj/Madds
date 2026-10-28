@@ -1,5 +1,7 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.settings
 
+import androidx.compose.material3.MaterialTheme
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -66,14 +68,7 @@ fun DeleteAccountScreen(
     val passwordStrong = ValidationUtils.isStrongPassword(password)
     val passwordsMatch = password.isNotEmpty() && password == confirmPassword
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Image(
-            painter = painterResource(R.drawable.glassmorphismwallpaper),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize().blur(20.dp),
-            contentScale = ContentScale.Crop
-        )
-        Box(modifier = Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.28f)))
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
 
         Scaffold(
             containerColor = Color.Transparent,
@@ -93,7 +88,7 @@ fun DeleteAccountScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Spacer(modifier = Modifier.height(24.dp))
-                
+
                 // Warning Icon Box
                 Box(
                     modifier = Modifier
@@ -124,8 +119,8 @@ fun DeleteAccountScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color.White.copy(alpha = 0.4f), RoundedCornerShape(24.dp))
-                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)), RoundedCornerShape(24.dp))
+                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(24.dp))
+                        .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), RoundedCornerShape(24.dp))
                         .padding(20.dp)
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -268,7 +263,7 @@ fun DeleteAccountScreen(
                 }
 
                 Spacer(modifier = Modifier.height(32.dp))
-                
+
                 Spacer(modifier = Modifier.height(32.dp))
             }
         }

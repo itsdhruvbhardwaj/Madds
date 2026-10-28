@@ -125,7 +125,7 @@ class HomeViewModel(
     private fun mapErrorMessage(message: String?): String = when (message) {
         "timeout" -> "Connection timed out. Our server is waking up, please try again."
         "network_error" -> "Unable to connect. Please check your internet."
-        "server_overloaded" -> "PicMee is busy right now. Please try again in a moment."
+        "server_overloaded" -> "madds is busy right now. Please try again in a moment."
         "session_expired" -> "Your session has expired. Please sign in again."
         else -> "Failed to load Home configuration. Please try again."
     }

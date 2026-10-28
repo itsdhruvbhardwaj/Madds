@@ -34,7 +34,7 @@ fun PicMeButton(
     shadowElevation: Dp = 6.dp
 ) {
     // Premium action button using Box + background + shadow.
-    
+
     val shadowModifier = if (shadowElevation > 0.dp) {
         Modifier.shadow(
             elevation = shadowElevation,
@@ -50,7 +50,8 @@ fun PicMeButton(
             .then(shadowModifier)
             .background(
                 brush = Brush.horizontalGradient(
-                    colors = if (enabled) listOf(Primary, Secondary) else listOf(Color.Gray, Color.LightGray)
+                    colors = if (enabled) listOf(Primary, Secondary)
+                    else listOf(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.surfaceVariant)
                 ),
                 shape = CircleShape
             )
@@ -61,7 +62,7 @@ fun PicMeButton(
             ),
         contentAlignment = Alignment.Center
     ) {
-        // Use graphicsLayer alpha to hide text without removing it from layout, 
+        // Use graphicsLayer alpha to hide text without removing it from layout,
         // ensuring the button width remains stable during loading.
         Text(
             text = text,
@@ -97,10 +98,10 @@ fun PicMeSecondaryButton(
     Box(
         modifier = modifier
             .height(48.dp)
-            .background(Color.White.copy(alpha = 0.6f), CircleShape)
+            .background(MaterialTheme.colorScheme.surface, CircleShape)
             .border(
                 width = 1.dp,
-                brush = Brush.horizontalGradient(listOf(Primary, Secondary)),
+                brush = Brush.horizontalGradient(listOf(MaterialTheme.colorScheme.outline, MaterialTheme.colorScheme.outline)),
                 shape = CircleShape
             )
             .clip(CircleShape)
@@ -115,7 +116,7 @@ fun PicMeSecondaryButton(
             style = MaterialTheme.typography.labelLarge.copy(
                 fontWeight = FontWeight.Bold,
                 fontSize = 15.sp,
-                color = Primary
+                color = MaterialTheme.colorScheme.onSurface
             ),
             modifier = Modifier
                 .padding(horizontal = 24.dp)
@@ -125,7 +126,7 @@ fun PicMeSecondaryButton(
         if (isLoading) {
             CircularProgressIndicator(
                 modifier = Modifier.size(20.dp),
-                color = Primary,
+                color = MaterialTheme.colorScheme.primary,
                 strokeWidth = 2.dp
             )
         }

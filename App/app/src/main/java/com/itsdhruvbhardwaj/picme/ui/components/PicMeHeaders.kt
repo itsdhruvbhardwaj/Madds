@@ -1,6 +1,7 @@
 package com.itsdhruvbhardwaj.picme.ui.components
 
-import android.app.Activity
+import androidx.compose.material3.MaterialTheme
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -9,27 +10,22 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
-import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 
 /**
  * Shared branded purple header for primary destinations (Home, Favorites, Profile).
@@ -42,18 +38,9 @@ fun PicMeMainHeader(
     onProfileClick: () -> Unit,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
-    val view = LocalView.current
-    if (!view.isInEditMode) {
-        SideEffect {
-            val window = (view.context as Activity).window
-            window.statusBarColor = Primary.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
-        }
-    }
-
     Surface(
-        color = Primary,
-        shadowElevation = 8.dp,
+        color = MaterialTheme.colorScheme.background,
+        shadowElevation = 0.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
         Box(
@@ -78,8 +65,8 @@ fun PicMeMainHeader(
                     .padding(horizontal = 88.dp),
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Black,
-                    color = Color.White,
-                    letterSpacing = 0.5.sp
+                    color = MaterialTheme.colorScheme.onBackground,
+                    letterSpacing = 0.1.sp
                 ),
                 textAlign = TextAlign.Center,
                 maxLines = 1,
@@ -100,12 +87,12 @@ fun PicMeMainHeader(
                 actions()
 
                 Spacer(modifier = Modifier.width(6.dp))
-                
+
                 // Genuine photo check: Use avatar.png as default unless a non-placeholder HTTP URL is present.
-                val profileImageSource = user?.profileImage?.takeIf { 
-                    it.isNotBlank() && 
+                val profileImageSource = user?.profileImage?.takeIf {
+                    it.isNotBlank() &&
                     it.startsWith("http") &&
-                    !it.contains("default", ignoreCase = true) && 
+                    !it.contains("default", ignoreCase = true) &&
                     !it.contains("placeholder", ignoreCase = true)
                 } ?: R.drawable.avatar
 
@@ -143,22 +130,13 @@ fun PicMeCompactHeader(
     onBackClick: () -> Unit,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
-    val view = LocalView.current
-    if (!view.isInEditMode) {
-        SideEffect {
-            val window = (view.context as Activity).window
-            window.statusBarColor = Primary.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
-        }
-    }
-
     Column(modifier = Modifier.fillMaxWidth()) {
-        // 1. Fixed Status Bar Background (Primary)
+        // Match the system status bar to the active theme.
         Spacer(
             modifier = Modifier
                 .fillMaxWidth()
                 .windowInsetsTopHeight(WindowInsets.statusBars)
-                .background(Primary)
+                .background(MaterialTheme.colorScheme.background)
         )
 
         // 2. Floating Pill
@@ -179,8 +157,8 @@ fun PicMeCompactHeader(
                         spotColor = Color.Black.copy(alpha = 0.25f)
                     ),
                 shape = CircleShape,
-                color = Color.White.copy(alpha = 0.35f), // Translucent glass fill matching bottom nav
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)) // Visible pill border matching bottom nav
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
             ) {
                 Box(
                     modifier = Modifier
@@ -195,7 +173,7 @@ fun PicMeCompactHeader(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = Color(0xFF1F2937),
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -208,7 +186,7 @@ fun PicMeCompactHeader(
                             .padding(horizontal = 56.dp),
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF1F2937),
+                            color = MaterialTheme.colorScheme.onSurface,
                             letterSpacing = 0.2.sp
                         ),
                         textAlign = TextAlign.Center,

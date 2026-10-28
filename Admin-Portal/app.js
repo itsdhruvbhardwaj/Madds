@@ -195,6 +195,106 @@
     grid.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", () => deleteStyle(button.dataset.delete)));
   }
 
+  const styleImageMaxBytes = 300_000;
+
+  async function loadImageForCompression(file) {
+    if (typeof createImageBitmap === "function") {
+      try {
+        return await createImageBitmap(file, { imageOrientation: "from-image" });
+      } catch {
+        // Fall back for browsers that decode the format but lack this option.
+      }
+    }
+    const sourceUrl = URL.createObjectURL(file);
+    try {
+      return await new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error("The selected image could not be opened."));
+        image.src = sourceUrl;
+      });
+    } finally {
+      URL.revokeObjectURL(sourceUrl);
+    }
+  }
+
+  function canvasToBlob(canvas, type, quality) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("The image could not be compressed in this browser.")), type, quality);
+    });
+  }
+
+  async function exportStyleImage(canvas, quality) {
+    let blob = await canvasToBlob(canvas, "image/webp", quality);
+    if (blob.type === "image/webp") return blob;
+
+    // Older browsers may not encode WebP. Studio images are photos, so use a
+    // white-backed JPEG fallback to avoid black transparency when exporting.
+    const jpegCanvas = document.createElement("canvas");
+    jpegCanvas.width = canvas.width;
+    jpegCanvas.height = canvas.height;
+    const context = jpegCanvas.getContext("2d");
+    if (!context) throw new Error("The image could not be compressed in this browser.");
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, jpegCanvas.width, jpegCanvas.height);
+    context.drawImage(canvas, 0, 0);
+    blob = await canvasToBlob(jpegCanvas, "image/jpeg", quality);
+    if (blob.type !== "image/jpeg") throw new Error("This browser cannot encode a compressed image. Try Chrome or Edge.");
+    return blob;
+  }
+
+  async function compressStyleImage(file) {
+    let image;
+    try {
+      image = await loadImageForCompression(file);
+      const sourceWidth = image.width || image.naturalWidth;
+      const sourceHeight = image.height || image.naturalHeight;
+      if (!sourceWidth || !sourceHeight) throw new Error("The selected image has invalid dimensions.");
+
+      let scale = Math.min(1, 900 / sourceWidth, 1260 / sourceHeight);
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d", { alpha: true });
+      if (!context) throw new Error("The image could not be compressed in this browser.");
+
+      for (let dimensionPass = 0; dimensionPass < 10; dimensionPass += 1) {
+        const width = Math.max(1, Math.round(sourceWidth * scale));
+        const height = Math.max(1, Math.round(sourceHeight * scale));
+        canvas.width = width;
+        canvas.height = height;
+        context.clearRect(0, 0, width, height);
+        context.drawImage(image, 0, 0, width, height);
+
+        let lowQuality = 0.48;
+        let highQuality = 0.92;
+        let bestBlob = null;
+        for (let qualityPass = 0; qualityPass < 8; qualityPass += 1) {
+          const quality = (lowQuality + highQuality) / 2;
+          const blob = await exportStyleImage(canvas, quality);
+          if (blob.size <= styleImageMaxBytes) {
+            bestBlob = blob;
+            lowQuality = quality;
+          } else {
+            highQuality = quality;
+          }
+        }
+
+        if (bestBlob) {
+          const extension = bestBlob.type === "image/webp" ? "webp" : "jpg";
+          const baseName = file.name.replace(/\.[^.]+$/, "") || "madds-style-image";
+          return {
+            file: new File([bestBlob], `${baseName}.${extension}`, { type: bestBlob.type, lastModified: Date.now() }),
+            width,
+            height,
+          };
+        }
+        scale *= 0.84;
+      }
+      throw new Error("This image could not be reduced below 300 KB. Choose a smaller image and try again.");
+    } finally {
+      if (typeof image?.close === "function") image.close();
+    }
+  }
+
   async function uploadStyleExampleImage(kind, fileInput) {
     const file = fileInput.files?.[0];
     if (!file) return;
@@ -213,14 +313,17 @@
 
     const collections = [...byId("style-form").querySelectorAll('input[name="collections"]:checked')].map((input) => input.value);
     button.disabled = true;
-    button.textContent = "Uploading…";
-    status.textContent = "Preparing a secure Cloudinary upload…";
+    button.textContent = "Compressing…";
+    status.textContent = "Compressing image to 300 KB or less…";
     try {
+      const compressed = await compressStyleImage(file);
+      status.textContent = `Compressed to ${(compressed.file.size / 1000).toFixed(0)} KB · ${compressed.width} × ${compressed.height}. Uploading…`;
+      button.textContent = "Uploading…";
       const signed = await api("/api/admin/catalog/cloudinary/signature", {
         method: "POST", body: JSON.stringify({ collections: collections.length ? collections : ["Other"] }),
       });
       const uploadForm = new FormData();
-      uploadForm.append("file", file);
+      uploadForm.append("file", compressed.file);
       uploadForm.append("api_key", signed.apiKey);
       uploadForm.append("timestamp", String(signed.timestamp));
       uploadForm.append("folder", signed.folder);
@@ -237,9 +340,17 @@
       form.elements[urlField].value = uploaded.secure_url;
       form.elements[idField].value = uploaded.public_id;
       if (cover) form.elements.thumbnail.value = uploaded.secure_url;
+      if (!cover) {
+        const previewUrls = [form.elements.exampleBeforeUrl.value, form.elements.exampleAfterUrl.value];
+        const previewIds = [form.elements.exampleBeforePublicId.value, form.elements.exampleAfterPublicId.value];
+        if (previewUrls.every(Boolean) && previewIds.every(Boolean)) {
+          form.elements.previewImages.value = previewUrls.join("\n");
+          form.elements.previewImagePublicIds.value = previewIds.join("\n");
+        }
+      }
       preview.src = uploaded.secure_url;
       preview.hidden = false;
-      status.textContent = `Uploaded to ${signed.folder}. Save the style to keep it.`;
+      status.textContent = `Uploaded compressed image · ${(compressed.file.size / 1000).toFixed(0)} KB · ${compressed.width} × ${compressed.height}. Save the style to keep it.`;
     } catch (error) {
       status.textContent = error.message || "Cloudinary upload failed.";
     } finally {

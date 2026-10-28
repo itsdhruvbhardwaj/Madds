@@ -57,7 +57,7 @@ fun CreditsOptionsBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color.White,
+        containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
         dragHandle = { BottomSheetDefaults.DragHandle() }
     ) {
@@ -75,21 +75,21 @@ fun CreditsOptionsBottomSheet(
                     fontSize = 24.sp
                 )
             )
-            
+
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             Text(
                 text = "Top up your balance to keep creating.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = TextSecondary,
                 textAlign = TextAlign.Center
             )
-            
+
             Spacer(modifier = Modifier.height(32.dp))
-            
+
             // Watch Ad Button
             Button(
-                onClick = { 
+                onClick = {
                     val activity = context as? Activity
                     if (activity != null) {
                         viewModel.startRewardedAdFlow(activity)
@@ -113,14 +113,14 @@ fun CreditsOptionsBottomSheet(
                     if (isAdLoading) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(24.dp),
-                            color = Color(0xFF6366F1),
+                            color = MaterialTheme.colorScheme.primary,
                             strokeWidth = 2.dp
                         )
                     } else {
                         Icon(
                             imageVector = Icons.Default.PlayCircle,
                             contentDescription = null,
-                            tint = Color(0xFF6366F1),
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(28.dp)
                         )
                     }
@@ -141,12 +141,12 @@ fun CreditsOptionsBottomSheet(
                     }
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            
+
             // Buy Credits Button (Premium Gradient)
             Button(
-                onClick = { 
+                onClick = {
                     val activity = context as? Activity
                     if (activity != null) {
                         viewModel.startPurchaseFlow(activity)
@@ -207,9 +207,9 @@ fun CreditsOptionsBottomSheet(
                     }
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(32.dp))
-            
+
             TextButton(onClick = onDismiss, enabled = !isAdLoading && !isPurchaseLoading) {
                 Text(
                     text = "Maybe Later",

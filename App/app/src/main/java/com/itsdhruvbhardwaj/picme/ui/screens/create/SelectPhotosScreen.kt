@@ -1,5 +1,7 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.create
 
+import androidx.compose.material3.MaterialTheme
+
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -42,7 +44,7 @@ fun SelectPhotosScreen(
 
     // State for selected photos. Initialize with nulls to represent empty slots.
     var selectedPhotos by remember { mutableStateOf(List<Uri?>(requiredCount) { null }) }
-    
+
     // Index of the slot being filled or replaced. If -1, we try to fill any empty slot.
     var activeSlotIndex by remember { mutableIntStateOf(-1) }
 
@@ -61,21 +63,14 @@ fun SelectPhotosScreen(
     val selectedCount = selectedPhotos.count { it != null }
     val isComplete = selectedCount == requiredCount
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // Shared blurred background
-        Image(
-            painter = painterResource(id = R.drawable.glassmorphismwallpaper),
-            contentDescription = null,
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(20.dp),
-            contentScale = ContentScale.Crop
-        )
-        
+
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.White.copy(alpha = 0.15f))
+                .background(MaterialTheme.colorScheme.background)
         )
 
         Scaffold(
@@ -94,7 +89,7 @@ fun SelectPhotosScreen(
                         }
                         PicMeButton(
                             text = "Continue",
-                            onClick = { 
+                            onClick = {
                                 val uris = selectedPhotos.filterNotNull()
                                 if (uris.size == requiredCount) {
                                     onContinueClick(uris)
@@ -116,7 +111,7 @@ fun SelectPhotosScreen(
                     // Start content below floating header
                     Spacer(modifier = Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
                     Spacer(modifier = Modifier.height(100.dp)) // Clear floating pill (76dp + extra padding)
-                    
+
                     Text(
                         text = "Pick Your Best Shots",
                         style = MaterialTheme.typography.headlineLarge.copy(
@@ -125,7 +120,7 @@ fun SelectPhotosScreen(
                             color = Color(0xFF1E293B)
                         )
                     )
-                    
+
                     Text(
                         text = "Choose $requiredCount clear photo${if (requiredCount > 1) "s" else ""} for the best results",
                         style = MaterialTheme.typography.bodyLarge,
@@ -175,7 +170,7 @@ fun SelectPhotosScreen(
                             "Avoid sunglasses or heavy filters"
                         )
                     )
-                    
+
                     Spacer(modifier = Modifier.height(140.dp)) // Room for bottom padding and banner
                 }
 

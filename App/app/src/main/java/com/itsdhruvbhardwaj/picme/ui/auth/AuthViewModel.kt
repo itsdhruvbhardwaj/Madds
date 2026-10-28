@@ -51,7 +51,7 @@ class AuthViewModel(
 
     private val checkSessionMutex = Mutex()
     private val purchaseVerificationMutex = Mutex()
-    
+
     // Temporary storage for credentials during deletion-pending login attempt
     private var pendingDeletionEmail: String? = null
     private var pendingDeletionPassword: String? = null
@@ -64,7 +64,7 @@ class AuthViewModel(
         } else if (authRepository.hasRefreshToken()) {
             _authState.value = AuthState.RestoringSession
         }
-        
+
         // Background validation
         checkSession(isInitial = true)
 
@@ -101,7 +101,7 @@ class AuthViewModel(
     fun checkSession(isInitial: Boolean = false) {
         viewModelScope.launch {
             if (checkSessionMutex.isLocked) return@launch
-            
+
             checkSessionMutex.withLock {
                 val currentState = _authState.value
                 if (currentState is AuthState.Unauthenticated) return@withLock
@@ -109,7 +109,7 @@ class AuthViewModel(
                 if (currentState !is AuthState.Authenticated && currentState !is AuthState.RestoringSession) {
                     _authState.value = AuthState.CheckingSession
                 }
-                
+
                 val userResult = authRepository.getCurrentUser()
                 if (_authState.value is AuthState.Unauthenticated) return@withLock
 
@@ -213,7 +213,7 @@ class AuthViewModel(
         viewModelScope.launch {
             _isRewardedAdLoading.value = true
             val adState = AdManager.rewardedAdState.value
-            
+
             when (adState) {
                 is RewardedAdLoadState.Error -> {
                     val userMessage = if (adState.code == 3) "No ad is available right now. Please try again later." else "Ad failed: ${adState.message} (Code: ${adState.code})"
@@ -270,7 +270,7 @@ class AuthViewModel(
                     purchaseToken = purchase.purchaseToken,
                     purchaseOptionId = "buy-250-credits" // Fixed option ID for this product
                 )
-                
+
                 result.fold(
                     onSuccess = {
                         _uiEvent.emit("Purchase successful! Credits added.")
@@ -291,8 +291,8 @@ class AuthViewModel(
      */
     fun processPendingPurchases() {
         billingManager?.queryPurchases { purchases ->
-            purchases.filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }.forEach { 
-                handlePurchase(it) 
+            purchases.filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }.forEach {
+                handlePurchase(it)
             }
         }
     }
@@ -443,7 +443,7 @@ class AuthViewModel(
             cleanMsg == "email_already_exists" -> "An account with this email already exists."
             cleanMsg.contains("invalid", ignoreCase = true) && cleanMsg.contains("token", ignoreCase = true) -> "This link is invalid or has expired."
             cleanMsg == "network_failure" -> "Unable to connect. Check your internet connection."
-            cleanMsg == "server_failure" -> "PicMe is temporarily unavailable."
+            cleanMsg == "server_failure" -> "madds is temporarily unavailable."
             cleanMsg == "timeout" -> "Connection timed out."
             else -> cleanMsg.takeIf { it.isNotEmpty() } ?: "An unexpected error occurred."
         }

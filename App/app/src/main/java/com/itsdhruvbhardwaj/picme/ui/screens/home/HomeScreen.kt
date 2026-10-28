@@ -1,5 +1,7 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.home
 
+import androidx.compose.material3.MaterialTheme
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -32,16 +34,7 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     val authState by authViewModel.authState.collectAsState()
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Image(
-            painter = painterResource(id = R.drawable.glassmorphismwallpaper),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize().blur(20.dp),
-            contentScale = ContentScale.Crop
-        )
-        Box(
-            modifier = Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.15f))
-        )
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
 
         Scaffold(
             containerColor = Color.Transparent,

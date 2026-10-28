@@ -63,14 +63,7 @@ fun SettingsScreen(
     val user = (authState as? AuthState.Authenticated)?.user
     val context = LocalContext.current
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Image(
-            painter = painterResource(R.drawable.glassmorphismwallpaper),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize().blur(20.dp),
-            contentScale = ContentScale.Crop
-        )
-        Box(modifier = Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.28f)))
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
 
         Scaffold(
             containerColor = Color.Transparent,
@@ -93,7 +86,7 @@ fun SettingsScreen(
                     GlassCard {
                         SettingsRow(
                             icon = Icons.Default.Person,
-                            title = user?.name?.takeIf(String::isNotBlank) ?: "PicMe account",
+                            title = user?.name?.takeIf(String::isNotBlank) ?: "madds account",
                             subtitle = user?.email.orEmpty(),
                             onClick = null
                         )
@@ -106,7 +99,7 @@ fun SettingsScreen(
                         SettingsRow(
                             icon = Icons.Default.Notifications,
                             title = "Notifications",
-                            subtitle = "Manage PicMe notifications",
+                            subtitle = "Manage madds notifications",
                             onClick = {
                                 val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
                                     putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
@@ -135,7 +128,7 @@ fun SettingsScreen(
                     GlassCard {
                         SettingsRow(
                             icon = Icons.Default.Info,
-                            title = "PicMe",
+                            title = "madds",
                             subtitle = "Version ${BuildConfig.VERSION_NAME}",
                             onClick = null
                         )
@@ -169,8 +162,8 @@ private fun GlassCard(content: @Composable () -> Unit) {
                 spotColor = Color.Black.copy(alpha = 0.1f)
             )
             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-            .background(Color.White.copy(alpha = 0.4f), shape)
-            .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)), shape)
+            .background(MaterialTheme.colorScheme.surface, shape)
+            .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), shape)
             .clip(shape)
     ) {
         content()
@@ -183,8 +176,9 @@ private fun SettingsRow(
     title: String,
     subtitle: String,
     onClick: (() -> Unit)?,
-    iconColor: Color = Primary
+    iconColor: Color? = null
 ) {
+    val resolvedIconColor = iconColor ?: MaterialTheme.colorScheme.primary
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -194,16 +188,16 @@ private fun SettingsRow(
         horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Box(
-            modifier = Modifier.size(42.dp).clip(CircleShape).background(iconColor.copy(alpha = 0.12f)),
+            modifier = Modifier.size(42.dp).clip(CircleShape).background(resolvedIconColor.copy(alpha = 0.12f)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(21.dp))
+            Icon(icon, contentDescription = null, tint = resolvedIconColor, modifier = Modifier.size(21.dp))
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = title, 
+                text = title,
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                color = if (iconColor != Primary) iconColor else Color.Unspecified
+                color = iconColor ?: MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)

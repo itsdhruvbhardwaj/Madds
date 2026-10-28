@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.PicMe" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.PicMe" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/madds_background</item>
+        <item name="android:statusBarColor">@color/madds_background</item>
+        <item name="android:navigationBarColor">@color/madds_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
 </resources>

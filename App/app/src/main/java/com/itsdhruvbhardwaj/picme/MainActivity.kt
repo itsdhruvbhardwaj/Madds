@@ -40,7 +40,7 @@ import com.itsdhruvbhardwaj.picme.ui.screens.create.GenerationViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.home.FavoritesViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.home.HomeViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.search.ExploreViewModel
-import com.itsdhruvbhardwaj.picme.ui.theme.PicMeTheme
+import com.itsdhruvbhardwaj.picme.ui.theme.MaddsTheme
 import com.itsdhruvbhardwaj.picme.utils.AdManager
 import com.itsdhruvbhardwaj.picme.utils.BillingManager
 import okhttp3.OkHttpClient
@@ -49,7 +49,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
-    
+
     private var intentState by mutableStateOf<Intent?>(null)
     private lateinit var billingManager: BillingManager
     private lateinit var appUpdateManager: AppUpdateManager
@@ -104,20 +104,20 @@ class MainActivity : ComponentActivity() {
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
-        
+
         val authApiService = retrofit.create(AuthApiService::class.java)
         val styleApiService = retrofit.create(StyleApiService::class.java)
-        
+
         authRepository = AuthRepository(authApiService, tokenStorage)
         val styleRepository = StyleRepository(styleApiService, tokenStorage)
         val generationRepository = GenerationRepository(styleApiService, applicationContext.contentResolver, tokenStorage)
-        
+
         val viewModelFactory = object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 return when {
-                    modelClass.isAssignableFrom(AuthViewModel::class.java) -> 
+                    modelClass.isAssignableFrom(AuthViewModel::class.java) ->
                         AuthViewModel(authRepository, billingManager) as T
-                    modelClass.isAssignableFrom(HomeViewModel::class.java) -> 
+                    modelClass.isAssignableFrom(HomeViewModel::class.java) ->
                         HomeViewModel(styleRepository) as T
                     modelClass.isAssignableFrom(GenerationViewModel::class.java) ->
                         GenerationViewModel(generationRepository) as T
@@ -137,13 +137,13 @@ class MainActivity : ComponentActivity() {
         val exploreViewModel = ViewModelProvider(this, viewModelFactory)[ExploreViewModel::class.java]
 
         setContent {
-            PicMeTheme {
+            MaddsTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val navController = rememberNavController()
-                    
+
                     LaunchedEffect(intentState) {
                         intentState?.let {
                             navController.handleDeepLink(it)
@@ -220,7 +220,7 @@ class MainActivity : ComponentActivity() {
 
         android.app.AlertDialog.Builder(this)
             .setTitle("Update ready")
-            .setMessage("PicMee has downloaded the latest update. Restart the app to install it.")
+            .setMessage("madds has downloaded the latest update. Restart the app to install it.")
             .setPositiveButton("Restart now") { _, _ ->
                 appUpdateManager.completeUpdate()
             }

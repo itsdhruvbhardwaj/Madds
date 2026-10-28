@@ -23,7 +23,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 
 @Composable
 fun PicMeSearchBar(
@@ -42,8 +41,8 @@ fun PicMeSearchBar(
                 ambientColor = Color.Black.copy(alpha = 0.05f),
                 spotColor = Color.Black.copy(alpha = 0.08f)
             )
-            .background(Color.White.copy(alpha = 0.35f), CircleShape)
-            .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)), CircleShape),
+            .background(MaterialTheme.colorScheme.surface, CircleShape)
+            .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), CircleShape),
         contentAlignment = Alignment.CenterStart
     ) {
         BasicTextField(
@@ -53,9 +52,9 @@ fun PicMeSearchBar(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp),
             singleLine = true,
-            cursorBrush = SolidColor(Primary),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             textStyle = TextStyle(
-                color = Color(0xFF1E293B),
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium
             ),
@@ -67,14 +66,14 @@ fun PicMeSearchBar(
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = null,
-                        tint = Color.DarkGray.copy(alpha = 0.4f),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp)
                     )
                     Box(modifier = Modifier.weight(1f)) {
                         if (query.isEmpty()) {
                             Text(
                                 text = "Search styles...",
-                                color = Color.DarkGray.copy(alpha = 0.4f),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 14.sp
                             )
                         }
@@ -98,12 +97,12 @@ fun CategoryChip(
             .clip(RoundedCornerShape(20.dp))
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(20.dp),
-        color = if (isSelected) Primary else Color.White.copy(alpha = 0.35f),
-        contentColor = if (isSelected) Color.White else Color(0xFF374151),
-        border = if (isSelected) 
-            BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
-        else 
-            BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
+        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+        contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+        border = if (isSelected)
+            BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+        else
+            BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         shadowElevation = if (isSelected) 6.dp else 0.dp
     ) {
         Text(
@@ -134,13 +133,13 @@ fun SectionHeader(
                 fontWeight = FontWeight.Black,
                 fontSize = 20.sp,
                 letterSpacing = 0.4.sp,
-                color = Color(0xFF1E293B)
+                color = MaterialTheme.colorScheme.onSurface
             )
         )
         Text(
             text = "See All",
             style = MaterialTheme.typography.labelLarge.copy(
-                color = Primary,
+                color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.ExtraBold
             ),
             modifier = Modifier.clickable(onClick = onSeeAllClick)
@@ -154,10 +153,10 @@ fun CreditBadge(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        color = Color.White.copy(alpha = 0.25f),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(14.dp),
         modifier = modifier,
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f))
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -166,7 +165,7 @@ fun CreditBadge(
             Icon(
                 imageVector = Icons.Default.Star,
                 contentDescription = null,
-                tint = Color(0xFFFACC15),
+                tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(16.dp)
             )
             Spacer(modifier = Modifier.width(6.dp))
@@ -174,7 +173,7 @@ fun CreditBadge(
                 text = credits.toString(),
                 style = MaterialTheme.typography.labelLarge.copy(
                     fontWeight = FontWeight.Black,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             )
         }

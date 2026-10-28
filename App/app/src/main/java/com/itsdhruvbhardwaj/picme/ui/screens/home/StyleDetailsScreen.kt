@@ -1,5 +1,7 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.home
 
+import androidx.compose.material3.MaterialTheme
+
 import android.app.Activity
 import android.widget.Toast
 import androidx.compose.foundation.Image
@@ -54,7 +56,7 @@ fun StyleDetailsScreen(
     val user = (authState as? AuthState.Authenticated)?.user
     val isAuthenticated = authState is AuthState.Authenticated
     val context = LocalContext.current
-    
+
     var showInsufficientCreditsSheet by remember { mutableStateOf(false) }
     val currentStyle = (uiState as? StyleDetailsUiState.Success)?.style
 
@@ -64,16 +66,9 @@ fun StyleDetailsScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // Blurred Wallpaper Background
-        Image(
-            painter = painterResource(id = R.drawable.glassmorphismwallpaper),
-            contentDescription = null,
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(20.dp),
-            contentScale = ContentScale.Crop
-        )
+
 
         Scaffold(
             containerColor = Color.Transparent,
@@ -123,7 +118,7 @@ fun StyleDetailsScreen(
                         }
                         is StyleDetailsUiState.Success -> {
                             val style = state.style
-                            
+
                             Spacer(modifier = Modifier.height(8.dp))
 
                             // 1. Hero Image
@@ -142,9 +137,9 @@ fun StyleDetailsScreen(
                                     .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(20.dp)),
                                 contentScale = ContentScale.Crop
                             )
-                            
+
                             Spacer(modifier = Modifier.height(22.dp))
-                            
+
                             Column(
                                 verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
@@ -157,7 +152,7 @@ fun StyleDetailsScreen(
                                     ),
                                     modifier = Modifier.fillMaxWidth()
                                 )
-                                
+
                                 // Description
                                 Text(
                                     text = style.description,
@@ -165,7 +160,7 @@ fun StyleDetailsScreen(
                                     color = Color(0xFF374151),
                                     lineHeight = 23.sp
                                 )
-                                
+
                                 // Glass Tips Card
                                 TipsCard(
                                     tips = listOf(
@@ -211,7 +206,7 @@ fun StyleDetailsScreen(
                                 }
 
                             }
-                            
+
                             Spacer(modifier = Modifier.height(20.dp))
                         }
                     }
@@ -223,14 +218,14 @@ fun StyleDetailsScreen(
                 } else {
                     ""
                 }
-                
+
                 PicMeCompactHeader(
                     title = title,
                     onBackClick = onBackClick,
                     actions = {
                         if (uiState is StyleDetailsUiState.Success) {
                             val style = (uiState as StyleDetailsUiState.Success).style
-                            IconButton(onClick = { 
+                            IconButton(onClick = {
                                 if (isAuthenticated) {
                                     viewModel.toggleFavorite()
                                 }
@@ -270,8 +265,8 @@ private fun GenerateActionBar(
             .navigationBarsPadding()
             .padding(horizontal = 20.dp, vertical = 10.dp)
             .shadow(10.dp, RoundedCornerShape(24.dp))
-            .background(Color.White.copy(alpha = 0.94f), RoundedCornerShape(24.dp))
-            .border(1.dp, Color.White, RoundedCornerShape(24.dp))
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(24.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(24.dp))
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -279,7 +274,7 @@ private fun GenerateActionBar(
             Text(
                 text = "$creditsRequired credits",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                color = Color(0xFF1E293B)
+                color = MaterialTheme.colorScheme.onSurface
             )
             Text(
                 text = "per generation",

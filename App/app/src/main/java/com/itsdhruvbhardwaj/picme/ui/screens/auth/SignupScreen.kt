@@ -53,28 +53,28 @@ fun SignupScreen(
     var confirmPasswordVisible by remember { mutableStateOf(false) }
 
     val isLoading = authState is AuthState.Authenticating
-    
+
     // Determine the error message and whether it's an "Email Already Exists" case
     val (errorMessage, isEmailAlreadyExists) = when (authState) {
-        is AuthState.EmailAlreadyExists -> 
+        is AuthState.EmailAlreadyExists ->
             "An account with this email already exists. Please sign in instead." to true
-        is AuthState.Error -> 
+        is AuthState.Error ->
             authState.message to false
         else -> null to false
     }
-    
+
     // Validation States
     val isEmailValid = remember(email) { ValidationUtils.isValidEmail(email) }
     val passwordRequirements = remember(password) { ValidationUtils.checkPasswordRequirements(password) }
     val isPasswordStrong = remember(password) { ValidationUtils.isStrongPassword(password) }
     val passwordsMatch = remember(password, confirmPassword) { password == confirmPassword }
-    
+
     val isFormValid by remember(name, email, password, confirmPassword) {
         derivedStateOf {
-            name.length >= 2 && 
-            isEmailValid && 
-            isPasswordStrong && 
-            confirmPassword.isNotEmpty() && 
+            name.length >= 2 &&
+            isEmailValid &&
+            isPasswordStrong &&
+            confirmPassword.isNotEmpty() &&
             passwordsMatch
         }
     }
@@ -111,9 +111,9 @@ fun SignupScreen(
                 ),
                 modifier = Modifier.fillMaxWidth()
             )
-            
+
             Text(
-                text = "Join PicMe and start creating amazing AI photos",
+                text = "Join madds and start creating amazing AI photos",
                 style = MaterialTheme.typography.bodyLarge,
                 color = TextSecondary,
                 modifier = Modifier
@@ -139,7 +139,7 @@ fun SignupScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                 enabled = !isLoading
             )
-            
+
             if (email.isNotEmpty() && !isEmailValid) {
                 Text(
                     text = "Enter a valid email address.",
@@ -166,7 +166,7 @@ fun SignupScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 enabled = !isLoading
             )
-            
+
             // Password Requirements Checklist
             Column(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp, start = 4.dp),
@@ -195,7 +195,7 @@ fun SignupScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 enabled = !isLoading
             )
-            
+
             if (confirmPassword.isNotEmpty() && !passwordsMatch) {
                 Text(
                     text = "Passwords do not match.",
@@ -216,7 +216,7 @@ fun SignupScreen(
                         style = MaterialTheme.typography.bodySmall,
                         textAlign = TextAlign.Center
                     )
-                    
+
                     if (isEmailAlreadyExists) {
                         TextButton(onClick = onSignInClick) {
                             Text(
@@ -234,7 +234,7 @@ fun SignupScreen(
 
             PicMeButton(
                 text = "Sign Up",
-                onClick = { 
+                onClick = {
                     if (isFormValid) {
                         onSignupClick(name, email, password)
                     }

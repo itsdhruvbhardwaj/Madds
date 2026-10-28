@@ -1,5 +1,7 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.home
 
+import androidx.compose.material3.MaterialTheme
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -30,23 +32,9 @@ fun StylesGridScreen(
     val uiState by viewModel.uiState.collectAsState()
     val gridState = rememberLazyGridState()
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // Softly Blurred Glassmorphism Background
-        Image(
-            painter = painterResource(id = R.drawable.glassmorphismwallpaper),
-            contentDescription = null,
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(20.dp),
-            contentScale = ContentScale.Crop
-        )
-        
-        // Subtle overlay for better contrast
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.White.copy(alpha = 0.15f))
-        )
+
 
         Scaffold(
             containerColor = Color.Transparent
@@ -84,8 +72,8 @@ fun StylesGridScreen(
                                 columns = GridCells.Fixed(3),
                                 // Content padding to start below floating pill and leave room at bottom
                                 contentPadding = PaddingValues(
-                                    start = 12.dp, 
-                                    end = 12.dp, 
+                                    start = 12.dp,
+                                    end = 12.dp,
                                     top = 116.dp, // Increased space to clear floating pill
                                     bottom = 100.dp
                                 ),

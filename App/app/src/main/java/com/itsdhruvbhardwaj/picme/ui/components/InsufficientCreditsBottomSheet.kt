@@ -50,7 +50,7 @@ fun InsufficientCreditsBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color.White,
+        containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
         dragHandle = { BottomSheetDefaults.DragHandle() }
     ) {
@@ -68,21 +68,21 @@ fun InsufficientCreditsBottomSheet(
                     fontSize = 24.sp
                 )
             )
-            
+
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             Text(
                 text = "You need $requiredCredits credits to create this photo, but you have only $availableCredits.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = TextSecondary,
                 textAlign = TextAlign.Center
             )
-            
+
             Spacer(modifier = Modifier.height(32.dp))
-            
+
             // Watch Ad Button
             Button(
-                onClick = { 
+                onClick = {
                     val activity = context as? Activity
                     if (activity != null) {
                         viewModel.startRewardedAdFlow(activity)
@@ -94,8 +94,8 @@ fun InsufficientCreditsBottomSheet(
                     .height(64.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFF3F4F6),
-                    contentColor = Color.Black
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 contentPadding = PaddingValues(horizontal = 20.dp)
             ) {
@@ -106,14 +106,14 @@ fun InsufficientCreditsBottomSheet(
                     if (isLoading) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(24.dp),
-                            color = Color(0xFF6366F1),
+                            color = MaterialTheme.colorScheme.primary,
                             strokeWidth = 2.dp
                         )
                     } else {
                         Icon(
                             imageVector = Icons.Default.PlayCircle,
                             contentDescription = null,
-                            tint = Color(0xFF6366F1),
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(28.dp)
                         )
                     }
@@ -134,12 +134,12 @@ fun InsufficientCreditsBottomSheet(
                     }
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            
+
             // Buy Credits Button (Premium Gradient)
             Button(
-                onClick = { 
+                onClick = {
                     Toast.makeText(context, "Purchase flow coming soon", Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier
@@ -186,9 +186,9 @@ fun InsufficientCreditsBottomSheet(
                     }
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(32.dp))
-            
+
             TextButton(onClick = onDismiss) {
                 Text(
                     text = "Maybe Later",

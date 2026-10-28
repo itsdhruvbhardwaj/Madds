@@ -9,6 +9,7 @@ export type CloudinaryUploadSignature = {
   signature: string;
   folder: string;
   publicId: string;
+  expectedPublicId: string;
   tags: string;
 };
 
@@ -22,6 +23,7 @@ export function createStyleImageUploadSignature(collectionNames: string[]): Clou
   const folder = `picmee/styles/${primarySlug}`;
   const timestamp = Math.floor(Date.now() / 1000);
   const publicId = `img-${randomUUID()}`;
+  const expectedPublicId = `${folder}/${publicId}`;
   const tags = [...new Set(["picmee-style", ...names.map((name) => slugify(name)).filter(Boolean)])].join(",");
   const signature = signCloudinaryParameters({
     folder,
@@ -37,8 +39,55 @@ export function createStyleImageUploadSignature(collectionNames: string[]): Clou
     signature,
     folder,
     publicId,
+    expectedPublicId,
     tags,
   };
+}
+
+/**
+ * Older Studio versions queued the bare `img-<uuid>` before uploading, while
+ * Cloudinary prepends the upload folder to the resulting public_id. Resolve
+ * those legacy queue IDs through the Admin Search API before retrying deletion.
+ */
+export async function resolveLegacyStyleImagePublicIds(publicIds: string[]): Promise<Map<string, string>> {
+  const wanted = new Set(publicIds.filter((id) => /^img-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)));
+  const resolved = new Map<string, string>();
+  if (!wanted.size) return resolved;
+  if (!cloudinaryIsConfigured()) throw new Error("Cloudinary credentials are not configured.");
+
+  let nextCursor: string | undefined;
+  do {
+    const body: Record<string, unknown> = {
+      expression: "resource_type:image AND public_id=picmee/styles/*",
+      max_results: 500,
+      sort_by: [{ public_id: "asc" }],
+    };
+    if (nextCursor) body.next_cursor = nextCursor;
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(env.cloudinaryCloudName)}/resources/search`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${env.cloudinaryApiKey}:${env.cloudinaryApiSecret}`).toString("base64")}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(12_000),
+    });
+    const result = await response.json() as {
+      resources?: Array<{ public_id?: string }>;
+      next_cursor?: string;
+      error?: { message?: string };
+    };
+    if (!response.ok) throw new Error(result.error?.message || `Cloudinary asset lookup failed (${response.status}).`);
+    for (const resource of result.resources ?? []) {
+      const fullPublicId = resource.public_id;
+      if (!fullPublicId?.startsWith("picmee/styles/")) continue;
+      const basename = fullPublicId.slice(fullPublicId.lastIndexOf("/") + 1);
+      if (wanted.has(basename)) resolved.set(basename, fullPublicId);
+    }
+    nextCursor = result.next_cursor;
+  } while (nextCursor && resolved.size < wanted.size);
+
+  return resolved;
 }
 
 export async function destroyManagedStyleImage(publicId: string): Promise<void> {

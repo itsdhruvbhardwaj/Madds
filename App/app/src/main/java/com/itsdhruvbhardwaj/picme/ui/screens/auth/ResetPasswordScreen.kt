@@ -91,7 +91,7 @@ fun ResetPasswordScreen(
             )
 
             Text(
-                text = "Create a new secure password for your PicMe account.",
+                text = "Create a new secure password for your madds account.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = TextSecondary,
                 modifier = Modifier

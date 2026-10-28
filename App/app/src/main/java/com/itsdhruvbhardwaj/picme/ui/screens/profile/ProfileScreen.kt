@@ -1,5 +1,7 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.profile
 
+import androidx.compose.material3.MaterialTheme
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -54,7 +56,7 @@ fun ProfileScreen(
     onProfileClick: () -> Unit
 ) {
     val authState by authViewModel.authState.collectAsState()
-    
+
     // Freeze user data during the logout transition to prevent flickering of "User" placeholder
     // when authState changes to Unauthenticated while the screen is still visible.
     var cachedUser by remember { mutableStateOf((authState as? AuthState.Authenticated)?.user) }
@@ -63,21 +65,14 @@ fun ProfileScreen(
             cachedUser = (authState as AuthState.Authenticated).user
         }
     }
-    
+
     val user = (authState as? AuthState.Authenticated)?.user ?: cachedUser
     var showCreditsOptions by remember { mutableStateOf(false) }
     var showLogoutConfirm by remember { mutableStateOf(false) }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // Blurred Wallpaper Background
-        Image(
-            painter = painterResource(id = R.drawable.glassmorphismwallpaper),
-            contentDescription = null,
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(20.dp),
-            contentScale = ContentScale.Crop
-        )
+
 
         Scaffold(
             containerColor = Color.Transparent,
@@ -116,9 +111,9 @@ fun ProfileScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     // Use avatar.png as default. Only use profileImage if it's a non-placeholder URL.
-                    val profileData = user?.profileImage?.takeIf { 
-                        it.isNotBlank() && 
-                        !it.contains("default", ignoreCase = true) && 
+                    val profileData = user?.profileImage?.takeIf {
+                        it.isNotBlank() &&
+                        !it.contains("default", ignoreCase = true) &&
                         !it.contains("placeholder", ignoreCase = true) &&
                         it.startsWith("http")
                     } ?: R.drawable.avatar
@@ -152,8 +147,8 @@ fun ProfileScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color.White.copy(alpha = 0.5f), RoundedCornerShape(24.dp))
-                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.6f)), RoundedCornerShape(24.dp))
+                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(24.dp))
+                        .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), RoundedCornerShape(24.dp))
                 ) {
                     Row(
                         modifier = Modifier
@@ -204,8 +199,8 @@ fun ProfileScreen(
                             spotColor = Color.Black.copy(alpha = 0.1f)
                         )
                         .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                        .background(Color.White.copy(alpha = 0.4f), RoundedCornerShape(24.dp))
-                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)), RoundedCornerShape(24.dp))
+                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(24.dp))
+                        .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), RoundedCornerShape(24.dp))
                 ) {
                     Column(modifier = Modifier.padding(vertical = 8.dp)) {
                         MenuItem(
@@ -214,7 +209,7 @@ fun ProfileScreen(
                             onClick = onNavigateToMyGenerations
                         )
                         HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 24.dp), 
+                            modifier = Modifier.padding(horizontal = 24.dp),
                             thickness = 0.5.dp,
                             color = Color.White.copy(alpha = 0.2f)
                         )
@@ -224,7 +219,7 @@ fun ProfileScreen(
                             onClick = {}
                         )
                         HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 24.dp), 
+                            modifier = Modifier.padding(horizontal = 24.dp),
                             thickness = 0.5.dp,
                             color = Color.White.copy(alpha = 0.2f)
                         )
@@ -234,7 +229,7 @@ fun ProfileScreen(
                             onClick = onSettingsClick
                         )
                         HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 24.dp), 
+                            modifier = Modifier.padding(horizontal = 24.dp),
                             thickness = 0.5.dp,
                             color = Color.White.copy(alpha = 0.2f)
                         )

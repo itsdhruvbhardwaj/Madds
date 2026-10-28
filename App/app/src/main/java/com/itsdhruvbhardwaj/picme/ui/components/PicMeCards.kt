@@ -56,8 +56,8 @@ fun StyleCard(
             )
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
-        color = Color.White,
-        border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.5f))
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             AsyncImage(
@@ -70,12 +70,12 @@ fun StyleCard(
                     .fillMaxSize()
                     .background(
                         brush = Brush.verticalGradient(
-                            colors = listOf(Color(0xFFF3F4F6), Color(0xFFE5E7EB))
+                            colors = listOf(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.surface)
                         )
                     ),
                 contentScale = ContentScale.Crop
             )
-            
+
             // Premium Gradient Overlay
             Box(
                 modifier = Modifier
@@ -111,7 +111,7 @@ fun StyleCard(
                     )
                 }
             }
-            
+
             // Action button circle overlay
             Surface(
                 modifier = Modifier
@@ -143,8 +143,8 @@ fun TipsCard(
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = PrimaryLight.copy(alpha = 0.6f)),
-        border = BorderStroke(1.dp, Primary.copy(alpha = 0.1f))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -228,7 +228,7 @@ fun SelectedPhotoCard(
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop
         )
-        
+
         Surface(
             modifier = Modifier
                 .align(Alignment.TopEnd)
