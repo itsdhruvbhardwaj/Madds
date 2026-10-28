@@ -92,8 +92,11 @@ class MainActivity : ComponentActivity() {
         val okHttpClient = OkHttpClient.Builder()
             .authenticator(AuthAuthenticator(tokenStorage) { authRepository })
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            // Image generation can take longer than a normal API request.
+            // Keep the client connected long enough for the backend's provider timeout.
+            .readTimeout(180, TimeUnit.SECONDS)
+            .writeTimeout(120, TimeUnit.SECONDS)
+            .callTimeout(180, TimeUnit.SECONDS)
             .build()
 
         val retrofit = Retrofit.Builder()

@@ -2,7 +2,7 @@
   const apiBase = String(window.PICMEE_API_BASE || "").replace(/\/$/, "");
   const tokenKey = "picmee_admin_access";
   const refreshKey = "picmee_admin_refresh";
-  const state = { styles: [], collections: [], sections: [], logs: [], logMembers: [], logPage: 1, logPagination: null, pendingCloudinaryCleanup: 0, activePanel: "styles-panel", editingId: null, renamingId: null, catalogLoaded: false, catalogLoading: false, logsLoading: false };
+  const state = { styles: [], collections: [], sections: [], logs: [], logMembers: [], logPage: 1, logPagination: null, pendingCloudinaryCleanup: 0, activePanel: "styles-panel", editingId: null, renamingId: null, catalogLoaded: false, catalogLoading: false, logsLoading: false, promptTestFile: null, promptTestOriginalUrl: null, promptTestResultUrl: null, promptTestDownloadUrl: null };
   const byId = (id) => document.getElementById(id);
 
   async function api(path, options = {}, retry = true) {
@@ -172,17 +172,215 @@
       return;
     }
     grid.innerHTML = filtered.map((style) => {
-      const img = style.thumbnail
-        ? `<img src="${escapeHtml(style.thumbnail)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\'>Preview unavailable</div>'">`
+      const beforeUrl = style.exampleBeforeUrl || style.thumbnail;
+      const afterUrl = style.exampleAfterUrl;
+      const img = beforeUrl
+        ? `<img class="style-image-before" src="${escapeHtml(beforeUrl)}" alt="Before: ${escapeHtml(style.name)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\'>Preview unavailable</div>'">${afterUrl ? `<img class="style-image-after" src="${escapeHtml(afterUrl)}" alt="After: ${escapeHtml(style.name)}" loading="lazy" referrerpolicy="no-referrer">` : ""}`
         : '';
       const collection = (style.collections || [])[0];
       const collectionBadge = collection
         ? `<span class="style-collection-pill">${escapeHtml(collection)}</span>`
         : '<span class="style-collection-pill">No collection</span>';
-      return `<article class="style-card website-style-card"><div class="style-image ${style.thumbnail ? "" : "missing-image"}">${img}${collectionBadge}</div><div class="style-body"><h3 class="style-card-title">${escapeHtml(style.name)}</h3><div class="style-description">${escapeHtml(style.description)}</div><div class="style-admin-footer"><span class="style-id">ID · ${escapeHtml(style.id)}</span><span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
+      return `<article class="style-card website-style-card"><div class="style-image ${beforeUrl ? "" : "missing-image"} ${afterUrl ? "has-before-after" : ""}" ${afterUrl ? `tabindex="0" role="button" aria-label="Show before and after examples for ${escapeHtml(style.name)}" aria-pressed="false"` : ""}>${img}${collectionBadge}${afterUrl ? '<span class="style-image-state">Before</span><span class="style-image-state after-state">After</span>' : ""}</div><div class="style-body"><h3 class="style-card-title">${escapeHtml(style.name)}</h3><div class="style-description">${escapeHtml(style.description)}</div><div class="style-admin-footer"><span class="style-id">ID · ${escapeHtml(style.id)}</span><span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
     }).join("");
+    grid.querySelectorAll(".style-image.has-before-after").forEach((image) => {
+      const toggle = () => {
+        if (!window.matchMedia("(hover: none)").matches) return;
+        const showingAfter = image.classList.toggle("show-after");
+        image.setAttribute("aria-pressed", String(showingAfter));
+      };
+      image.addEventListener("click", toggle);
+      image.addEventListener("keydown", (event) => {
+        if ((event.key === "Enter" || event.key === " ") && window.matchMedia("(hover: none)").matches) {
+          event.preventDefault();
+          toggle();
+        }
+      });
+    });
     grid.querySelectorAll("[data-edit]").forEach((button) => button.addEventListener("click", () => openStyleEditor(button.dataset.edit)));
     grid.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", () => deleteStyle(button.dataset.delete)));
+  }
+
+  async function uploadStyleExampleImage(kind, fileInput) {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    const before = kind === "before";
+    const button = byId(before ? "upload-before-image" : "upload-after-image");
+    const status = byId(before ? "before-image-status" : "after-image-status");
+    const preview = byId(before ? "before-image-preview" : "after-image-preview");
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+    if (!allowedTypes.includes(file.type) || file.size > 10 * 1024 * 1024) {
+      status.textContent = "Choose a JPG, PNG, WebP or AVIF image up to 10 MB.";
+      fileInput.value = "";
+      return;
+    }
+
+    const collections = [...byId("style-form").querySelectorAll('input[name="collections"]:checked')].map((input) => input.value);
+    button.disabled = true;
+    button.textContent = "Uploading…";
+    status.textContent = "Preparing a secure Cloudinary upload…";
+    try {
+      const signed = await api("/api/admin/catalog/cloudinary/signature", {
+        method: "POST", body: JSON.stringify({ collections: collections.length ? collections : ["Other"] }),
+      });
+      const uploadForm = new FormData();
+      uploadForm.append("file", file);
+      uploadForm.append("api_key", signed.apiKey);
+      uploadForm.append("timestamp", String(signed.timestamp));
+      uploadForm.append("folder", signed.folder);
+      uploadForm.append("public_id", signed.publicId);
+      uploadForm.append("tags", signed.tags);
+      uploadForm.append("signature", signed.signature);
+      const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/image/upload`, { method: "POST", body: uploadForm });
+      const uploaded = await response.json().catch(() => ({}));
+      if (!response.ok || !uploaded.secure_url || !uploaded.public_id) throw new Error(uploaded.error?.message || "Cloudinary upload failed.");
+
+      const form = byId("style-form");
+      const urlField = before ? "exampleBeforeUrl" : "exampleAfterUrl";
+      const idField = before ? "exampleBeforePublicId" : "exampleAfterPublicId";
+      form.elements[urlField].value = uploaded.secure_url;
+      form.elements[idField].value = uploaded.public_id;
+      if (before) {
+        form.elements.thumbnail.value = uploaded.secure_url;
+        form.elements.thumbnailPublicId.value = uploaded.public_id;
+      }
+      preview.src = uploaded.secure_url;
+      preview.hidden = false;
+      status.textContent = `Uploaded to ${signed.folder}. Save the style to keep it.`;
+    } catch (error) {
+      status.textContent = error.message || "Cloudinary upload failed.";
+    } finally {
+      button.disabled = false;
+      button.textContent = before ? "Upload original image" : "Upload generated image";
+      fileInput.value = "";
+    }
+  }
+
+  async function generatePromptTestImage() {
+    const prompt = byId("prompt-test-prompt").value.trim();
+    const error = byId("prompt-test-error");
+    const button = byId("generate-test-image");
+    error.textContent = "";
+    if (!state.promptTestFile) {
+      error.textContent = "Choose an original image first.";
+      return;
+    }
+    if (!prompt) {
+      error.textContent = "Enter a prompt first.";
+      return;
+    }
+
+    button.disabled = true;
+    button.textContent = "Generating with Qwen…";
+    try {
+      const body = new FormData();
+      body.append("image", state.promptTestFile);
+      body.append("prompt", prompt);
+      const result = await api("/api/admin/catalog/test-generation", { method: "POST", body });
+      if (!result.image) throw new Error("Qwen returned no image. Try again.");
+      if (state.promptTestResultUrl) URL.revokeObjectURL(state.promptTestResultUrl);
+      const imageBlob = await fetch(result.image).then((response) => response.blob());
+      state.promptTestResultUrl = URL.createObjectURL(imageBlob);
+      byId("prompt-test-result-image").src = state.promptTestResultUrl;
+      byId("prompt-test-result-image").hidden = false;
+      byId("prompt-test-empty").hidden = true;
+      byId("test-export-controls").hidden = false;
+      byId("download-test-status").textContent = "";
+    } catch (cause) {
+      error.textContent = cause.message || "Could not generate a test image.";
+    } finally {
+      button.disabled = false;
+      button.textContent = "Generate test image";
+    }
+  }
+
+  async function prepareAndDownloadTestImage() {
+    const button = byId("download-test-image");
+    const status = byId("download-test-status");
+    const ratioParts = byId("test-export-aspect").value.split(":").map(Number);
+    const ratioWidth = ratioParts[0];
+    const ratioHeight = ratioParts[1];
+    const targetRatio = ratioWidth / ratioHeight;
+    const selectedQuality = Number(byId("test-export-quality").value) / 100;
+    const maxBytes = 300_000;
+    const image = new Image();
+    button.disabled = true;
+    button.textContent = "Preparing download…";
+    status.textContent = "Cropping and compressing a copy. The Qwen preview is unchanged.";
+
+    try {
+      image.src = state.promptTestResultUrl;
+      await image.decode();
+      const sourceRatio = image.naturalWidth / image.naturalHeight;
+      let sx = 0;
+      let sy = 0;
+      let sw = image.naturalWidth;
+      let sh = image.naturalHeight;
+      if (sourceRatio > targetRatio) {
+        sw = image.naturalHeight * targetRatio;
+        sx = (image.naturalWidth - sw) / 2;
+      } else {
+        sh = image.naturalWidth / targetRatio;
+        sy = (image.naturalHeight - sh) / 2;
+      }
+
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d", { alpha: false });
+      if (!context) throw new Error("This browser cannot prepare the download.");
+      let scale = 1;
+      let quality = selectedQuality;
+      let exportBlob = null;
+      let actualMime = "image/webp";
+
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const ratioUnit = Math.max(1, Math.floor(Math.min(sw * scale / ratioWidth, sh * scale / ratioHeight)));
+        canvas.width = ratioUnit * ratioWidth;
+        canvas.height = ratioUnit * ratioHeight;
+        context.drawImage(image, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+        exportBlob = await canvasToBlob(canvas, "image/webp", quality);
+        if (exportBlob.type !== "image/webp") {
+          actualMime = "image/jpeg";
+          exportBlob = await canvasToBlob(canvas, actualMime, quality);
+        }
+        if (exportBlob.size <= maxBytes) break;
+        if (quality > 0.4) quality = Math.max(0.4, quality - 0.1);
+        else {
+          scale *= 0.86;
+          quality = selectedQuality;
+        }
+      }
+
+      if (!exportBlob || exportBlob.size > maxBytes) {
+        throw new Error("Could not compress this image below 300 KB. Try a lower quality setting.");
+      }
+      if (state.promptTestDownloadUrl) URL.revokeObjectURL(state.promptTestDownloadUrl);
+      state.promptTestDownloadUrl = URL.createObjectURL(exportBlob);
+      const ratioLabel = byId("test-export-aspect").value.replace(":", "x");
+      const extension = actualMime === "image/webp" ? "webp" : "jpg";
+      const link = document.createElement("a");
+      link.href = state.promptTestDownloadUrl;
+      link.download = `madds-prompt-test-${ratioLabel}.${extension}`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      const sizeKb = (exportBlob.size / 1000).toFixed(0);
+      const effectiveQuality = Math.round(quality * 100);
+      status.textContent = `Downloaded ${sizeKb} KB · ${byId("test-export-aspect").value} · ${effectiveQuality}% quality`;
+    } catch (cause) {
+      status.textContent = cause.message || "Could not prepare the download.";
+    } finally {
+      button.disabled = false;
+      button.textContent = "Prepare and download";
+    }
+  }
+
+  function canvasToBlob(canvas, mimeType, quality) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Could not encode the image in this browser."));
+      }, mimeType, quality);
+    });
   }
 
   function renderCollectionOptions() {
@@ -287,7 +485,12 @@
     state.editingId = id;
     const form = byId("style-form");
     form.reset();
-    byId("thumbnail-upload-status").textContent = "Images are organized under the first selected collection.";
+    byId("before-image-preview").removeAttribute("src");
+    byId("before-image-preview").hidden = true;
+    byId("after-image-preview").removeAttribute("src");
+    byId("after-image-preview").hidden = true;
+    byId("before-image-status").textContent = "Required";
+    byId("after-image-status").textContent = "Required";
     form.elements.tokensRequired.value = "10";
     byId("form-error").textContent = "";
     const style = state.styles.find((item) => item.id === id);
@@ -296,9 +499,24 @@
       form.elements.name.value = style.name;
       form.elements.description.value = style.description;
       form.elements.prompt.value = style.prompt;
-      form.elements.thumbnail.value = style.thumbnail || "";
-      form.elements.thumbnailPublicId.value = style.thumbnailPublicId || "";
+      const beforeUrl = style.exampleBeforeUrl || style.thumbnail || "";
+      form.elements.thumbnail.value = beforeUrl;
+      form.elements.thumbnailPublicId.value = style.exampleBeforePublicId || style.thumbnailPublicId || "";
+      form.elements.exampleBeforeUrl.value = beforeUrl;
+      form.elements.exampleBeforePublicId.value = style.exampleBeforePublicId || style.thumbnailPublicId || "";
+      form.elements.exampleAfterUrl.value = style.exampleAfterUrl || "";
+      form.elements.exampleAfterPublicId.value = style.exampleAfterPublicId || "";
       form.elements.previewImages.value = (style.previewImages || []).join("\n");
+      if (beforeUrl) {
+        byId("before-image-preview").src = beforeUrl;
+        byId("before-image-preview").hidden = false;
+        byId("before-image-status").textContent = "Current original image";
+      }
+      if (style.exampleAfterUrl) {
+        byId("after-image-preview").src = style.exampleAfterUrl;
+        byId("after-image-preview").hidden = false;
+        byId("after-image-status").textContent = "Current generated example";
+      }
       form.elements.imageCount.value = String(style.imageCount);
       form.elements.tokensRequired.value = String(style.tokensRequired);
     }
@@ -353,57 +571,41 @@
   byId("logs-refresh").addEventListener("click", () => loadLogs(1));
   byId("logs-previous").addEventListener("click", () => loadLogs(Math.max(1, state.logPage - 1)));
   byId("logs-next").addEventListener("click", () => loadLogs(state.logPage + 1));
-  byId("style-form").elements.thumbnail.addEventListener("input", () => { byId("style-form").elements.thumbnailPublicId.value = ""; });
-  byId("upload-thumbnail").addEventListener("click", () => byId("thumbnail-file").click());
-  byId("thumbnail-file").addEventListener("change", async (event) => {
-    const fileInput = event.currentTarget;
-    const file = fileInput.files?.[0];
+  byId("before-image-file").addEventListener("change", (event) => uploadStyleExampleImage("before", event.currentTarget));
+  byId("after-image-file").addEventListener("change", (event) => uploadStyleExampleImage("after", event.currentTarget));
+  byId("upload-before-image").addEventListener("click", () => byId("before-image-file").click());
+  byId("upload-after-image").addEventListener("click", () => byId("after-image-file").click());
+  byId("prompt-test-image").addEventListener("change", (event) => {
+    const file = event.currentTarget.files?.[0] || null;
     if (!file) return;
-    const status = byId("thumbnail-upload-status");
-    const uploadButton = byId("upload-thumbnail");
-    const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/avif"];
-    if (!allowedTypes.includes(file.type) || file.size > 10 * 1024 * 1024) {
-      status.textContent = "Choose a JPG, PNG, WebP or AVIF image up to 10 MB.";
-      fileInput.value = "";
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 10 * 1024 * 1024) {
+      byId("prompt-test-error").textContent = "Choose a JPG, PNG or WebP image up to 10 MB.";
+      event.currentTarget.value = "";
       return;
     }
-    const collections = [...byId("style-form").querySelectorAll('input[name="collections"]:checked')].map((input) => input.value);
-    uploadButton.disabled = true;
-    uploadButton.textContent = "Uploading…";
-    status.textContent = "Preparing a secure Cloudinary upload…";
-    try {
-      const signed = await api("/api/admin/catalog/cloudinary/signature", {
-        method: "POST", body: JSON.stringify({ collections: collections.length ? collections : ["Other"] }),
-      });
-      const uploadForm = new FormData();
-      uploadForm.append("file", file);
-      uploadForm.append("api_key", signed.apiKey);
-      uploadForm.append("timestamp", String(signed.timestamp));
-      uploadForm.append("folder", signed.folder);
-      uploadForm.append("public_id", signed.publicId);
-      uploadForm.append("tags", signed.tags);
-      uploadForm.append("signature", signed.signature);
-      const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/image/upload`, { method: "POST", body: uploadForm });
-      const uploaded = await response.json().catch(() => ({}));
-      if (!response.ok || !uploaded.secure_url || !uploaded.public_id) throw new Error(uploaded.error?.message || "Cloudinary upload failed.");
-      const form = byId("style-form");
-      form.elements.thumbnail.value = uploaded.secure_url;
-      form.elements.thumbnailPublicId.value = uploaded.public_id;
-      status.textContent = `Uploaded to ${signed.folder}. Save the style to keep this image linked.`;
-    } catch (error) {
-      status.textContent = error.message || "Cloudinary upload failed.";
-    } finally {
-      uploadButton.disabled = false;
-      uploadButton.textContent = "Upload image to Cloudinary";
-      fileInput.value = "";
-    }
+    state.promptTestFile = file;
+    if (state.promptTestOriginalUrl) URL.revokeObjectURL(state.promptTestOriginalUrl);
+    state.promptTestOriginalUrl = URL.createObjectURL(file);
+    byId("prompt-test-file-name").textContent = file.name;
+    byId("prompt-test-original-preview").src = state.promptTestOriginalUrl;
+    byId("prompt-test-original-preview").hidden = false;
+    byId("prompt-test-error").textContent = "";
+  });
+  byId("generate-test-image").addEventListener("click", generatePromptTestImage);
+  byId("download-test-image").addEventListener("click", prepareAndDownloadTestImage);
+  byId("test-export-quality").addEventListener("input", (event) => {
+    byId("test-export-quality-value").value = `${event.currentTarget.value}%`;
   });
   byId("retry-cloudinary-cleanup").addEventListener("click", async () => {
     const button = byId("retry-cloudinary-cleanup");
     button.disabled = true;
     try {
       const result = await api("/api/admin/catalog/cloudinary/retry-cleanup", { method: "POST", body: "{}" });
-      notify(result.pending ? `${result.pending} Cloudinary image cleanup${result.pending === 1 ? "" : "s"} still pending.` : "Cloudinary image cleanup is complete.", Boolean(result.pending));
+      const firstFailure = result.failures?.find((failure) => failure.lastError);
+      const failureDetail = firstFailure ? ` ${firstFailure.styleName}: ${firstFailure.lastError}` : "";
+      notify(result.pending
+        ? `${result.pending} Cloudinary image cleanup${result.pending === 1 ? "" : "s"} still pending.${failureDetail}`
+        : "Cloudinary image cleanup is complete.", Boolean(result.pending));
       await loadCatalog();
     } catch (error) { notify(error.message, true); }
     finally { button.disabled = false; }
@@ -419,10 +621,21 @@
     event.preventDefault();
     const form = event.currentTarget;
     const fields = new FormData(form);
+    if (!fields.get("exampleBeforeUrl") || !fields.get("exampleAfterUrl") ||
+        !fields.get("exampleBeforePublicId") || !fields.get("exampleAfterPublicId")) {
+      byId("form-error").textContent = "Upload both the before and after images before saving.";
+      return;
+    }
+    const exampleBeforeUrl = fields.get("exampleBeforeUrl");
+    const exampleBeforePublicId = fields.get("exampleBeforePublicId");
     const style = {
       id: String(fields.get("name") || "").normalize("NFKD").toLowerCase().trim().replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""), name: fields.get("name"), description: fields.get("description"), prompt: fields.get("prompt"),
-      thumbnail: fields.get("thumbnail") || null,
-      thumbnailPublicId: fields.get("thumbnailPublicId") || null,
+      thumbnail: exampleBeforeUrl,
+      thumbnailPublicId: exampleBeforePublicId,
+      exampleBeforeUrl,
+      exampleBeforePublicId,
+      exampleAfterUrl: fields.get("exampleAfterUrl"),
+      exampleAfterPublicId: fields.get("exampleAfterPublicId"),
       previewImages: String(fields.get("previewImages") || "").split(/\r?\n/).map((url) => url.trim()).filter(Boolean),
       imageCount: Number(fields.get("imageCount")), tokensRequired: Number(fields.get("tokensRequired")),
       collections: [...form.querySelectorAll('input[name="collections"]:checked')].map((input) => input.value),

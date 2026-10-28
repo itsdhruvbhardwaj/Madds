@@ -314,7 +314,12 @@ app.post(
     }
     const validatedImages = inspectedImages.filter((image) => image !== null);
 
-    if (!env.openAiApiKey) {
+    const providerKeyMissing = env.imageGenerationProvider === "openrouter"
+      ? !env.openRouterApiKey
+      : env.imageGenerationProvider === "openai"
+        ? !env.openAiApiKey
+        : true;
+    if (providerKeyMissing) {
       return res.status(503).json({
         ok: false,
         code: "GENERATION_UNAVAILABLE",

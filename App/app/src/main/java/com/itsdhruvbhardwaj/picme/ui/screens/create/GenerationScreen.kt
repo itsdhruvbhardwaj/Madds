@@ -198,7 +198,7 @@ fun GenerationScreen(
                         ) {}
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
-                            text = "Our AI is dreaming up your masterpiece. This usually takes 20-30 seconds.",
+                            text = "Our AI is creating your image. This can take up to a couple of minutes.",
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontWeight = FontWeight.Medium,
                                 color = Color(0xFF4B5563)

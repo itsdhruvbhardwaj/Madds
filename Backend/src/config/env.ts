@@ -96,7 +96,10 @@ export const env = {
     return process.env.OPENROUTER_IMAGE_ASPECT_RATIO ?? "2:3";
   },
   get openAiTimeoutMs() {
-    return positiveInteger("OPENAI_TIMEOUT_MS", 120_000);
+    return positiveInteger(
+      "IMAGE_GENERATION_TIMEOUT_MS",
+      positiveInteger("OPENAI_TIMEOUT_MS", 150_000),
+    );
   },
   maxUploadBytes: 10 * 1024 * 1024,
 };

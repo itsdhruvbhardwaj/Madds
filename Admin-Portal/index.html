@@ -29,6 +29,7 @@
       <div class="brand"><span class="brand-mark small">M</span><span>Madds <b>Studio</b></span></div>
       <div class="side-label">WORKSPACE</div>
       <button class="side-link active" data-panel="styles-panel"><span>▦</span> Styles <small id="style-count">0</small></button>
+      <button class="side-link" data-panel="testing-panel"><span>✦</span> Prompt testing</button>
       <button class="side-link" data-panel="collections-panel"><span>◈</span> Collections</button>
       <button class="side-link" data-panel="logs-panel"><span>≡</span> Change logs</button>
       <div class="sidebar-note"><span class="live-dot"></span> Connected to live catalogue</div>
@@ -43,6 +44,32 @@
         <div class="page-heading"><div><p class="eyebrow">YOUR CREATIVE LIBRARY</p><h1>Styles</h1><p class="muted">Edit prompts and collections used by Madds.</p></div><button id="add-style" class="button primary">＋ Add style</button></div>
         <div class="toolbar"><label class="search-box"><span>⌕</span><input id="style-search" type="search" placeholder="Search styles or prompts"></label><select id="collection-filter" aria-label="Filter by collection"><option value="">All collections</option></select><select id="style-sort" aria-label="Sort styles"><option value="name-asc">Name: A to Z</option><option value="name-desc">Name: Z to A</option><option value="created-desc">Newest added</option><option value="created-asc">Oldest added</option><option value="updated-desc">Recently modified</option><option value="updated-asc">Least recently modified</option></select><span id="result-count" class="muted"></span></div>
         <div id="styles-grid" class="styles-grid"></div>
+      </section>
+
+      <section id="testing-panel" class="panel-view" hidden>
+        <div class="page-heading"><div><p class="eyebrow">PROMPT WORKBENCH</p><h1>Prompt testing</h1><p class="muted">Try an original photo and prompt with Qwen. The photo and prompt are sent to OpenRouter for generation; test images are not saved to Cloudinary.</p></div></div>
+        <div class="prompt-test-layout">
+          <section class="prompt-test-controls">
+            <label class="test-image-picker" for="prompt-test-image"><span class="test-image-icon">＋</span><span><b id="prompt-test-file-name">Choose original image</b><small>JPG, PNG, or WebP · up to 10 MB</small></span></label>
+            <input id="prompt-test-image" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+            <img id="prompt-test-original-preview" class="test-original-preview" alt="Selected original image" hidden>
+            <label class="test-prompt-label" for="prompt-test-prompt">Prompt<textarea id="prompt-test-prompt" maxlength="10000" rows="9" placeholder="Describe the look you want Qwen to create…"></textarea></label>
+            <p class="test-cost-note">Each generation uses the team’s OpenRouter account and may incur a charge.</p>
+            <p id="prompt-test-error" class="form-error" role="alert"></p>
+            <button id="generate-test-image" class="button primary" type="button">Generate test image</button>
+          </section>
+          <section class="prompt-test-result" aria-live="polite">
+            <div id="prompt-test-empty" class="test-empty-state"><span>✦</span><h2>Your test image will appear here</h2><p>Change the prompt or source photo and generate again until the result looks right.</p></div>
+            <img id="prompt-test-result-image" class="test-result-image" alt="Generated prompt test image" hidden>
+            <div id="test-export-controls" class="test-export-controls" hidden>
+              <label>Download aspect ratio<select id="test-export-aspect"><option value="5:7" selected>5:7 · Madds style card</option><option value="3:4">3:4</option><option value="2:3">2:3</option><option value="4:5">4:5</option><option value="1:1">1:1</option><option value="9:16">9:16</option><option value="16:9">16:9</option></select></label>
+              <label>Compression quality <span><output id="test-export-quality-value">82%</output><input id="test-export-quality" type="range" min="40" max="100" step="1" value="82"></span></label>
+              <p>Download is capped at 300 KB. Studio may reduce quality or dimensions to meet the limit. The preview above stays at the original Qwen quality.</p>
+              <button id="download-test-image" class="button secondary" type="button">Prepare and download</button>
+              <span id="download-test-status" class="field-hint" role="status"></span>
+            </div>
+          </section>
+        </div>
       </section>
 
       <section id="collections-panel" class="panel-view" hidden>
@@ -71,9 +98,29 @@
         <label class="wide">Short description<textarea name="description" maxlength="300" rows="2" required></textarea></label>
         <fieldset class="wide"><legend>Collections</legend><div id="collection-checkboxes" class="checkbox-grid"></div></fieldset>
         <label class="wide">Generation prompt<textarea name="prompt" maxlength="10000" rows="6" required></textarea></label>
-        <label class="wide">Thumbnail URL <span class="field-hint">Required · HTTPS · Used as the app card image</span><input name="thumbnail" type="url" placeholder="https://…" required></label>
-        <div class="wide image-upload-row"><input name="thumbnailPublicId" type="hidden"><input id="thumbnail-file" type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden><button id="upload-thumbnail" class="button secondary" type="button">Upload image to Cloudinary</button><span id="thumbnail-upload-status" class="field-hint" role="status">Images are organized under the first selected collection.</span></div>
-        <label class="wide">Preview image URLs <span class="field-hint">One HTTPS URL per line</span><textarea name="previewImages" rows="3" placeholder="https://…"></textarea></label>
+        <input name="thumbnail" type="hidden">
+        <input name="thumbnailPublicId" type="hidden">
+        <input name="previewImages" type="hidden">
+        <input name="exampleBeforeUrl" type="hidden">
+        <input name="exampleBeforePublicId" type="hidden">
+        <input name="exampleAfterUrl" type="hidden">
+        <input name="exampleAfterPublicId" type="hidden">
+        <div class="wide style-example-pair">
+          <section class="style-example-upload">
+            <h3>Before image</h3><p class="field-hint">The original photo before applying this style.</p>
+            <input id="before-image-file" type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden>
+            <button id="upload-before-image" class="button secondary" type="button">Upload original image</button>
+            <span id="before-image-status" class="field-hint" role="status">Required</span>
+            <img id="before-image-preview" class="style-example-preview" alt="Before example preview" hidden>
+          </section>
+          <section class="style-example-upload">
+            <h3>After image</h3><p class="field-hint">The generated result demonstrating this style.</p>
+            <input id="after-image-file" type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden>
+            <button id="upload-after-image" class="button secondary" type="button">Upload generated image</button>
+            <span id="after-image-status" class="field-hint" role="status">Required</span>
+            <img id="after-image-preview" class="style-example-preview" alt="After example preview" hidden>
+          </section>
+        </div>
         <label>Reference photos required<select name="imageCount"><option value="1">1 photo</option><option value="2">2 photos</option><option value="3">3 photos</option></select></label>
         <label>Credits per generation<input name="tokensRequired" type="number" min="1" max="10000" value="10" required></label>
       </div>

@@ -38,6 +38,8 @@ export class OpenRouterImageGenerator implements GenerationProvider {
   async generate(input: {
     prompt: string;
     images: UploadedImage[];
+    aspectRatio?: string;
+    resolution?: string;
   }): Promise<GeneratedImage> {
     if (!env.openRouterApiKey) {
       throw new Error("OPENROUTER_API_KEY is required for OpenRouter image generation.");
@@ -56,8 +58,8 @@ export class OpenRouterImageGenerator implements GenerationProvider {
         body: JSON.stringify({
           model: env.openRouterImageModel,
           prompt: input.prompt,
-          resolution: env.openRouterImageResolution,
-          aspect_ratio: env.openRouterImageAspectRatio,
+          resolution: input.resolution ?? env.openRouterImageResolution,
+          aspect_ratio: input.aspectRatio ?? env.openRouterImageAspectRatio,
           ...(input.images.length > 0
             ? { input_references: input.images.map(toImageReference) }
             : {}),

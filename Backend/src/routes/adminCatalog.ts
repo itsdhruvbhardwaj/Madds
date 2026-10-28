@@ -1,4 +1,6 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
+import multer from "multer";
+import { fileTypeFromBuffer } from "file-type";
 
 import { env } from "../config/env.js";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth.js";
@@ -12,8 +14,13 @@ import { catalogDatabaseReady, listCatalogCollections, listCatalogStyles, optimi
 import type { Style } from "../services/styles/styleTypes.js";
 import { ensureHomeSection, renameHomeSectionCollection } from "../services/home/homeCatalog.js";
 import { cloudinaryIsConfigured, createStyleImageUploadSignature, destroyManagedStyleImage } from "../services/cloudinaryAssets.js";
+import { OpenRouterImageGenerator } from "../services/openrouter/generation.js";
 
 const router = Router();
+const promptTestUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: env.maxUploadBytes, files: 1 },
+});
 const styleIdPattern = /^[a-z0-9](?:[a-z0-9-]{1,78}[a-z0-9])?$/;
 const auditActions = ["STYLE_CREATED", "STYLE_UPDATED", "STYLE_DELETED", "COLLECTION_CREATED", "COLLECTION_RENAMED", "COLLECTION_DELETED", "HOME_SECTION_UPDATED"] as const;
 
@@ -28,6 +35,47 @@ router.use(requireAuth, (req: AuthenticatedRequest, res: Response, next: NextFun
     return;
   }
   next();
+});
+
+router.post("/catalog/test-generation", promptTestUpload.single("image"), async (req: Request, res: Response) => {
+  const prompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
+  const file = req.file;
+  if (!prompt || prompt.length > 10_000) {
+    return res.status(400).json({ ok: false, error: "Enter a prompt of 1 to 10,000 characters." });
+  }
+  if (!file) {
+    return res.status(400).json({ ok: false, error: "Upload an original image to test this prompt." });
+  }
+  if (env.imageGenerationProvider !== "openrouter" || !env.openRouterApiKey) {
+    return res.status(503).json({ ok: false, error: "Prompt testing requires OpenRouter to be enabled on the backend." });
+  }
+
+  const detectedType = await fileTypeFromBuffer(file.buffer);
+  if (!detectedType || !["image/jpeg", "image/png", "image/webp"].includes(detectedType.mime)) {
+    return res.status(400).json({ ok: false, error: "Use a JPG, PNG, or WebP original image." });
+  }
+
+  try {
+    const result = await new OpenRouterImageGenerator().generate({
+      prompt,
+      // 3:4 is Qwen's closest native portrait ratio to Madds Studio's 5:7 export.
+      aspectRatio: "3:4",
+      images: [{
+        path: "",
+        originalname: file.originalname,
+        mimetype: detectedType.mime,
+        buffer: file.buffer,
+      }],
+    });
+    res.set("Cache-Control", "no-store");
+    res.json({
+      ok: true,
+      image: `data:${result.mimeType || "image/png"};base64,${result.base64}`,
+    });
+  } catch (error) {
+    console.error("Studio prompt test failed.", error instanceof Error ? error.message : "UNKNOWN");
+    return res.status(502).json({ ok: false, error: "Qwen could not generate an image. Check the prompt and try again." });
+  }
 });
 
 router.get("/catalog", async (_req: Request, res: Response) => {
@@ -82,7 +130,12 @@ router.post("/catalog/cloudinary/signature", async (req: Request, res: Response)
 
 router.post("/catalog/cloudinary/retry-cleanup", async (_req: Request, res: Response) => {
   await retryPendingCloudinaryCleanup(20);
-  return res.json({ ok: true, pending: await CloudinaryCleanup.countDocuments({ cleanupAfter: { $lte: new Date() } }) });
+  const dueFilter = { cleanupAfter: { $lte: new Date() } };
+  const [pending, failures] = await Promise.all([
+    CloudinaryCleanup.countDocuments(dueFilter),
+    CloudinaryCleanup.find(dueFilter).select("styleName lastError attempts -_id").sort({ createdAt: 1 }).limit(5).lean(),
+  ]);
+  return res.json({ ok: true, pending, failures });
 });
 
 router.get("/catalog/logs", async (req: Request, res: Response) => {
@@ -133,7 +186,7 @@ router.post("/catalog/styles", async (req: AuthenticatedRequest, res: Response) 
 
   await ensureCollections(style.collections);
   await CatalogStyle.create(style);
-  if (style.thumbnailPublicId) await CloudinaryCleanup.deleteOne({ publicId: style.thumbnailPublicId });
+  await removeCloudinaryCleanupForStyleImages(style);
   await logChange(req, "STYLE_CREATED", style.id, style.name);
   return res.status(201).json({ ok: true, style });
 });
@@ -144,16 +197,17 @@ router.put("/catalog/styles/:id", async (req: AuthenticatedRequest, res: Respons
   const validation = validateStyle(req.body, id);
   if (validation.error) return res.status(400).json({ ok: false, error: validation.error });
   const style = validation.value!;
-  const previous = await CatalogStyle.findOne({ id }).select("thumbnailPublicId name").lean();
+  const previous = await CatalogStyle.findOne({ id })
+    .select("thumbnailPublicId exampleBeforePublicId exampleAfterPublicId name").lean();
   if (!previous) return res.status(404).json({ ok: false, error: "Style not found." });
   await ensureCollections(style.collections);
   const updated = await CatalogStyle.findOneAndUpdate({ id }, style, { new: true, runValidators: true }).lean();
   if (!updated) return res.status(404).json({ ok: false, error: "Style not found." });
-  if (style.thumbnailPublicId) await CloudinaryCleanup.deleteOne({ publicId: style.thumbnailPublicId });
+  await removeCloudinaryCleanupForStyleImages(style);
   await logChange(req, "STYLE_UPDATED", id, style.name);
-  const cloudinaryCleanupPending = previous.thumbnailPublicId && previous.thumbnailPublicId !== style.thumbnailPublicId
-    ? await deleteImageIfUnused(previous.thumbnailPublicId, id, previous.name)
-    : false;
+  const nextImageIds = new Set(getStyleImageIds(style));
+  const replacedImageIds = getStyleImageIds(previous).filter((publicId) => !nextImageIds.has(publicId));
+  const cloudinaryCleanupPending = await deleteImagesIfUnused(replacedImageIds, id, previous.name);
   return res.json({ ok: true, style, cloudinaryCleanupPending });
 });
 
@@ -164,9 +218,7 @@ router.delete("/catalog/styles/:id", async (req: AuthenticatedRequest, res: Resp
   if (!style) return res.status(404).json({ ok: false, error: "Style not found." });
   await FavoriteStyle.deleteMany({ styleId: id });
   await logChange(req, "STYLE_DELETED", id, String(style.name));
-  const cloudinaryCleanupPending = style.thumbnailPublicId
-    ? await deleteImageIfUnused(style.thumbnailPublicId, id, String(style.name))
-    : false;
+  const cloudinaryCleanupPending = await deleteImagesIfUnused(getStyleImageIds(style), id, String(style.name));
   return res.json({ ok: true, id, cloudinaryCleanupPending });
 });
 
@@ -249,8 +301,15 @@ router.delete("/catalog/collections/:id", async (req: AuthenticatedRequest, res:
 });
 
 router.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  if (error instanceof multer.MulterError) {
+    const tooLarge = error.code === "LIMIT_FILE_SIZE";
+    return res.status(tooLarge ? 413 : 400).json({
+      ok: false,
+      error: tooLarge ? "The prompt test image must be 10 MB or smaller." : "Choose one image file for prompt testing.",
+    });
+  }
   console.error("Admin catalogue request failed.", error instanceof Error ? error.name : "UNKNOWN");
-  res.status(500).json({ ok: false, error: "The catalogue change could not be completed." });
+  return res.status(500).json({ ok: false, error: "The catalogue change could not be completed." });
 });
 
 function validateStyle(body: unknown, fixedId?: string): { value?: Style; error?: string } {
@@ -259,11 +318,18 @@ function validateStyle(body: unknown, fixedId?: string): { value?: Style; error?
   const id = fixedId ?? (typeof source.id === "string" ? source.id.trim().toLowerCase() : slugify(name));
   const description = typeof source.description === "string" ? source.description.trim() : "";
   const prompt = typeof source.prompt === "string" ? source.prompt.trim() : "";
-  const thumbnailSource = typeof source.thumbnail === "string" ? source.thumbnail.trim() : "";
-  const thumbnail = thumbnailSource ? optimizeCloudinaryThumbnailUrl(thumbnailSource) : "";
-  const thumbnailPublicId = typeof source.thumbnailPublicId === "string" && source.thumbnailPublicId.trim()
-    ? source.thumbnailPublicId.trim()
+  const beforeSource = typeof source.exampleBeforeUrl === "string" ? source.exampleBeforeUrl.trim() : "";
+  const afterSource = typeof source.exampleAfterUrl === "string" ? source.exampleAfterUrl.trim() : "";
+  const exampleBeforeUrl = beforeSource ? optimizeCloudinaryThumbnailUrl(beforeSource) : "";
+  const exampleAfterUrl = afterSource ? optimizeCloudinaryThumbnailUrl(afterSource) : "";
+  const exampleBeforePublicId = typeof source.exampleBeforePublicId === "string" && source.exampleBeforePublicId.trim()
+    ? source.exampleBeforePublicId.trim()
     : null;
+  const exampleAfterPublicId = typeof source.exampleAfterPublicId === "string" && source.exampleAfterPublicId.trim()
+    ? source.exampleAfterPublicId.trim()
+    : null;
+  const thumbnail = exampleBeforeUrl;
+  const thumbnailPublicId = exampleBeforePublicId;
   const previewImages = Array.isArray(source.previewImages) ? source.previewImages.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean) : [];
   const collections = Array.isArray(source.collections) ? [...new Set(source.collections.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))] : [];
   const imageCount = Number(source.imageCount);
@@ -273,24 +339,48 @@ function validateStyle(body: unknown, fixedId?: string): { value?: Style; error?
   if (name.length < 2 || name.length > 80) return { error: "Style names must be 2 to 80 characters." };
   if (!description || description.length > 300) return { error: "Add a description of up to 300 characters." };
   if (!prompt || prompt.length > 10000) return { error: "Add a prompt of up to 10,000 characters." };
-  if (!thumbnail) return { error: "A thumbnail HTTPS URL is required for every style." };
-  if (thumbnailPublicId && (!thumbnailPublicId.startsWith("picmee/styles/") || thumbnailPublicId.includes("..") || thumbnailPublicId.length > 255)) {
-    return { error: "The Cloudinary image ID is invalid." };
+  if (!exampleBeforeUrl || !exampleAfterUrl) return { error: "Upload both the before and after style images." };
+  for (const publicId of [exampleBeforePublicId, exampleAfterPublicId]) {
+    if (!publicId || !publicId.startsWith("picmee/styles/") || publicId.includes("..") || publicId.length > 255) {
+      return { error: "Both example images must be uploaded to Cloudinary before saving." };
+    }
   }
   if (![1, 2, 3].includes(imageCount)) return { error: "Image count must be 1, 2, or 3." };
   if (!Number.isInteger(tokensRequired) || tokensRequired < 1 || tokensRequired > 10000) return { error: "Credit cost must be a whole number from 1 to 10,000." };
-  for (const url of [thumbnail, ...previewImages]) {
+  for (const url of [exampleBeforeUrl, exampleAfterUrl, ...previewImages]) {
     try { if (new URL(url).protocol !== "https:") return { error: "Image links must use HTTPS." }; }
     catch { return { error: "Enter valid HTTPS image links." }; }
   }
-  if (thumbnailPublicId) {
-    const thumbnailUrl = new URL(thumbnail);
-    if (thumbnailUrl.hostname !== "res.cloudinary.com" || !thumbnailUrl.pathname.includes(`/${thumbnailPublicId}.`)) {
-      return { error: "The Cloudinary image ID must match the uploaded thumbnail URL." };
+  for (const [url, publicId] of [
+    [exampleBeforeUrl, exampleBeforePublicId],
+    [exampleAfterUrl, exampleAfterPublicId],
+  ] as const) {
+    if (publicId) {
+      const parsedUrl = new URL(url);
+      if (parsedUrl.hostname !== "res.cloudinary.com" || !parsedUrl.pathname.includes(`/${publicId}.`)) {
+        return { error: "Each Cloudinary image ID must match its uploaded image URL." };
+      }
     }
   }
   if (collections.some((collection) => collection.length > 60)) return { error: "Collection names must be 60 characters or fewer." };
-  return { value: { id, name, description, prompt, thumbnail, thumbnailPublicId, previewImages, imageCount: imageCount as Style["imageCount"], tokensRequired, collections: collections.length ? collections : ["Other"] } };
+  return {
+    value: {
+      id,
+      name,
+      description,
+      prompt,
+      thumbnail,
+      thumbnailPublicId,
+      exampleBeforeUrl,
+      exampleBeforePublicId,
+      exampleAfterUrl,
+      exampleAfterPublicId,
+      previewImages,
+      imageCount: imageCount as Style["imageCount"],
+      tokensRequired,
+      collections: collections.length ? collections : ["Other"],
+    },
+  };
 }
 
 async function ensureCollections(names: string[]): Promise<void> {
@@ -304,8 +394,36 @@ async function logChange(req: AuthenticatedRequest, action: typeof auditActions[
   await CatalogAuditLog.create({ actorEmail: req.user?.email, actorName: req.user?.name ?? "", action, itemId, itemName });
 }
 
+function getStyleImageIds(style: {
+  thumbnailPublicId?: unknown;
+  exampleBeforePublicId?: unknown;
+  exampleAfterPublicId?: unknown;
+}): string[] {
+  return [...new Set([
+    style.thumbnailPublicId,
+    style.exampleBeforePublicId,
+    style.exampleAfterPublicId,
+  ].filter((value): value is string => typeof value === "string" && Boolean(value)))];
+}
+
+async function removeCloudinaryCleanupForStyleImages(style: Style): Promise<void> {
+  const publicIds = getStyleImageIds(style);
+  if (publicIds.length) await CloudinaryCleanup.deleteMany({ publicId: { $in: publicIds } });
+}
+
+async function deleteImagesIfUnused(publicIds: string[], styleId: string, styleName: string): Promise<boolean> {
+  const outcomes = await Promise.all(publicIds.map((publicId) => deleteImageIfUnused(publicId, styleId, styleName)));
+  return outcomes.some(Boolean);
+}
+
 async function deleteImageIfUnused(publicId: string, styleId: string, styleName: string): Promise<boolean> {
-  if (await CatalogStyle.exists({ thumbnailPublicId: publicId })) return false;
+  if (await CatalogStyle.exists({
+    $or: [
+      { thumbnailPublicId: publicId },
+      { exampleBeforePublicId: publicId },
+      { exampleAfterPublicId: publicId },
+    ],
+  })) return false;
   try {
     await destroyManagedStyleImage(publicId);
     await CloudinaryCleanup.deleteOne({ publicId });
@@ -325,7 +443,13 @@ async function deleteImageIfUnused(publicId: string, styleId: string, styleName:
 async function retryPendingCloudinaryCleanup(limit: number): Promise<void> {
   const pending = await CloudinaryCleanup.find({ cleanupAfter: { $lte: new Date() } }).sort({ createdAt: 1 }).limit(limit).lean();
   for (const item of pending) {
-    if (await CatalogStyle.exists({ thumbnailPublicId: item.publicId })) {
+    if (await CatalogStyle.exists({
+      $or: [
+        { thumbnailPublicId: item.publicId },
+        { exampleBeforePublicId: item.publicId },
+        { exampleAfterPublicId: item.publicId },
+      ],
+    })) {
       await CloudinaryCleanup.deleteOne({ _id: item._id });
       continue;
     }

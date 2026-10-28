@@ -43,6 +43,8 @@ export async function listCatalogStyles(): Promise<Style[]> {
   if (!catalogDatabaseReady()) return bundledStyles.map((style) => ({
     ...style,
     thumbnail: style.thumbnail ? optimizeCloudinaryThumbnailUrl(style.thumbnail) : null,
+    exampleBeforeUrl: style.exampleBeforeUrl ? optimizeCloudinaryThumbnailUrl(style.exampleBeforeUrl) : null,
+    exampleAfterUrl: style.exampleAfterUrl ? optimizeCloudinaryThumbnailUrl(style.exampleAfterUrl) : null,
   }));
   const records = await CatalogStyle.find().sort({ name: 1 }).lean();
   return records.map(toStyle);
@@ -51,7 +53,12 @@ export async function listCatalogStyles(): Promise<Style[]> {
 export async function getCatalogStyle(id: string): Promise<Style | undefined> {
   if (!catalogDatabaseReady()) {
     const style = bundledStyles.find((item) => item.id === id);
-    return style ? { ...style, thumbnail: style.thumbnail ? optimizeCloudinaryThumbnailUrl(style.thumbnail) : null } : undefined;
+    return style ? {
+      ...style,
+      thumbnail: style.thumbnail ? optimizeCloudinaryThumbnailUrl(style.thumbnail) : null,
+      exampleBeforeUrl: style.exampleBeforeUrl ? optimizeCloudinaryThumbnailUrl(style.exampleBeforeUrl) : null,
+      exampleAfterUrl: style.exampleAfterUrl ? optimizeCloudinaryThumbnailUrl(style.exampleAfterUrl) : null,
+    } : undefined;
   }
   const record = await CatalogStyle.findOne({ id }).lean();
   return record ? toStyle(record) : undefined;
@@ -107,6 +114,10 @@ function toStyle(record: Record<string, unknown>): Style {
     prompt: String(record.prompt),
     thumbnail: typeof record.thumbnail === "string" ? optimizeCloudinaryThumbnailUrl(record.thumbnail) : null,
     thumbnailPublicId: typeof record.thumbnailPublicId === "string" ? record.thumbnailPublicId : null,
+    exampleBeforeUrl: typeof record.exampleBeforeUrl === "string" ? optimizeCloudinaryThumbnailUrl(record.exampleBeforeUrl) : null,
+    exampleBeforePublicId: typeof record.exampleBeforePublicId === "string" ? record.exampleBeforePublicId : null,
+    exampleAfterUrl: typeof record.exampleAfterUrl === "string" ? optimizeCloudinaryThumbnailUrl(record.exampleAfterUrl) : null,
+    exampleAfterPublicId: typeof record.exampleAfterPublicId === "string" ? record.exampleAfterPublicId : null,
     previewImages: Array.isArray(record.previewImages) ? record.previewImages.map(String) : [],
     imageCount: Number(record.imageCount) as Style["imageCount"],
     tokensRequired: Number(record.tokensRequired),

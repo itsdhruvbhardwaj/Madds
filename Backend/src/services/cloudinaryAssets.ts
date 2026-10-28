@@ -48,8 +48,13 @@ export async function destroyManagedStyleImage(publicId: string): Promise<void> 
   if (!cloudinaryIsConfigured()) throw new Error("Cloudinary credentials are not configured.");
 
   const timestamp = Math.floor(Date.now() / 1000);
-  const signature = signCloudinaryParameters({ public_id: publicId, timestamp: String(timestamp) });
+  const signature = signCloudinaryParameters({
+    invalidate: "true",
+    public_id: publicId,
+    timestamp: String(timestamp),
+  });
   const body = new URLSearchParams({
+    invalidate: "true",
     public_id: publicId,
     timestamp: String(timestamp),
     api_key: env.cloudinaryApiKey,
