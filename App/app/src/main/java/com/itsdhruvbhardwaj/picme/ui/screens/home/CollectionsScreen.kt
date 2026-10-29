@@ -1,30 +1,29 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Collections
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,11 +37,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.itsdhruvbhardwaj.picme.data.model.StyleCollection
 import com.itsdhruvbhardwaj.picme.data.repository.StyleRepository
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeMainHeader
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+
+private data class CollectionCard(
+    val collection: StyleCollection,
+    val coverUrl: String,
+    val styleCount: Int
+)
 
 @Composable
 fun CollectionsScreen(
@@ -53,16 +62,42 @@ fun CollectionsScreen(
 ) {
     val authState by authViewModel.authState.collectAsState()
     val scope = rememberCoroutineScope()
-    var collections by remember { mutableStateOf<List<StyleCollection>?>(null) }
+    var collections by remember { mutableStateOf<List<CollectionCard>?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
 
     fun loadCollections() {
         scope.launch {
             loadError = null
-            styleRepository.getCollections().fold(
-                onSuccess = { collections = it },
-                onFailure = { loadError = it.message ?: "Please check your connection and try again." }
-            )
+            val result = styleRepository.getCollections()
+            result.onSuccess { availableCollections ->
+                try {
+                    collections = coroutineScope {
+                        availableCollections.map { collection ->
+                            async {
+                                val stylesResult = styleRepository.getStyles(
+                                    page = 1,
+                                    limit = 1,
+                                    collection = collection.name
+                                )
+                                val response = stylesResult.getOrThrow()
+                                val firstStyle = response.styles.firstOrNull()
+                                firstStyle?.let { style ->
+                                    CollectionCard(
+                                        collection = collection,
+                                        coverUrl = style.thumbnail?.takeIf(String::isNotBlank)
+                                            ?: style.previewImages?.firstOrNull().orEmpty(),
+                                        styleCount = response.pagination.totalCount
+                                    )
+                                }
+                            }
+                        }.awaitAll().filterNotNull()
+                    }
+                } catch (error: Exception) {
+                    loadError = error.message ?: "Please check your connection and try again."
+                }
+            }.onFailure {
+                loadError = it.message ?: "Please check your connection and try again."
+            }
         }
     }
 
@@ -108,12 +143,14 @@ fun CollectionsScreen(
                     modifier = Modifier.align(Alignment.Center),
                     color = MaterialTheme.colorScheme.onBackground
                 )
-                else -> LazyColumn(
+                else -> LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 104.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    item {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
                         Text(
                             text = "Explore all styles by collection",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -121,36 +158,40 @@ fun CollectionsScreen(
                             modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
                         )
                     }
-                    items(loadedCollections, key = { it.id }) { collection ->
-                        Surface(
+                    items(loadedCollections, key = { it.collection.id }) { item ->
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(18.dp))
-                                .clickable { onCollectionClick(collection.name) },
-                            shape = RoundedCornerShape(18.dp),
-                            color = MaterialTheme.colorScheme.surface,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable { onCollectionClick(item.collection.name) }
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 17.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            AsyncImage(
+                                model = item.coverUrl,
+                                contentDescription = "${item.collection.name} collection cover",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(88.dp)
+                                    .align(Alignment.BottomCenter)
+                                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.82f))))
+                            )
+                            Column(
+                                modifier = Modifier.align(Alignment.BottomStart).padding(12.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Collections,
-                                    contentDescription = null,
-                                    tint = com.itsdhruvbhardwaj.picme.ui.theme.MaddsPalette.gold,
-                                    modifier = Modifier.size(24.dp)
+                                Text(
+                                    text = item.collection.name,
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    maxLines = 2
                                 )
                                 Text(
-                                    text = collection.name,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    modifier = Modifier.weight(1f).padding(start = 14.dp)
-                                )
-                                Icon(
-                                    imageVector = Icons.Default.ChevronRight,
-                                    contentDescription = "Open ${collection.name}",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    text = "${item.styleCount} ${if (item.styleCount == 1) "style" else "styles"}",
+                                    color = Color.White.copy(alpha = 0.78f),
+                                    style = MaterialTheme.typography.labelSmall
                                 )
                             }
                         }

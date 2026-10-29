@@ -1029,6 +1029,7 @@ router.post("/refresh", refreshRateLimiter, async (req: Request, res: Response) 
   const suppliedToken = refreshToken || (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim();
 
   if (!suppliedToken) {
+    console.warn("[auth.refresh] rejected: missing_refresh_token");
     return res.status(401).json({ ok: false, error: "Refresh token is required." });
   }
 
@@ -1042,17 +1043,21 @@ router.post("/refresh", refreshRateLimiter, async (req: Request, res: Response) 
     }).lean();
 
     if (!existingSession) {
+      console.warn("[auth.refresh] rejected: invalid_or_expired_session");
       return res.status(401).json({ ok: false, error: "Refresh token is invalid or expired." });
     }
 
     const user = await User.findById(existingSession.userId);
     if (!user || !user.isActive || !user.emailVerified) {
+      console.warn("[auth.refresh] rejected: user_missing_inactive_or_unverified");
       return res.status(401).json({ ok: false, error: "Refresh token is invalid or expired." });
     }
     if (respondToScheduledDeletion(res, user.deletionScheduledAt)) {
+      console.warn("[auth.refresh] rejected: account_deletion_pending_or_expired");
       return;
     }
     if ((existingSession.authVersion ?? 0) !== (user.authVersion ?? 0)) {
+      console.warn("[auth.refresh] rejected: auth_version_mismatch");
       return res.status(401).json({ ok: false, error: "Refresh token is invalid or expired." });
     }
 
@@ -1075,6 +1080,7 @@ router.post("/refresh", refreshRateLimiter, async (req: Request, res: Response) 
 
     const accessToken = createAccessToken(String(user._id), String(rewrittenSession._id));
 
+    console.info("[auth.refresh] succeeded: session rotated");
     return res.json({
       ok: true,
       accessToken,
@@ -1082,6 +1088,8 @@ router.post("/refresh", refreshRateLimiter, async (req: Request, res: Response) 
       user: sanitizeUser(user),
     });
   } catch (error) {
+    const errorType = error instanceof Error ? error.name : "UnknownError";
+    console.error(`[auth.refresh] failed: ${errorType}`);
     const message = error instanceof Error ? error.message : "Unable to refresh session.";
     return res.status(500).json({ ok: false, error: message });
   }

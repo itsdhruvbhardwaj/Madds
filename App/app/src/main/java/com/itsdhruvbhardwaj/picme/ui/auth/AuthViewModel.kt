@@ -153,6 +153,13 @@ class AuthViewModel(
                 _authState.value = AuthState.SessionCheckNetworkError
             }
         } else {
+            val safeReason = when (error) {
+                "session_expired" -> "session_expired"
+                "No refresh token available" -> "missing_refresh_token"
+                null -> "unknown"
+                else -> "non_network_session_failure"
+            }
+            Log.w("MaddsAuth", "session restoration ended unauthenticated; reason=$safeReason")
             _authState.value = AuthState.Unauthenticated
         }
     }

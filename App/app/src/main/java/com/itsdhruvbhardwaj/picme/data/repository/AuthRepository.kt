@@ -1,5 +1,6 @@
 package com.itsdhruvbhardwaj.picme.data.repository
 
+import android.util.Log
 import com.google.gson.Gson
 import com.itsdhruvbhardwaj.picme.data.local.AuthTokenStorage
 import com.itsdhruvbhardwaj.picme.data.model.*
@@ -19,6 +20,10 @@ class AuthRepository(
     private val apiService: AuthApiService,
     private val tokenStorage: AuthTokenStorage
 ) {
+    private companion object {
+        const val AUTH_LOG_TAG = "MaddsAuth"
+    }
+
     private val refreshMutex = Mutex()
 
     suspend fun login(email: String, password: String): Result<User> {
@@ -197,11 +202,15 @@ class AuthRepository(
      */
     suspend fun refreshSession(): Result<Unit> {
         val initialRefreshToken = tokenStorage.getRefreshToken()
-            ?: return Result.failure(Exception("No refresh token available"))
+            ?: run {
+                Log.w(AUTH_LOG_TAG, "refresh not attempted: no refresh token is stored")
+                return Result.failure(Exception("No refresh token available"))
+            }
 
         return refreshMutex.withLock {
             val currentRefreshToken = tokenStorage.getRefreshToken()
             if (currentRefreshToken != initialRefreshToken && !currentRefreshToken.isNullOrEmpty()) {
+                Log.i(AUTH_LOG_TAG, "refresh skipped: another request already rotated the session")
                 return Result.success(Unit)
             }
 
@@ -214,24 +223,31 @@ class AuthRepository(
                         val newRefreshToken = body.refreshToken
                         if (newAccessToken != null && newRefreshToken != null) {
                             tokenStorage.saveTokens(newAccessToken, newRefreshToken)
+                            Log.i(AUTH_LOG_TAG, "refresh succeeded; rotated tokens stored")
                             Result.success(Unit)
                         } else {
+                            Log.w(AUTH_LOG_TAG, "refresh failed: successful response did not contain both tokens")
                             Result.failure(Exception("refresh_failed"))
                         }
                     } else {
                         val code = response.code()
                         if (code == 401 || code == 403) {
+                            Log.w(AUTH_LOG_TAG, "refresh rejected with HTTP $code; clearing local session")
                             tokenStorage.clearTokens()
                             Result.failure(Exception("session_expired"))
                         } else {
+                            Log.w(AUTH_LOG_TAG, "refresh failed with HTTP $code; local session retained")
                             Result.failure(Exception("refresh_failed"))
                         }
                     }
                 } catch (e: SocketTimeoutException) {
+                    Log.w(AUTH_LOG_TAG, "refresh failed: network timeout")
                     Result.failure(Exception("timeout"))
                 } catch (e: IOException) {
+                    Log.w(AUTH_LOG_TAG, "refresh failed: network I/O error")
                     Result.failure(Exception("network_failure"))
                 } catch (e: Exception) {
+                    Log.w(AUTH_LOG_TAG, "refresh failed: unexpected ${e.javaClass.simpleName}")
                     Result.failure(e)
                 }
             }
