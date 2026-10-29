@@ -1,6 +1,7 @@
 package com.itsdhruvbhardwaj.picme.data.remote
 
 import com.itsdhruvbhardwaj.picme.data.model.FavoritesResponse
+import com.itsdhruvbhardwaj.picme.data.model.CollectionsResponse
 import com.itsdhruvbhardwaj.picme.data.model.GenerationResponse
 import com.itsdhruvbhardwaj.picme.data.model.HomeConfigResponse
 import com.itsdhruvbhardwaj.picme.data.model.StyleResponse
@@ -22,6 +23,9 @@ interface StyleApiService {
 
     @GET("api/home/config")
     suspend fun getHomeConfig(): Response<HomeConfigResponse>
+
+    @GET("api/collections")
+    suspend fun getCollections(): Response<CollectionsResponse>
 
     @Multipart
     @POST("api/generate")

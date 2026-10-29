@@ -2,6 +2,7 @@ package com.itsdhruvbhardwaj.picme.data.repository
 
 import com.itsdhruvbhardwaj.picme.data.local.AuthTokenStorage
 import com.itsdhruvbhardwaj.picme.data.model.HomeConfigResponse
+import com.itsdhruvbhardwaj.picme.data.model.StyleCollection
 import com.itsdhruvbhardwaj.picme.data.model.Style
 import com.itsdhruvbhardwaj.picme.data.model.StyleResponse
 import com.itsdhruvbhardwaj.picme.data.remote.StyleApiService
@@ -123,6 +124,53 @@ class StyleRepository(
                 Result.failure(e)
             }
         }
+    }
+
+    suspend fun getCollections(): Result<List<StyleCollection>> = withContext(Dispatchers.IO) {
+        retryIO {
+            try {
+                val response = apiService.getCollections()
+                if (response.isSuccessful && response.body() != null) {
+                    Result.success(response.body()!!.collections)
+                } else {
+                    // Older Render deployments may not yet expose /api/collections.
+                    // Build a usable list from the public styles API while that deploy catches up.
+                    val fallback = getCollectionsFromStyles()
+                    if (fallback.isSuccess) fallback
+                    else Result.failure(Exception("failed_to_load_collections_http_${response.code()}"))
+                }
+            } catch (e: SocketTimeoutException) {
+                Result.failure(Exception("timeout"))
+            } catch (e: IOException) {
+                Result.failure(Exception("network_error"))
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    private suspend fun getCollectionsFromStyles(): Result<List<StyleCollection>> {
+        val names = linkedSetOf<String>()
+        var page = 1
+        var hasMore = true
+
+        while (hasMore && page <= 100) {
+            val result = getStyles(page = page, limit = 50)
+            if (result.isFailure) return Result.failure(result.exceptionOrNull()!!)
+            val response = result.getOrThrow()
+            response.styles.flatMapTo(names) { it.collections }
+            hasMore = response.pagination.hasNextPage
+            page++
+        }
+
+        return Result.success(
+            names.sortedBy { it.lowercase() }.map { name ->
+                StyleCollection(
+                    id = name.lowercase().trim().replace(Regex("[^a-z0-9]+"), "-").trim('-'),
+                    name = name
+                )
+            }
+        )
     }
 
     private suspend fun <T> retryIO(

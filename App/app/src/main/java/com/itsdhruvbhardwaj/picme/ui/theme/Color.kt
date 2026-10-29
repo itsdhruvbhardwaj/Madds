@@ -3,6 +3,7 @@ package com.itsdhruvbhardwaj.picme.ui.theme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 
 /** Madds palette tokens. Keep palette changes here to make future theme variants straightforward. */
 object MaddsPalette {
@@ -12,9 +13,18 @@ object MaddsPalette {
     val darkOutline = Color(0xFF363738)
     val darkText = Color(0xFFF4F2EE)
     val darkMutedText = Color(0xFFAAA9A5)
-    val gold = Color(0xFFE4B85E)
-    val goldSoft = Color(0xFFF0C96F)
+    // Warm champagne gold; the shared brush adds a polished highlight to key accents.
+    val gold = Color(0xFFD1AD68)
+    val goldSoft = Color(0xFFE8CE91)
     val goldOn = Color(0xFF201A0E)
+    val goldShine = Brush.linearGradient(
+        colors = listOf(
+            Color(0xFFFFE8B0),
+            Color(0xFFD2AB5F),
+            Color(0xFFFFF1C9),
+            Color(0xFFB88C43)
+        )
+    )
     val error = Color(0xFFFF6B6B)
     val success = Color(0xFF62C89A)
     val warning = Color(0xFFE4B85E)

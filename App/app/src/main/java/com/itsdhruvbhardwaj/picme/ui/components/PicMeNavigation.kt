@@ -36,7 +36,7 @@ fun PicMeBottomNavigationBar(
     val items = listOf(
         BottomNavItem("Home", Screen.Home.route, Icons.Default.Home),
         BottomNavItem("Search", Screen.Search.route, Icons.Default.Search),
-        BottomNavItem("Create", Screen.Create.route, Icons.Default.AddCircle),
+        BottomNavItem("Collections", Screen.Collections.route, Icons.Default.Collections),
         BottomNavItem("Favorites", Screen.Favorites.route, Icons.Default.Favorite),
         BottomNavItem("Profile", Screen.Profile.route, Icons.Default.Person)
     )
@@ -51,7 +51,7 @@ fun PicMeBottomNavigationBar(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(68.dp)
+                .height(54.dp)
                 .shadow(
                     elevation = 16.dp,
                     shape = CircleShape,
@@ -75,11 +75,7 @@ fun PicMeBottomNavigationBar(
                     Box(
                         modifier = Modifier
                             .size(54.dp, 50.dp)
-                            .clip(RoundedCornerShape(25.dp))
-                            .background(
-                                if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                                RoundedCornerShape(25.dp)
-                            )
+                            .clip(RoundedCornerShape(23.dp))
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = ripple(),
@@ -90,10 +86,24 @@ fun PicMeBottomNavigationBar(
                         Icon(
                             imageVector = item.icon,
                             contentDescription = item.name,
-                            modifier = Modifier.size(28.dp),
-                            tint = if (selected) MaterialTheme.colorScheme.onPrimary
+                            modifier = Modifier.align(Alignment.Center).size(28.dp),
+                            tint = if (selected) com.itsdhruvbhardwaj.picme.ui.theme.MaddsPalette.gold
                             else MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (selected) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 3.dp)
+                                    .width(18.dp)
+                                    .height(2.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        brush = com.itsdhruvbhardwaj.picme.ui.theme.MaddsPalette.goldShine,
+                                        shape = CircleShape
+                                    )
+                            )
+                        }
                     }
                 }
             }

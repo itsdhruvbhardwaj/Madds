@@ -139,6 +139,10 @@ app.get("/api/home/config", async (_req: Request, res: Response) => {
   res.json({ sections: await getHomeSectionCatalog() });
 });
 
+app.get("/api/collections", async (_req: Request, res: Response) => {
+  res.json({ collections: await listCatalogCollections() });
+});
+
 app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   // Parse query parameters with defaults and safety limits
   const page = Math.max(1, parseInt(req.query.page as string) || 1);

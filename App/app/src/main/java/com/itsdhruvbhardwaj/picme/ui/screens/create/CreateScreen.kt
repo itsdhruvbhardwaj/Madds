@@ -105,7 +105,7 @@ fun CreateScreen(
                 Text(
                     text = "Describe your vision",
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
-                    color = Color(0xFF1E293B)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -151,7 +151,7 @@ fun CreateScreen(
                 Text(
                     text = "Reference Photos (Optional)",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = Color(0xFF1E293B)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = "Add up to 2 photos to guide the AI",

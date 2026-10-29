@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -38,22 +39,32 @@ fun PicMeMainHeader(
     onProfileClick: () -> Unit,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
+    val dividerColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.72f)
     Surface(
-        color = MaterialTheme.colorScheme.background,
-        shadowElevation = 0.dp,
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 4.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .height(64.dp)
+                .height(68.dp)
                 .padding(horizontal = 16.dp)
+                .drawBehind {
+                    val lineWidth = 1.dp.toPx()
+                    drawLine(
+                        color = dividerColor,
+                        start = androidx.compose.ui.geometry.Offset(0f, size.height - lineWidth / 2),
+                        end = androidx.compose.ui.geometry.Offset(size.width, size.height - lineWidth / 2),
+                        strokeWidth = lineWidth
+                    )
+                }
         ) {
             // Left: Branded Logo
             PicMeLogo(
-                fontSize = 24,
-                tint = Color.White,
+                fontSize = 36,
+                tint = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.align(Alignment.CenterStart)
             )
 
@@ -64,9 +75,10 @@ fun PicMeMainHeader(
                     .align(Alignment.Center)
                     .padding(horizontal = 88.dp),
                 style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    letterSpacing = 0.1.sp
+                    fontWeight = FontWeight.Bold,
+                    brush = com.itsdhruvbhardwaj.picme.ui.theme.MaddsPalette.goldShine,
+                    letterSpacing = 0.25.sp,
+                    fontSize = 17.sp
                 ),
                 textAlign = TextAlign.Center,
                 maxLines = 1,
@@ -107,7 +119,6 @@ fun PicMeMainHeader(
                         AsyncImage(
                             model = ImageRequest.Builder(LocalContext.current)
                                 .data(profileImageSource)
-                                .crossfade(true)
                                 .build(),
                             contentDescription = "Profile",
                             modifier = Modifier.fillMaxSize().clip(CircleShape),

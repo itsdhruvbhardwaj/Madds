@@ -664,6 +664,7 @@
     if (style) for (const input of form.querySelectorAll('input[name="collections"]')) input.checked = style.collections.includes(input.value);
     state.styleEditorBaseline = styleEditorSnapshot();
     byId("copy-prompt-status").textContent = "";
+    byId("copy-style-prompt").textContent = "Copy prompt";
     byId("style-dialog").showModal();
   }
 
@@ -737,6 +738,7 @@
   byId("copy-style-prompt").addEventListener("click", async () => {
     const prompt = byId("style-prompt").value;
     const status = byId("copy-prompt-status");
+    const button = byId("copy-style-prompt");
     if (!prompt) {
       status.textContent = "There is no prompt to copy yet.";
       return;
@@ -754,7 +756,12 @@
         return;
       }
     }
+    window.clearTimeout(button.copyFeedbackTimer);
+    button.textContent = "Copied";
     status.textContent = "Prompt copied.";
+    button.copyFeedbackTimer = window.setTimeout(() => {
+      button.textContent = "Copy prompt";
+    }, 1800);
   });
   document.querySelectorAll(".side-link").forEach((button) => button.addEventListener("click", () => {
     state.activePanel = button.dataset.panel;

@@ -23,6 +23,12 @@ data class Style(
     
     @SerializedName("previewImages", alternate = ["preview_images", "previews", "sample_images", "images", "preview_image_urls"])
     val previewImages: List<String>? = emptyList(),
+
+    @SerializedName("exampleBeforeUrl", alternate = ["example_before_url"])
+    val exampleBeforeUrl: String? = null,
+
+    @SerializedName("exampleAfterUrl", alternate = ["example_after_url"])
+    val exampleAfterUrl: String? = null,
     
     @SerializedName("imageCount", alternate = ["image_count", "required_images"])
     val imageCount: Int = 1,

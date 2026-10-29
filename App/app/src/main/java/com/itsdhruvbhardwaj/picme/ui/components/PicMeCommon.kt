@@ -1,6 +1,7 @@
 package com.itsdhruvbhardwaj.picme.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,7 +11,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -19,10 +19,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.itsdhruvbhardwaj.picme.R
 
 @Composable
 fun PicMeSearchBar(
@@ -139,8 +142,8 @@ fun SectionHeader(
         Text(
             text = "See All",
             style = MaterialTheme.typography.labelLarge.copy(
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.ExtraBold
+                brush = com.itsdhruvbhardwaj.picme.ui.theme.MaddsPalette.goldShine,
+                fontWeight = FontWeight.Bold
             ),
             modifier = Modifier.clickable(onClick = onSeeAllClick)
         )
@@ -162,11 +165,11 @@ fun CreditBadge(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.Default.Star,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(16.dp)
+            Image(
+                painter = painterResource(R.drawable.glossygoldcoin),
+                contentDescription = "Credits",
+                modifier = Modifier.size(16.dp),
+                contentScale = ContentScale.Fit
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(

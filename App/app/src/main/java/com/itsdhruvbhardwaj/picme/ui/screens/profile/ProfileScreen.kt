@@ -80,12 +80,7 @@ fun ProfileScreen(
                 PicMeMainHeader(
                     title = "Profile",
                     authState = authState,
-                    onProfileClick = onProfileClick,
-                    actions = {
-                        IconButton(onClick = onSettingsClick) {
-                            Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.White)
-                        }
-                    }
+                    onProfileClick = onProfileClick
                 )
             }
         ) { innerPadding ->
@@ -159,11 +154,11 @@ fun ProfileScreen(
                     ) {
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Star,
-                                    contentDescription = null,
-                                    tint = Color(0xFFF59E0B),
-                                    modifier = Modifier.size(24.dp)
+                                Image(
+                                    painter = painterResource(R.drawable.glossygoldcoin),
+                                    contentDescription = "Credits",
+                                    modifier = Modifier.size(24.dp),
+                                    contentScale = ContentScale.Fit
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
@@ -243,41 +238,61 @@ fun ProfileScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Red/Pink Glass Logout Row
+                // Match the destructive action treatment used for Delete Account in Settings.
+                val logoutColor = Color(0xFFDC2626)
+                val logoutShape = RoundedCornerShape(24.dp)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .shadow(
-                            elevation = 2.dp,
-                            shape = RoundedCornerShape(24.dp),
+                            elevation = 4.dp,
+                            shape = logoutShape,
                             ambientColor = Color.Black.copy(alpha = 0.05f),
                             spotColor = Color.Black.copy(alpha = 0.1f)
                         )
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                        .background(Color(0xFFFFEBEE).copy(alpha = 0.5f), RoundedCornerShape(24.dp))
-                        .border(BorderStroke(1.dp, Color(0xFFFFCDD2).copy(alpha = 0.6f)), RoundedCornerShape(24.dp))
-                        .clip(RoundedCornerShape(24.dp))
+                        .background(MaterialTheme.colorScheme.surface, logoutShape)
+                        .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline), logoutShape)
+                        .clip(logoutShape)
                         .clickable(onClick = { showLogoutConfirm = true })
                 ) {
                     Row(
                         modifier = Modifier
-                            .padding(vertical = 16.dp, horizontal = 24.dp)
+                            .padding(horizontal = 16.dp, vertical = 16.dp)
                             .fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Logout,
-                            contentDescription = null,
-                            tint = Color(0xFFD32F2F),
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text(
-                            text = "Log Out",
-                            style = MaterialTheme.typography.bodyLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFD32F2F)
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(logoutColor.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Logout,
+                                contentDescription = null,
+                                tint = logoutColor,
+                                modifier = Modifier.size(21.dp)
                             )
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Log Out",
+                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                                color = logoutColor
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Sign out of your madds account",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -394,22 +409,22 @@ fun MenuItem(
             Icon(
                 icon,
                 contentDescription = null,
-                tint = Color(0xFF1F2937),
+                tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(24.dp)
             )
             Spacer(modifier = Modifier.width(16.dp))
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFF1F2937)
+                    fontWeight = FontWeight.Medium
                 ),
+                color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f)
             )
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = Color(0xFF9CA3AF)
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

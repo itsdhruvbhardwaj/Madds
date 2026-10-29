@@ -78,7 +78,7 @@ fun GenerationScreen(
                     title = {},
                     navigationIcon = {
                         IconButton(onClick = onCancelClick) {
-                            Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color(0xFF1F2937))
+                            Icon(Icons.Default.Close, contentDescription = "Cancel", tint = MaterialTheme.colorScheme.onSurface)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -100,7 +100,7 @@ fun GenerationScreen(
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 28.sp,
-                        color = Color(0xFF1E293B)
+                        color = MaterialTheme.colorScheme.onSurface
                     ),
                     textAlign = TextAlign.Center
                 )
@@ -152,7 +152,7 @@ fun GenerationScreen(
                         text = targetMessage,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF374151),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 18.sp
                         ),
                         textAlign = TextAlign.Center

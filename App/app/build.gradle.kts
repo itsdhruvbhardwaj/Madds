@@ -60,7 +60,6 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
-    implementation(libs.androidx.google.fonts)
     
     // Navigation
     implementation(libs.androidx.navigation.compose)
@@ -74,6 +73,7 @@ dependencies {
 
     // Coil
     implementation(libs.coil.compose)
+    implementation(libs.coil.svg)
 
     // Google Mobile Ads
     implementation(libs.google.play.services.ads)

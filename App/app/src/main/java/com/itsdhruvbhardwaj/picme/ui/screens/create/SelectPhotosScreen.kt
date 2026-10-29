@@ -117,14 +117,14 @@ fun SelectPhotosScreen(
                         style = MaterialTheme.typography.headlineLarge.copy(
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 28.sp,
-                            color = Color(0xFF1E293B)
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     )
 
                     Text(
                         text = "Choose $requiredCount clear photo${if (requiredCount > 1) "s" else ""} for the best results",
                         style = MaterialTheme.typography.bodyLarge,
-                        color = Color(0xFF374151),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp, bottom = 24.dp)
                     )
 

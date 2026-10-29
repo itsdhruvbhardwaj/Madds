@@ -7,6 +7,7 @@ sealed class Screen(val route: String) {
     data object Signup : Screen("signup")
     data object Home : Screen("home")
     data object Search : Screen("search")
+    data object Collections : Screen("collections")
     data object Favorites : Screen("favorites")
     data object Create : Screen("create")
     data object History : Screen("history")
@@ -35,7 +36,7 @@ sealed class Screen(val route: String) {
     
     data object StylesGrid : Screen("styles_grid?collection={collection}") {
         fun createRoute(collection: String? = null): String =
-            if (collection != null) "styles_grid?collection=$collection" else "styles_grid"
+            if (collection != null) "styles_grid?collection=${android.net.Uri.encode(collection)}" else "styles_grid"
     }
 
     data object VerifyEmail : Screen("verify_email?email={email}&token={token}") {

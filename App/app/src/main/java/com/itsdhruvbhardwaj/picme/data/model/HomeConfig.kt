@@ -25,3 +25,12 @@ data class HomeSection(
 data class HomeConfigResponse(
     val sections: List<HomeSection> = emptyList()
 )
+
+data class StyleCollection(
+    val id: String = "",
+    val name: String = ""
+)
+
+data class CollectionsResponse(
+    val collections: List<StyleCollection> = emptyList()
+)

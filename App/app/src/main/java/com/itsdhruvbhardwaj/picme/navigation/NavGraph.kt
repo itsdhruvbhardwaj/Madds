@@ -88,10 +88,11 @@ fun NavGraph(
     val bottomBarScreens = listOf(
         Screen.Home.route,
         Screen.Favorites.route,
-        Screen.Create.route,
+        Screen.Collections.route,
         Screen.Search.route,
         Screen.Profile.route
     )
+    fun isBottomBarRoute(route: String?) = route != null && route in bottomBarScreens
 
     val isBottomBarVisible = currentRoute in bottomBarScreens
 
@@ -106,7 +107,27 @@ fun NavGraph(
             NavHost(
                 navController = navController,
                 startDestination = Screen.Splash.route,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                enterTransition = {
+                    if (isBottomBarRoute(targetState.destination.route)) EnterTransition.None else fadeIn()
+                },
+                exitTransition = {
+                    if (isBottomBarRoute(initialState.destination.route) && isBottomBarRoute(targetState.destination.route)) {
+                        ExitTransition.None
+                    } else {
+                        fadeOut()
+                    }
+                },
+                popEnterTransition = {
+                    if (isBottomBarRoute(targetState.destination.route)) EnterTransition.None else fadeIn()
+                },
+                popExitTransition = {
+                    if (isBottomBarRoute(initialState.destination.route) && isBottomBarRoute(targetState.destination.route)) {
+                        ExitTransition.None
+                    } else {
+                        fadeOut()
+                    }
+                }
             ) {
                 composable(Screen.Splash.route) {
                     SplashScreen(onSplashFinished = {
@@ -211,6 +232,23 @@ fun NavGraph(
                         authViewModel = authViewModel,
                         viewModel = exploreViewModel,
                         onStyleClick = { id -> navController.navigate(Screen.StyleDetails.createRoute(id)) },
+                        onProfileClick = {
+                            navController.navigate(Screen.Profile.route) {
+                                popUpTo(Screen.Home.route) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    )
+                }
+
+                composable(Screen.Collections.route) {
+                    CollectionsScreen(
+                        authViewModel = authViewModel,
+                        styleRepository = styleRepository,
+                        onCollectionClick = { collection ->
+                            navController.navigate(Screen.StylesGrid.createRoute(collection))
+                        },
                         onProfileClick = {
                             navController.navigate(Screen.Profile.route) {
                                 popUpTo(Screen.Home.route) { saveState = true }
