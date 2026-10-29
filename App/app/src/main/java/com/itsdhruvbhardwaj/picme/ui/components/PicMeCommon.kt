@@ -23,6 +23,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.itsdhruvbhardwaj.picme.R
@@ -31,13 +32,14 @@ import com.itsdhruvbhardwaj.picme.R
 fun PicMeSearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    height: Dp = 40.dp
 ) {
     // Optimized compact Search Bar with premium glass effect
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(40.dp) // Compact height
+            .height(height)
             .shadow(
                 elevation = 4.dp,
                 shape = CircleShape,

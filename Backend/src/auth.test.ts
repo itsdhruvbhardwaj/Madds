@@ -1386,6 +1386,86 @@ describe("session lifecycle and refresh security", () => {
     );
   });
 
+  it("cancels a pending deletion after verifying the Google identity and creates a fresh session", async () => {
+    const googleId = "google-cancel-subject";
+    const email = "google-cancel@example.com";
+    googleAuthMocks.verifyIdToken.mockResolvedValue({
+      getPayload: () => ({
+        sub: googleId,
+        email,
+        email_verified: true,
+        iss: "https://accounts.google.com",
+        name: "Google Cancel User",
+      }),
+    });
+    const user = {
+      _id: "user-google-cancel",
+      name: "Google Cancel User",
+      email,
+      emailVerified: false,
+      isActive: true,
+      authVersion: 4,
+      deletionScheduledAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+      deletionCleanupStartedAt: null,
+    };
+    userModel.findOne.mockResolvedValue(user);
+    userModel.updateOne.mockResolvedValue({ matchedCount: 1, modifiedCount: 1 });
+    sessionModel.updateMany.mockResolvedValue({ modifiedCount: 1 });
+    sessionModel.create.mockResolvedValue({ _id: "session-google-cancel" });
+
+    const response = await request(app)
+      .post("/api/auth/login/cancel-deletion")
+      .send({ idToken: "verified-google-id-token" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.ok).toBe(true);
+    expect(response.body.user.email).toBe(email);
+    expect(response.body.accessToken).toEqual(expect.any(String));
+    expect(userModel.updateOne).toHaveBeenCalledWith(
+      expect.objectContaining({
+        _id: "user-google-cancel",
+        deletionScheduledAt: { $gt: expect.any(Date) },
+        deletionCleanupStartedAt: null,
+        $or: [
+          { googleId: { $exists: false } },
+          { googleId: null },
+          { googleId },
+        ],
+      }),
+      {
+        $set: { deletionScheduledAt: null, googleId, emailVerified: true },
+        $inc: { authVersion: 1 },
+      },
+    );
+    expect(sessionModel.updateMany).toHaveBeenCalledWith(
+      { userId: "user-google-cancel", revokedAt: null },
+      { $set: { revokedAt: expect.any(Date) } },
+    );
+    expect(sessionModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "user-google-cancel", authVersion: 5 }),
+    );
+  });
+
+  it("does not cancel a pending deletion for an unverified Google identity", async () => {
+    googleAuthMocks.verifyIdToken.mockResolvedValue({
+      getPayload: () => ({
+        sub: "unverified-google-subject",
+        email: "google-cancel@example.com",
+        email_verified: false,
+        iss: "https://accounts.google.com",
+      }),
+    });
+
+    const response = await request(app)
+      .post("/api/auth/login/cancel-deletion")
+      .send({ idToken: "unverified-google-id-token" });
+
+    expect(response.status).toBe(401);
+    expect(userModel.findOne).not.toHaveBeenCalled();
+    expect(userModel.updateOne).not.toHaveBeenCalled();
+    expect(sessionModel.create).not.toHaveBeenCalled();
+  });
+
   it("does not cancel deletion or issue tokens for invalid credentials", async () => {
     userModel.findOne.mockResolvedValue({
       _id: "user-cancel-invalid",

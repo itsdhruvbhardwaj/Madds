@@ -65,6 +65,7 @@ fun NavGraph(
 
     val authState by authViewModel.authState.collectAsState()
     val passwordSetupState by authViewModel.passwordSetupState.collectAsState()
+    val isDeletionCancellationLoading by authViewModel.isDeletionCancellationLoading.collectAsState()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
@@ -172,10 +173,11 @@ fun NavGraph(
                         },
                         onCancelDeletion = { authViewModel.cancelDeletion() },
                         onKeepDeletion = { authViewModel.resetAuthState() },
-                        onDismissDeletionDialog = { authViewModel.resetAuthState() }
+                        onDismissDeletionDialog = { authViewModel.resetAuthState() },
+                        isDeletionCancellationLoading = isDeletionCancellationLoading
                     )
-                    LaunchedEffect(authState) {
-                        if (authState is AuthState.Authenticated) {
+                    LaunchedEffect(authState, currentRoute) {
+                        if (currentRoute == Screen.Login.route && authState is AuthState.Authenticated) {
                             navController.navigate(Screen.Home.route) {
                                 popUpTo(Screen.Login.route) { inclusive = true }
                             }
@@ -197,7 +199,8 @@ fun NavGraph(
                             )
                         }
                     )
-                    LaunchedEffect(authState) {
+                    LaunchedEffect(authState, currentRoute) {
+                        if (currentRoute != Screen.Signup.route) return@LaunchedEffect
                         val state = authState
                         if (state is AuthState.Authenticated) {
                             navController.navigate(Screen.Home.route) {
@@ -205,7 +208,7 @@ fun NavGraph(
                             }
                         } else if (state is AuthState.VerifyEmailRequired) {
                             navController.navigate(Screen.VerifyEmail.createRoute(state.email)) {
-                                popUpTo(Screen.Signup.route) { inclusive = true }
+                                popUpTo(Screen.Signup.route)
                             }
                         }
                     }
@@ -493,10 +496,13 @@ fun NavGraph(
                         authState = authState,
                         onVerifyClick = { authViewModel.verifyEmail(it) },
                         onResendClick = { email?.let { authViewModel.resendVerification(it) } },
-                        onBackClick = { navController.popBackStack() }
+                        onBackClick = {
+                            authViewModel.resetAuthState()
+                            navController.popBackStack()
+                        }
                     )
-                    LaunchedEffect(authState) {
-                        if (authState is AuthState.Authenticated) {
+                    LaunchedEffect(authState, currentRoute) {
+                        if (currentRoute == Screen.VerifyEmail.route && authState is AuthState.Authenticated) {
                             navController.navigate(Screen.Home.route) {
                                 popUpTo(Screen.Splash.route) { inclusive = true }
                             }

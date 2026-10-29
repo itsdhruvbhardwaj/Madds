@@ -44,6 +44,7 @@ data class GooglePasswordSetupRequest(
 )
 
 data class CancelDeletionRequest(
-    val email: String,
-    val password: String
+    val email: String? = null,
+    val password: String? = null,
+    val idToken: String? = null
 )

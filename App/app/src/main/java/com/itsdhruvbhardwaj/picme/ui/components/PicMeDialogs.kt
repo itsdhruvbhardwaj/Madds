@@ -17,11 +17,12 @@ import androidx.compose.ui.window.Dialog
 @Composable
 fun PendingDeletionDialog(
     scheduledDate: String?,
+    isLoading: Boolean,
     onCancelDeletion: () -> Unit,
     onKeepDeletion: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = { if (!isLoading) onDismiss() }) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -59,14 +60,23 @@ fun PendingDeletionDialog(
                 ) {
                     Button(
                         onClick = onCancelDeletion,
+                        enabled = !isLoading,
                         modifier = Modifier.fillMaxWidth().height(48.dp),
                         shape = CircleShape,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFF10B981) // Green success color
                         )
                     ) {
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                        }
                         Text(
-                            text = "Cancel deletion & log in",
+                            text = if (isLoading) "Restoring account…" else "Cancel deletion & log in",
                             style = MaterialTheme.typography.labelLarge.copy(
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold
@@ -76,6 +86,7 @@ fun PendingDeletionDialog(
                     
                     OutlinedButton(
                         onClick = onKeepDeletion,
+                        enabled = !isLoading,
                         modifier = Modifier.fillMaxWidth().height(48.dp),
                         shape = CircleShape,
                         border = BorderStroke(1.dp, Color(0xFFE5E7EB)),

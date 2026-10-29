@@ -6,32 +6,27 @@ import android.net.Uri
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -133,7 +128,7 @@ fun GenerationScreen(
                         PremiumProcessingOverlay()
 
                         // 3. Central pulsing AI centerpiece
-                        PremiumPulsingIcon()
+                        GenerationDots()
                     }
                 }
 
@@ -270,156 +265,50 @@ fun PhotoComposition(selectedPhotos: List<Uri>) {
 
 @Composable
 fun PremiumProcessingOverlay() {
-    val primaryAccent = MaterialTheme.colorScheme.primary
-    val secondaryAccent = MaterialTheme.colorScheme.secondary
-    val infiniteTransition = rememberInfiniteTransition(label = "premiumProcessing")
-
-    // Smooth Crystal Shimmer
-    val shimmerTranslate by infiniteTransition.animateFloat(
-        initialValue = -1000f,
-        targetValue = 2000f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2500, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "shimmer"
+    // Keep the selected photo readable while making the centered loading dots visible.
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.12f))
     )
-
-    // Neon Scanning Line
-    val scanLineY by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = LinearOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "laserScan"
-    )
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        // Transparent crystal shimmer overlay
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Primary.copy(alpha = 0.05f),
-                            Secondary.copy(alpha = 0.15f),
-                            Primary.copy(alpha = 0.05f),
-                            Color.Transparent
-                        ),
-                        start = Offset(shimmerTranslate, shimmerTranslate),
-                        end = Offset(shimmerTranslate + 600f, shimmerTranslate + 600f)
-                    )
-                )
-        )
-
-        // Animated Neon Laser Scan
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val y = size.height * scanLineY
-
-            // Outer glow of the laser
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.Transparent,
-                        primaryAccent.copy(alpha = 0.1f),
-                        primaryAccent.copy(alpha = 0.1f),
-                        Color.Transparent
-                    )
-                ),
-                topLeft = Offset(0f, y - 40.dp.toPx()),
-                size = androidx.compose.ui.geometry.Size(size.width, 80.dp.toPx())
-            )
-
-            // Sharp neon line
-            drawLine(
-                brush = Brush.horizontalGradient(
-                    colors = listOf(
-                        Color.Transparent,
-                        primaryAccent,
-                        secondaryAccent,
-                        primaryAccent,
-                        Color.Transparent
-                    )
-                ),
-                start = Offset(0f, y),
-                end = Offset(size.width, y),
-                strokeWidth = 2.5.dp.toPx()
-            )
-        }
-
-        // Vignette effect to draw focus to center
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.1f)),
-                        center = Offset.Unspecified,
-                        radius = 1000f
-                    )
-                )
-        )
-    }
 }
 
 @Composable
-fun PremiumPulsingIcon() {
-    val infiniteTransition = rememberInfiniteTransition(label = "premiumGlow")
-
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 0.95f,
-        targetValue = 1.1f,
+fun GenerationDots() {
+    val transition = rememberInfiniteTransition(label = "generationDots")
+    val progress by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
+            animation = tween(durationMillis = 1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
         ),
-        label = "scale"
+        label = "dotSequence"
     )
+    val gold = Color(0xFFE2C16F)
 
-    val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.2f,
-        targetValue = 0.5f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glowAlpha"
-    )
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        repeat(3) { index ->
+            // Move the pulse left-to-right, one gold dot at a time.
+            val phase = (progress * 3f - index + 3f) % 3f
+            val pulse = if (phase < 1f) 1f - kotlin.math.abs(phase - 0.5f) * 2f else 0f
+            val easedPulse = FastOutSlowInEasing.transform(pulse.coerceIn(0f, 1f))
 
-    Box(contentAlignment = Alignment.Center) {
-        // Outer glow halo
-        Box(
-            modifier = Modifier
-                .size(100.dp)
-                .graphicsLayer(scaleX = pulseScale * 1.2f, scaleY = pulseScale * 1.2f)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(Primary.copy(alpha = glowAlpha), Color.Transparent)
-                    )
-                )
-        )
-
-        Surface(
-            modifier = Modifier
-                .size(80.dp)
-                .graphicsLayer(scaleX = pulseScale, scaleY = pulseScale),
-            shape = RoundedCornerShape(26.dp),
-            color = Color.White,
-            tonalElevation = 8.dp,
-            shadowElevation = 16.dp
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Default.AutoAwesome,
-                    contentDescription = null,
-                    modifier = Modifier.size(40.dp),
-                    tint = Primary
-                )
-            }
+            Box(
+                modifier = Modifier
+                    .size(11.dp)
+                    .graphicsLayer {
+                        val scale = 0.68f + easedPulse * 0.32f
+                        scaleX = scale
+                        scaleY = scale
+                        alpha = 0.35f + easedPulse * 0.65f
+                        translationY = -5.dp.toPx() * easedPulse
+                    }
+                    .background(gold, CircleShape)
+            )
         }
     }
 }

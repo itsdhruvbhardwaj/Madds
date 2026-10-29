@@ -6,7 +6,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
@@ -14,6 +13,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -24,8 +24,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.font.FontWeight
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.itsdhruvbhardwaj.picme.R
@@ -43,15 +41,17 @@ fun ExploreScreen(
     onProfileClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val collections by viewModel.collections.collectAsState()
     val authState by authViewModel.authState.collectAsState()
-    var query by remember { mutableStateOf("") }
-    var selectedCollection by remember { mutableStateOf<String?>(null) }
+    var query by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
+    var previousQuery by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(query) {
         viewModel.search(query)
-        listState.scrollToItem(0)
+        if (previousQuery != null && previousQuery != query) {
+            listState.scrollToItem(0)
+        }
+        previousQuery = query
     }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -70,107 +70,90 @@ fun ExploreScreen(
                     .fillMaxSize()
                     .padding(top = innerPadding.calculateTopPadding())
             ) {
-                when (val state = uiState) {
-                    ExploreUiState.Loading -> {
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            ExploreControls(query, { query = it }, collections.map { it.name }, selectedCollection) {
-                                selectedCollection = it
-                                viewModel.selectCollection(it)
-                            }
-                            Box(
-                                modifier = Modifier.weight(1f).fillMaxWidth(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator()
-                            }
-                        }
-                    }
-
-                    is ExploreUiState.Error -> {
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            ExploreControls(query, { query = it }, collections.map { it.name }, selectedCollection) {
-                                selectedCollection = it
-                                viewModel.selectCollection(it)
-                            }
-                            Column(
-                                modifier = Modifier.weight(1f).fillMaxWidth(),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Text(state.message, color = MaterialTheme.colorScheme.error)
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Button(onClick = { viewModel.retry() }) { Text("Retry") }
-                            }
-                        }
-                    }
-
-                    is ExploreUiState.Success -> {
-                        val groups = state.styles.chunked(6)
-                        LaunchedEffect(listState, groups.size, state.hasMore, state.isLoadingMore, state.loadMoreError) {
-                            if (groups.isEmpty() || !state.hasMore || state.isLoadingMore || state.loadMoreError != null) {
-                                return@LaunchedEffect
-                            }
-                            snapshotFlow {
-                                listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-                            }.collect { lastVisibleIndex ->
-                                if (lastVisibleIndex >= groups.size - 1) {
-                                    viewModel.loadNextPage()
-                                }
-                            }
-                        }
-
-                        LazyColumn(
-                            state = listState,
-                            contentPadding = PaddingValues(bottom = 112.dp),
-                            verticalArrangement = Arrangement.spacedBy(2.dp),
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            item(key = "explore-controls") {
-                                ExploreControls(query, { query = it }, collections.map { it.name }, selectedCollection) {
-                                    selectedCollection = it
-                                    viewModel.selectCollection(it)
+                Column(modifier = Modifier.fillMaxSize()) {
+                    ExploreControls(query, { query = it })
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        when (val state = uiState) {
+                            ExploreUiState.Loading -> {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator()
                                 }
                             }
 
-                            itemsIndexed(
-                                items = groups,
-                                key = { index, group -> "explore-" + group.firstOrNull()?.id.orEmpty() + "-" + index }
-                            ) { index, group ->
-                                ExploreMosaicBlock(
-                                    styles = group,
-                                    blockIndex = index,
-                                    onStyleClick = onStyleClick
-                                )
+                            is ExploreUiState.Error -> {
+                                Column(
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(state.message, color = MaterialTheme.colorScheme.error)
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Button(onClick = { viewModel.retry() }) { Text("Retry") }
+                                }
                             }
 
-                            if (state.isLoadingMore) {
-                                item(key = "explore-loading") {
-                                    Box(
-                                        modifier = Modifier.fillMaxWidth().padding(20.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            is ExploreUiState.Success -> {
+                                val groups = state.styles.chunked(6)
+                                LaunchedEffect(listState, groups.size, state.hasMore, state.isLoadingMore, state.loadMoreError) {
+                                    if (groups.isEmpty() || !state.hasMore || state.isLoadingMore || state.loadMoreError != null) {
+                                        return@LaunchedEffect
+                                    }
+                                    snapshotFlow {
+                                        listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+                                    }.collect { lastVisibleIndex ->
+                                        if (lastVisibleIndex >= groups.size - 1) {
+                                            viewModel.loadNextPage()
+                                        }
                                     }
                                 }
-                            } else if (state.loadMoreError != null) {
-                                item(key = "explore-load-error") {
-                                    TextButton(
-                                        onClick = { viewModel.loadNextPage() },
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text("Couldn't load more styles. Tap to retry.")
-                                    }
-                                }
-                            }
 
-                            if (groups.isEmpty()) {
-                                item(key = "explore-empty") {
-                                    Text(
-                                        text = if (query.isBlank()) "No styles are available yet." else "No styles match your search.",
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                LazyColumn(
+                                    state = listState,
+                                    contentPadding = PaddingValues(bottom = 112.dp),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    itemsIndexed(
+                                        items = groups,
+                                        key = { index, group -> "explore-" + group.firstOrNull()?.id.orEmpty() + "-" + index }
+                                    ) { index, group ->
+                                        ExploreMosaicBlock(
+                                            styles = group,
+                                            blockIndex = index,
+                                            onStyleClick = onStyleClick
+                                        )
+                                    }
+
+                                    if (state.isLoadingMore) {
+                                        item(key = "explore-loading") {
+                                            Box(
+                                                modifier = Modifier.fillMaxWidth().padding(20.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                            }
+                                        }
+                                    } else if (state.loadMoreError != null) {
+                                        item(key = "explore-load-error") {
+                                            TextButton(
+                                                onClick = { viewModel.loadNextPage() },
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text("Couldn't load more styles. Tap to retry.")
+                                            }
+                                        }
+                                    }
+
+                                    if (groups.isEmpty()) {
+                                        item(key = "explore-empty") {
+                                            Text(
+                                                text = if (query.isBlank()) "No styles are available yet." else "No styles match your search.",
+                                                modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -189,54 +172,17 @@ private fun SearchField(
     PicMeSearchBar(
         query = query,
         onQueryChange = onQueryChange,
-        modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp)
+        modifier = Modifier.padding(horizontal = 4.dp, vertical = 10.dp),
+        height = 48.dp
     )
 }
 
 @Composable
 private fun ExploreControls(
     query: String,
-    onQueryChange: (String) -> Unit,
-    collections: List<String>,
-    selectedCollection: String?,
-    onCollectionSelected: (String?) -> Unit
+    onQueryChange: (String) -> Unit
 ) {
-    Column {
-        SearchField(query, onQueryChange)
-        LazyRow(
-            contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            item(key = "all") { ExploreCollectionChip("All", selectedCollection == null) { onCollectionSelected(null) } }
-            items(collections.size, key = { collections[it] }) { index ->
-                val name = collections[index]
-                ExploreCollectionChip(name, selectedCollection == name) { onCollectionSelected(name) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ExploreCollectionChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(50)
-    Surface(
-        onClick = onClick,
-        shape = shape,
-        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
-        )
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 13.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            maxLines = 1
-        )
-    }
+    SearchField(query, onQueryChange)
 }
 
 @Composable

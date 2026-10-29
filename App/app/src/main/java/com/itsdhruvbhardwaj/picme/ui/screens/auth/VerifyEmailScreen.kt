@@ -2,6 +2,7 @@ package com.itsdhruvbhardwaj.picme.ui.screens.auth
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MailOutline
@@ -29,6 +30,8 @@ fun VerifyEmailScreen(
     onResendClick: () -> Unit,
     onBackClick: () -> Unit
 ) {
+    BackHandler(onBack = onBackClick)
+
     val isLoading = authState is AuthState.Authenticating
     val errorMessage = (authState as? AuthState.Error)?.message
     
@@ -107,6 +110,20 @@ fun VerifyEmailScreen(
                     .padding(top = 24.dp),
                 textAlign = TextAlign.Center
             )
+
+            if (email != null) {
+                Text(
+                    text = "Wrong email? Go back and correct it.",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        color = Primary,
+                        fontWeight = FontWeight.SemiBold
+                    ),
+                    modifier = Modifier
+                        .padding(top = 20.dp)
+                        .clickable(enabled = !isLoading, onClick = onBackClick),
+                    textAlign = TextAlign.Center
+                )
+            }
 
             if (isLoading) {
                 Spacer(modifier = Modifier.height(48.dp))

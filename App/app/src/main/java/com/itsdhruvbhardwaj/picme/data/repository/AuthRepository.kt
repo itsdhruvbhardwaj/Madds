@@ -172,6 +172,25 @@ class AuthRepository(
         )
     }
 
+    suspend fun cancelDeletionWithGoogle(idToken: String): Result<User> {
+        return safeApiCall(
+            call = { apiService.cancelDeletion(CancelDeletionRequest(idToken = idToken)) },
+            onSuccess = { response ->
+                val user = response.user
+                val accessToken = response.accessToken
+                val refreshToken = response.refreshToken
+
+                if (user != null && accessToken != null && refreshToken != null) {
+                    tokenStorage.saveTokens(accessToken, refreshToken)
+                    tokenStorage.saveUser(user)
+                    Result.success(user)
+                } else {
+                    Result.failure(Exception("server_failure"))
+                }
+            }
+        )
+    }
+
     /**
      * Synchronized refresh operation to prevent concurrent refresh-token rotation conflicts.
      * Uses retry logic to handle Render cold starts.
@@ -357,6 +376,8 @@ class AuthRepository(
                 
                 val mappedMessage = when {
                     serverCode == "ACCOUNT_DELETION_PENDING" -> "deletion_pending|${errorResponse?.deletionScheduledAt ?: ""}"
+                    serverCode == "GOOGLE_ACCOUNT_MISMATCH" -> "google_account_mismatch"
+                    serverCode == "GOOGLE_AUTH_FAILED" || serverMessage.contains("Google authentication failed", ignoreCase = true) -> "google_authentication_failed"
                     errorCode == 409 || serverMessage.contains("already exists", ignoreCase = true) || serverMessage.contains("already taken", ignoreCase = true) -> "email_already_exists"
                     serverMessage.contains("verify your email", ignoreCase = true) -> "unverified_account"
                     serverMessage.contains("invalid", ignoreCase = true) && serverMessage.contains("token", ignoreCase = true) -> "invalid_token"

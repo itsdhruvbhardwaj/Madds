@@ -606,21 +606,54 @@ router.post("/login", loginRateLimiter, async (req: Request, res: Response) => {
 router.post("/login/cancel-deletion", loginRateLimiter, async (req: Request, res: Response) => {
   const email = getRequestBodyValue(req, "email");
   const password = getRequestBodyValue(req, "password");
+  const idToken = getRequestBodyValue(req, "idToken");
 
-  if (!isValidEmail(email) || !password) {
+  if (!idToken && (!isValidEmail(email) || !password)) {
     return res.status(401).json({ ok: false, error: "Invalid email or password." });
   }
 
   try {
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user || user.isActive === false || !user.passwordHash) {
+    let googleIdentity: Awaited<ReturnType<typeof verifyGoogleIdentity>> = null;
+    if (idToken) {
+      try {
+        googleIdentity = await verifyGoogleIdentity(idToken);
+      } catch (_error) {
+        googleIdentity = null;
+      }
+      if (!googleIdentity) {
+        return res.status(401).json({
+          ok: false,
+          code: "GOOGLE_AUTH_FAILED",
+          error: "Google authentication failed. Sign in again with the Google account scheduled for deletion.",
+        });
+      }
+    }
+
+    const user = googleIdentity
+      ? await User.findOne({
+          email: googleIdentity.email,
+          $or: [
+            { googleId: { $exists: false } },
+            { googleId: null },
+            { googleId: googleIdentity.googleId },
+          ],
+        })
+      : await User.findOne({ email: email.toLowerCase() });
+    if (googleIdentity && !user) {
+      return res.status(401).json({
+        ok: false,
+        code: "GOOGLE_ACCOUNT_MISMATCH",
+        error: "This Google account does not match the Madds account scheduled for deletion.",
+      });
+    }
+    if (!user || user.isActive === false || (!googleIdentity && !user.passwordHash)) {
       return res.status(401).json({ ok: false, error: "Invalid email or password." });
     }
-    if (user.emailVerified === false) {
+    if (!googleIdentity && user.emailVerified === false) {
       return res.status(401).json({ ok: false, error: "Please verify your email before signing in." });
     }
 
-    if (!(await comparePassword(password, user.passwordHash))) {
+    if (!googleIdentity && !(await comparePassword(password, user.passwordHash))) {
       return res.status(401).json({ ok: false, error: "Invalid email or password." });
     }
 
@@ -645,13 +678,24 @@ router.post("/login/cancel-deletion", loginRateLimiter, async (req: Request, res
       });
     }
 
+    const cancellationFilter: Record<string, unknown> = {
+      _id: user._id,
+      deletionScheduledAt: { $gt: now },
+      deletionCleanupStartedAt: null,
+    };
+    const cancellationFields: Record<string, unknown> = { deletionScheduledAt: null };
+    if (googleIdentity) {
+      cancellationFilter.$or = [
+        { googleId: { $exists: false } },
+        { googleId: null },
+        { googleId: googleIdentity.googleId },
+      ];
+      cancellationFields.googleId = googleIdentity.googleId;
+      cancellationFields.emailVerified = true;
+    }
     const cancellation = await User.updateOne(
-      {
-        _id: user._id,
-        deletionScheduledAt: { $gt: now },
-        deletionCleanupStartedAt: null,
-      },
-      { $set: { deletionScheduledAt: null }, $inc: { authVersion: 1 } },
+      cancellationFilter,
+      { $set: cancellationFields, $inc: { authVersion: 1 } },
     );
     if (cancellation.modifiedCount !== 1) {
       return res.status(410).json({
@@ -660,6 +704,12 @@ router.post("/login/cancel-deletion", loginRateLimiter, async (req: Request, res
         error: "The account deletion grace period has ended.",
         deletionScheduledAt: new Date(user.deletionScheduledAt).toISOString(),
       });
+    }
+
+    user.deletionScheduledAt = null;
+    if (googleIdentity) {
+      user.googleId = googleIdentity.googleId;
+      user.emailVerified = true;
     }
 
     await Session.updateMany(

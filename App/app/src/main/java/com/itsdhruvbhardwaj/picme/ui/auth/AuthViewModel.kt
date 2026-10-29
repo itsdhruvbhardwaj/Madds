@@ -43,6 +43,9 @@ class AuthViewModel(
     private val _isPurchaseLoading = MutableStateFlow(false)
     val isPurchaseLoading: StateFlow<Boolean> = _isPurchaseLoading.asStateFlow()
 
+    private val _isDeletionCancellationLoading = MutableStateFlow(false)
+    val isDeletionCancellationLoading: StateFlow<Boolean> = _isDeletionCancellationLoading.asStateFlow()
+
     val productDetails = billingManager?.productDetails ?: MutableStateFlow(null).asStateFlow()
 
     // SharedFlow for transient UI events (like ad errors or purchase success)
@@ -55,6 +58,7 @@ class AuthViewModel(
     // Temporary storage for credentials during deletion-pending login attempt
     private var pendingDeletionEmail: String? = null
     private var pendingDeletionPassword: String? = null
+    private var pendingDeletionGoogleIdToken: String? = null
 
     init {
         // Optimistically initialize state from cache to speed up startup
@@ -387,12 +391,33 @@ class AuthViewModel(
     }
 
     fun cancelDeletion() {
-        val email = pendingDeletionEmail ?: return
-        val password = pendingDeletionPassword ?: return
+        val googleIdToken = pendingDeletionGoogleIdToken
+        val email = pendingDeletionEmail
+        val password = pendingDeletionPassword
+        if (googleIdToken == null && (email == null || password == null)) return
+        if (_isDeletionCancellationLoading.value) return
         viewModelScope.launch {
-            _authState.value = AuthState.Authenticating
-            val result = authRepository.cancelDeletion(email, password)
-            handleAuthResult(result)
+            _isDeletionCancellationLoading.value = true
+            try {
+                val result = if (googleIdToken != null) {
+                    authRepository.cancelDeletionWithGoogle(googleIdToken)
+                } else {
+                    authRepository.cancelDeletion(email!!, password!!)
+                }
+                result.fold(
+                    onSuccess = { user ->
+                        pendingDeletionEmail = null
+                        pendingDeletionPassword = null
+                        pendingDeletionGoogleIdToken = null
+                        _authState.value = AuthState.Authenticated(user)
+                    },
+                    onFailure = { error ->
+                        _uiEvent.emit(mapError(error.message))
+                    }
+                )
+            } finally {
+                _isDeletionCancellationLoading.value = false
+            }
         }
     }
 
@@ -400,7 +425,7 @@ class AuthViewModel(
         viewModelScope.launch {
             _authState.value = AuthState.Authenticating
             val result = authRepository.googleAuth(idToken)
-            handleAuthResult(result)
+            handleAuthResult(result, googleIdToken = idToken)
         }
     }
 
@@ -414,11 +439,17 @@ class AuthViewModel(
         viewModelScope.launch { authRepository.logoutAll() }
     }
 
-    private fun handleAuthResult(result: Result<User>, email: String? = null, password: String? = null) {
+    private fun handleAuthResult(
+        result: Result<User>,
+        email: String? = null,
+        password: String? = null,
+        googleIdToken: String? = null
+    ) {
         result.fold(
             onSuccess = { user ->
                 pendingDeletionEmail = null
                 pendingDeletionPassword = null
+                pendingDeletionGoogleIdToken = null
                 _authState.value = AuthState.Authenticated(user)
             },
             onFailure = { error ->
@@ -427,6 +458,7 @@ class AuthViewModel(
                     val date = message.substringAfter("|", "")
                     pendingDeletionEmail = email
                     pendingDeletionPassword = password
+                    pendingDeletionGoogleIdToken = googleIdToken
                     _authState.value = AuthState.DeletionPending(date.takeIf { it.isNotEmpty() })
                 } else {
                     _authState.value = AuthState.Error(mapError(message))
@@ -439,6 +471,8 @@ class AuthViewModel(
         val cleanMsg = message ?: ""
         return when {
             cleanMsg == "invalid_credentials" -> "Incorrect email or password. Please try again."
+            cleanMsg == "google_authentication_failed" -> "Google sign-in could not be verified. Sign in again with the Google account scheduled for deletion."
+            cleanMsg == "google_account_mismatch" -> "This Google account does not match the Madds account scheduled for deletion."
             cleanMsg == "unverified_account" -> "Your account has been created, but your email hasn't been verified yet."
             cleanMsg == "email_already_exists" -> "An account with this email already exists."
             cleanMsg.contains("invalid", ignoreCase = true) && cleanMsg.contains("token", ignoreCase = true) -> "This link is invalid or has expired."
@@ -453,6 +487,8 @@ class AuthViewModel(
         _authState.value = AuthState.Unauthenticated
         pendingDeletionEmail = null
         pendingDeletionPassword = null
+        pendingDeletionGoogleIdToken = null
+        _isDeletionCancellationLoading.value = false
     }
 
     override fun onCleared() {
