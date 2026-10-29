@@ -74,6 +74,53 @@ export async function listCatalogCollections(): Promise<Array<{ id: string; name
   return records.map(({ id, name }) => ({ id, name }));
 }
 
+export async function listCatalogCollectionSummaries(): Promise<Array<{
+  id: string;
+  name: string;
+  thumbnail: string | null;
+  styleCount: number;
+}>> {
+  const [collections, styles] = await Promise.all([
+    listCatalogCollections(),
+    catalogDatabaseReady()
+      ? CatalogStyle.find({ verified: true }).select("name collections thumbnail").sort({ name: 1 }).lean()
+      : Promise.resolve(bundledStyles.filter((style) => style.verified === true)),
+  ]);
+
+  const summariesByName = new Map<string, { thumbnail: string | null; styleCount: number }>();
+  const nameByKey = new Map<string, string>();
+  for (const style of styles) {
+    for (const rawName of style.collections ?? []) {
+      const name = String(rawName).trim();
+      const key = name.toLowerCase();
+      if (!key) continue;
+      if (!nameByKey.has(key)) nameByKey.set(key, name);
+      const current = summariesByName.get(key) ?? { thumbnail: null, styleCount: 0 };
+      summariesByName.set(key, {
+        thumbnail: current.thumbnail ?? (typeof style.thumbnail === "string"
+          ? optimizeCloudinaryThumbnailUrl(style.thumbnail)
+          : null),
+        styleCount: current.styleCount + 1,
+      });
+    }
+  }
+
+  const collectionByName = new Map(collections.map((collection) => [collection.name.trim().toLowerCase(), collection]));
+  for (const [key] of summariesByName) {
+    if (!collectionByName.has(key)) {
+      const name = nameByKey.get(key);
+      if (name) collectionByName.set(key, { id: slugify(name), name });
+    }
+  }
+
+  return [...collectionByName.values()].flatMap((collection) => {
+    const summary = summariesByName.get(collection.name.trim().toLowerCase());
+    return summary && summary.styleCount > 0
+      ? [{ ...collection, ...summary }]
+      : [];
+  });
+}
+
 export function slugify(value: string): string {
   return value.normalize("NFKD").toLowerCase().trim()
     .replace(/[\u0300-\u036f]/g, "")

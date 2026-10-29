@@ -34,7 +34,7 @@ import {
 } from "./services/credits/creditService.js";
 import { createImageGenerator } from "./services/generationProvider.js";
 import { buildCustomPrompt, buildPrompt } from "./services/styles/styles.js";
-import { getCatalogStyle, listCatalogCollections, listCatalogStyles } from "./services/styles/catalog.js";
+import { getCatalogStyle, listCatalogCollectionSummaries, listCatalogCollections, listCatalogStyles } from "./services/styles/catalog.js";
 import type { Style } from "./services/styles/styleTypes.js";
 import type { UploadedImage } from "./types/generation.js";
 
@@ -112,8 +112,14 @@ app.use(
     max: 20,
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => req.path === "/api/ads/admob/ssv",
+    skip: (req) => req.path === "/api/ads/admob/ssv" || (
+      req.method === "GET" && ["/api/home/config", "/api/collections", "/api/styles"].includes(req.path)
+    ),
   }),
+);
+app.use(
+  ["/api/home/config", "/api/collections", "/api/styles"],
+  rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false }),
 );
 
 app.get("/.well-known/assetlinks.json", (_req: Request, res: Response) => {
@@ -140,7 +146,7 @@ app.get("/api/home/config", async (_req: Request, res: Response) => {
 });
 
 app.get("/api/collections", async (_req: Request, res: Response) => {
-  res.json({ collections: await listCatalogCollections() });
+  res.json({ collections: await listCatalogCollectionSummaries() });
 });
 
 app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Response) => {

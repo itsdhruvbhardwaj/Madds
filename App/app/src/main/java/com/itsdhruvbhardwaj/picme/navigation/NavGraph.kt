@@ -55,6 +55,7 @@ fun NavGraph(
     navController: NavHostController,
     authViewModel: AuthViewModel,
     homeViewModel: HomeViewModel,
+    collectionsViewModel: CollectionsViewModel,
     generationViewModel: GenerationViewModel,
     favoritesViewModel: FavoritesViewModel,
     exploreViewModel: ExploreViewModel,
@@ -248,7 +249,7 @@ fun NavGraph(
                 composable(Screen.Collections.route) {
                     CollectionsScreen(
                         authViewModel = authViewModel,
-                        styleRepository = styleRepository,
+                        viewModel = collectionsViewModel,
                         onCollectionClick = { collection ->
                             navController.navigate(Screen.StylesGrid.createRoute(collection))
                         },

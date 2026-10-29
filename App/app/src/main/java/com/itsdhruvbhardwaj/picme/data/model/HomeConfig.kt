@@ -28,7 +28,9 @@ data class HomeConfigResponse(
 
 data class StyleCollection(
     val id: String = "",
-    val name: String = ""
+    val name: String = "",
+    val thumbnail: String? = null,
+    val styleCount: Int = 0
 )
 
 data class CollectionsResponse(

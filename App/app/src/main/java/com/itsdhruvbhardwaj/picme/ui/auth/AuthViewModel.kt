@@ -121,7 +121,7 @@ class AuthViewModel(
                     _authState.value = AuthState.Authenticated(userResult.getOrThrow())
                 } else {
                     val errorMessage = userResult.exceptionOrNull()?.message
-                    if (errorMessage == "network_failure" || errorMessage == "server_failure" || errorMessage == "timeout") {
+                    if (isTemporarySessionError(errorMessage)) {
                         if (_authState.value !is AuthState.Authenticated) {
                             _authState.value = AuthState.SessionCheckNetworkError
                         }
@@ -148,7 +148,7 @@ class AuthViewModel(
     }
 
     private fun handleSessionFailure(error: String?) {
-        if (error == "network_failure" || error == "server_failure" || error == "timeout") {
+        if (isTemporarySessionError(error)) {
             if (_authState.value !is AuthState.Authenticated) {
                 _authState.value = AuthState.SessionCheckNetworkError
             }
@@ -163,6 +163,10 @@ class AuthViewModel(
             _authState.value = AuthState.Unauthenticated
         }
     }
+
+    private fun isTemporarySessionError(error: String?): Boolean =
+        error == "network_failure" || error == "network_error" || error == "timeout" ||
+            error == "rate_limited" || error == "server_failure" || error?.startsWith("server_failure (") == true
 
     fun login(email: String, password: String) {
         viewModelScope.launch {

@@ -150,7 +150,8 @@ class StyleRepository(
     }
 
     private suspend fun getCollectionsFromStyles(): Result<List<StyleCollection>> {
-        val names = linkedSetOf<String>()
+        data class CollectionSummary(var thumbnail: String? = null, var count: Int = 0)
+        val summaries = linkedMapOf<String, CollectionSummary>()
         var page = 1
         var hasMore = true
 
@@ -158,16 +159,27 @@ class StyleRepository(
             val result = getStyles(page = page, limit = 50)
             if (result.isFailure) return Result.failure(result.exceptionOrNull()!!)
             val response = result.getOrThrow()
-            response.styles.flatMapTo(names) { it.collections }
+            response.styles.forEach { style ->
+                style.collections.forEach { name ->
+                    val summary = summaries.getOrPut(name) { CollectionSummary() }
+                    summary.count++
+                    if (summary.thumbnail == null) {
+                        summary.thumbnail = style.thumbnail?.takeIf(String::isNotBlank)
+                            ?: style.previewImages?.firstOrNull()?.takeIf(String::isNotBlank)
+                    }
+                }
+            }
             hasMore = response.pagination.hasNextPage
             page++
         }
 
         return Result.success(
-            names.sortedBy { it.lowercase() }.map { name ->
+            summaries.filterValues { it.count > 0 }.toSortedMap(String.CASE_INSENSITIVE_ORDER).map { (name, summary) ->
                 StyleCollection(
                     id = name.lowercase().trim().replace(Regex("[^a-z0-9]+"), "-").trim('-'),
-                    name = name
+                    name = name,
+                    thumbnail = summary.thumbnail,
+                    styleCount = summary.count
                 )
             }
         )

@@ -38,6 +38,7 @@ import com.itsdhruvbhardwaj.picme.navigation.NavGraph
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.create.GenerationViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.home.FavoritesViewModel
+import com.itsdhruvbhardwaj.picme.ui.screens.home.CollectionsViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.home.HomeViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.search.ExploreViewModel
 import com.itsdhruvbhardwaj.picme.ui.theme.MaddsTheme
@@ -119,6 +120,8 @@ class MainActivity : ComponentActivity() {
                         AuthViewModel(authRepository, billingManager) as T
                     modelClass.isAssignableFrom(HomeViewModel::class.java) ->
                         HomeViewModel(styleRepository) as T
+                    modelClass.isAssignableFrom(CollectionsViewModel::class.java) ->
+                        CollectionsViewModel(styleRepository) as T
                     modelClass.isAssignableFrom(GenerationViewModel::class.java) ->
                         GenerationViewModel(generationRepository) as T
                     modelClass.isAssignableFrom(FavoritesViewModel::class.java) ->
@@ -132,6 +135,7 @@ class MainActivity : ComponentActivity() {
 
         val authViewModel = ViewModelProvider(this, viewModelFactory)[AuthViewModel::class.java]
         val homeViewModel = ViewModelProvider(this, viewModelFactory)[HomeViewModel::class.java]
+        val collectionsViewModel = ViewModelProvider(this, viewModelFactory)[CollectionsViewModel::class.java]
         val generationViewModel = ViewModelProvider(this, viewModelFactory)[GenerationViewModel::class.java]
         val favoritesViewModel = ViewModelProvider(this, viewModelFactory)[FavoritesViewModel::class.java]
         val exploreViewModel = ViewModelProvider(this, viewModelFactory)[ExploreViewModel::class.java]
@@ -155,6 +159,7 @@ class MainActivity : ComponentActivity() {
                         navController = navController,
                         authViewModel = authViewModel,
                         homeViewModel = homeViewModel,
+                        collectionsViewModel = collectionsViewModel,
                         generationViewModel = generationViewModel,
                         favoritesViewModel = favoritesViewModel,
                         exploreViewModel = exploreViewModel,

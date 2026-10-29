@@ -237,7 +237,7 @@ class AuthRepository(
                             Result.failure(Exception("session_expired"))
                         } else {
                             Log.w(AUTH_LOG_TAG, "refresh failed with HTTP $code; local session retained")
-                            Result.failure(Exception("refresh_failed"))
+                            Result.failure(Exception(if (code == 429) "rate_limited" else if (code >= 500) "server_failure ($code)" else "refresh_failed"))
                         }
                     }
                 } catch (e: SocketTimeoutException) {
@@ -401,6 +401,7 @@ class AuthRepository(
                     serverMessage.contains("already been used", ignoreCase = true) -> "token_already_used"
                     errorCode == 401 -> "invalid_credentials"
                     errorCode == 403 -> "forbidden"
+                    errorCode == 429 -> "rate_limited"
                     errorCode >= 500 -> "server_failure ($errorCode)"
                     else -> if (serverMessage.isNotEmpty()) "$serverMessage ($errorCode)" else "server_failure ($errorCode)"
                 }
