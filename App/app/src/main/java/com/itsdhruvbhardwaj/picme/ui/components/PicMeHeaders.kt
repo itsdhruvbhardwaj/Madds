@@ -62,10 +62,14 @@ fun PicMeMainHeader(
                 }
         ) {
             // Left: Branded Logo
-            PicMeLogo(
-                fontSize = 36,
-                tint = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.align(Alignment.CenterStart)
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(R.drawable.headername),
+                contentDescription = "Madds",
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .width(82.dp)
+                    .height(30.dp),
+                contentScale = ContentScale.Fit
             )
 
             // Center: Globally centered title with safe margins to prevent overlap

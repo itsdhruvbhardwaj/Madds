@@ -3,6 +3,7 @@ package com.itsdhruvbhardwaj.picme.ui.screens.search
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.itsdhruvbhardwaj.picme.data.model.Style
+import com.itsdhruvbhardwaj.picme.data.model.StyleCollection
 import com.itsdhruvbhardwaj.picme.data.repository.StyleRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -33,14 +34,26 @@ class ExploreViewModel(
 
     private val _uiState = MutableStateFlow<ExploreUiState>(ExploreUiState.Loading)
     val uiState: StateFlow<ExploreUiState> = _uiState.asStateFlow()
+    private val _collections = MutableStateFlow<List<StyleCollection>>(emptyList())
+    val collections: StateFlow<List<StyleCollection>> = _collections.asStateFlow()
 
     private var currentQuery = ""
+    private var currentCollection: String? = null
     private var currentPage = 0
     private var generation = 0
     private var isLoadingMore = false
     private var searchJob: Job? = null
 
     init {
+        viewModelScope.launch {
+            styleRepository.getCollections().onSuccess { _collections.value = it }
+        }
+        loadFirstPage(currentQuery, debounce = false)
+    }
+
+    fun selectCollection(collection: String?) {
+        if (collection == currentCollection) return
+        currentCollection = collection
         loadFirstPage(currentQuery, debounce = false)
     }
 
@@ -66,6 +79,7 @@ class ExploreViewModel(
             val result = styleRepository.getStyles(
                 page = 1,
                 limit = PAGE_SIZE,
+                collection = currentCollection,
                 search = query.takeIf { it.isNotEmpty() },
                 trendingFirst = true
             )
@@ -98,6 +112,7 @@ class ExploreViewModel(
             val result = styleRepository.getStyles(
                 page = nextPage,
                 limit = PAGE_SIZE,
+                collection = currentCollection,
                 search = currentQuery.takeIf { it.isNotEmpty() },
                 trendingFirst = true
             )

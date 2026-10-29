@@ -6,8 +6,10 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -22,6 +24,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.itsdhruvbhardwaj.picme.R
@@ -39,8 +43,10 @@ fun ExploreScreen(
     onProfileClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val collections by viewModel.collections.collectAsState()
     val authState by authViewModel.authState.collectAsState()
     var query by remember { mutableStateOf("") }
+    var selectedCollection by remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
 
     LaunchedEffect(query) {
@@ -67,7 +73,10 @@ fun ExploreScreen(
                 when (val state = uiState) {
                     ExploreUiState.Loading -> {
                         Column(modifier = Modifier.fillMaxSize()) {
-                            SearchField(query = query, onQueryChange = { query = it })
+                            ExploreControls(query, { query = it }, collections.map { it.name }, selectedCollection) {
+                                selectedCollection = it
+                                viewModel.selectCollection(it)
+                            }
                             Box(
                                 modifier = Modifier.weight(1f).fillMaxWidth(),
                                 contentAlignment = Alignment.Center
@@ -79,7 +88,10 @@ fun ExploreScreen(
 
                     is ExploreUiState.Error -> {
                         Column(modifier = Modifier.fillMaxSize()) {
-                            SearchField(query = query, onQueryChange = { query = it })
+                            ExploreControls(query, { query = it }, collections.map { it.name }, selectedCollection) {
+                                selectedCollection = it
+                                viewModel.selectCollection(it)
+                            }
                             Column(
                                 modifier = Modifier.weight(1f).fillMaxWidth(),
                                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -113,8 +125,11 @@ fun ExploreScreen(
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            item(key = "explore-search") {
-                                SearchField(query = query, onQueryChange = { query = it })
+                            item(key = "explore-controls") {
+                                ExploreControls(query, { query = it }, collections.map { it.name }, selectedCollection) {
+                                    selectedCollection = it
+                                    viewModel.selectCollection(it)
+                                }
                             }
 
                             itemsIndexed(
@@ -174,8 +189,54 @@ private fun SearchField(
     PicMeSearchBar(
         query = query,
         onQueryChange = onQueryChange,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+        modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp)
     )
+}
+
+@Composable
+private fun ExploreControls(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    collections: List<String>,
+    selectedCollection: String?,
+    onCollectionSelected: (String?) -> Unit
+) {
+    Column {
+        SearchField(query, onQueryChange)
+        LazyRow(
+            contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            item(key = "all") { ExploreCollectionChip("All", selectedCollection == null) { onCollectionSelected(null) } }
+            items(collections.size, key = { collections[it] }) { index ->
+                val name = collections[index]
+                ExploreCollectionChip(name, selectedCollection == name) { onCollectionSelected(name) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExploreCollectionChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(50)
+    Surface(
+        onClick = onClick,
+        shape = shape,
+        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+        )
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 13.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            maxLines = 1
+        )
+    }
 }
 
 @Composable

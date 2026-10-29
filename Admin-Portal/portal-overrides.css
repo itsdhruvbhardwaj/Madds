@@ -1,4 +1,22 @@
 [hidden]{display:none!important}
+/* Madds Studio follows the app's monochrome palette with subtle gold accents. */
+:root{--bg:#090909;--surface:#151515;--surface2:#202020;--line:#343434;--text:#f5f5f2;--muted:#aaa9a4;--purple:#c7a653;--purple2:#e1c77e;--green:#9bba9c}
+body{background:radial-gradient(ellipse at 85% 0%,#262218 0,transparent 33%),var(--bg)}
+.login-card{background:linear-gradient(145deg,#1b1b19,#121212)}
+.button.primary{color:#17140c;background:linear-gradient(100deg,#b8943e,#e1c77e);box-shadow:0 7px 22px #c7a65333}
+.brand-title{display:block;object-fit:contain}
+.login-brand-title{width:min(190px,70%);height:auto;max-height:72px;margin-bottom:20px}
+.studio-brand-title{width:116px;height:auto;max-height:38px}
+.studio-word{font:600 11px Manrope,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#d4bd75;border-left:1px solid #49402b;padding-left:10px;margin-left:1px}
+.brand{gap:10px}
+.brand b{color:#d4bd75}
+.side-link.active{background:#282419;color:#e4cc83}
+.button.primary:hover{filter:brightness(1.08)}
+.style-card:hover{border-color:#76643a}
+.chip{color:#e1c77e;background:#2d291c;border-color:#53472a}
+.home-toggle,.collection-check input,.test-export-controls input[type=range]{accent-color:#c7a653}
+.edit-button,.text-button,.collection-toolbar a{color:#ddc579}
+.notice{border-color:#5c4c27;background:#211e16;color:#eadba9}
 .collection-head,.collection-row{display:grid;grid-template-columns:minmax(180px,1fr) 170px 85px minmax(150px,auto);align-items:center;gap:12px}
 .collection-head{padding:0 18px 9px;color:#828695;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
 .home-toggle{accent-color:#9560f1;width:17px;height:17px;cursor:pointer}
@@ -157,3 +175,8 @@
 .style-example-preview{width:100%;max-height:230px;object-fit:contain;border-radius:9px;background:#0d0e13}
 @media(max-width:900px){.prompt-test-layout{grid-template-columns:1fr}.prompt-test-result{min-height:360px}}
 @media(max-width:600px){.style-example-pair{grid-template-columns:1fr}.prompt-test-controls,.prompt-test-result{padding:16px}}
+
+/* Keep gold accents consistent with controls defined later in this file. */
+.home-toggle,.collection-check input,.test-export-controls input[type=range]{accent-color:#c7a653}
+.edit-button,.text-button{color:#ddc579}
+.brand b{color:#d4bd75}

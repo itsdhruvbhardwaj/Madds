@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#11131a">
+  <meta name="theme-color" content="#090909">
+  <link rel="icon" href="assets/madds-favicon.svg" type="image/svg+xml">
   <title>Madds Studio · Style Manager</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="portal-overrides.css">
@@ -11,7 +12,7 @@
 <body>
   <main id="login-view" class="login-shell">
     <section class="login-card">
-      <div class="brand-mark">M</div>
+      <img class="brand-title login-brand-title" src="assets/madds-title.png" alt="Madds">
       <p class="eyebrow">MADDS STUDIO</p>
       <h1>Style manager</h1>
       <p class="muted">Sign in with an approved Madds team account.</p>
@@ -26,7 +27,7 @@
 
   <div id="app-view" class="app-shell" hidden>
     <aside class="sidebar">
-      <div class="brand"><span class="brand-mark small">M</span><span>Madds <b>Studio</b></span></div>
+      <div class="brand"><img class="brand-title studio-brand-title" src="assets/madds-title.png" alt="Madds"><span class="studio-word">Studio</span></div>
       <div class="side-label">WORKSPACE</div>
       <button class="side-link active" data-panel="styles-panel"><span>▦</span> Styles <small id="style-count">0</small></button>
       <button class="side-link" data-panel="testing-panel"><span>✦</span> Prompt testing <small id="prompt-test-nav-status" class="test-nav-status" hidden></small></button>
