@@ -53,7 +53,7 @@
     const canLeave = () => !busy && (!dirty || window.confirm("Discard unsaved campaign changes?"));
     function banner() {
       $("push-delivery-status").textContent = !available ? "Notification controls are unavailable. Deploy the notification backend, then refresh." : enabled ?
-        "Delivery enabled · Campaigns go only to eligible users who opted in." : "Delivery paused · You can save and preview drafts. Sending will be available after Android notifications are ready.";
+        "Delivery enabled · Campaigns go only to eligible users who opted in." : "Delivery paused · You can save and preview drafts. Enable notification delivery on the backend to send campaigns.";
       $("push-delivery-status").classList.toggle("is-enabled", available && enabled);
     }
     function renderHistory() {

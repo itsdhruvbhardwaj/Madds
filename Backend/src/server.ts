@@ -26,6 +26,7 @@ import { profileRouter } from "./routes/profile.js";
 import { notificationDevicesRouter } from "./routes/notificationDevices.js";
 import { styleDetailsRouter } from "./routes/styleDetails.js";
 import { adminNotificationsRouter } from "./modules/notifications/notification.routes.js";
+import { startWebNotificationProcessor } from "./modules/notifications/notification.web.js";
 import { cleanupPendingProfileImages } from "./services/profileImages.js";
 import {
   completeGeneration,
@@ -561,6 +562,17 @@ if (isDirectExecution) {
       }
       app.listen(env.port, () => {
         console.log(`Server listening on port ${env.port}`);
+        if (database) {
+          try {
+            const stopNotifications = startWebNotificationProcessor();
+            if (stopNotifications) {
+              process.once("SIGTERM", () => { void stopNotifications(); });
+              process.once("SIGINT", () => { void stopNotifications(); });
+            }
+          } catch {
+            console.warn("Web notification processor unavailable. Check Firebase configuration.");
+          }
+        }
       });
     })
     .catch((error: unknown) => {

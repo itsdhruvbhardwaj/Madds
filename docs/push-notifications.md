@@ -1,5 +1,28 @@
 # Centralized push notifications
 
+## Current hosting choice — shared free Render service
+
+Notification processing can now run inside the existing web service. Configure
+NOTIFICATION_PROCESSOR_MODE=web and NOTIFICATION_DELIVERY_ENABLED=true on Madds
+Backend, with the existing Firebase project and secret file configuration. No
+additional Render service or paid compute plan is required for this setup.
+
+The processor starts after the web server and database are ready, validates Firebase
+credentials before claiming jobs, and polls every five seconds after the previous
+batch finishes. Failures retry on the next poll without taking down app APIs.
+Shutdown stops new batches and waits for the current one. Campaigns, retries and
+leases remain in MongoDB, so sleeping/restarting the server does not discard them.
+
+Free Render web hosting can sleep. Scheduled notifications may be delayed until
+the backend wakes up; this configuration does not add artificial keep-alive traffic.
+For production, set NOTIFICATION_PROCESSOR_MODE=worker on the web service and run
+the existing npm run notifications:worker command in a separate paid worker with
+delivery enabled and the same database/Firebase configuration. Do not leave web
+processing enabled when moving to the separate worker.
+
+No campaign is sent as part of deployment verification. The pre-deployment database
+check found one DRAFT campaign and no queued or processing campaigns.
+
 ## Phase 1 — Firebase registration foundation
 
 Android now applies Google Services 4.5.0 and depends on Firebase Messaging through
@@ -206,3 +229,94 @@ Madds Studio notification controls are now implemented; see Admin-Portal/README.
 for operation and local preview instructions. Optional style-publish announcements,
 configurable recurring inactivity automation, and Android display/preferences/deep
 links remain the next phases. This phase adds no package dependencies.
+
+## Phase 7 — Android delivery implemented
+
+Android receives backend data-only messages in MaddsMessagingService. Payload
+validation checks type/category, account ID, delivery ID, binding revision, length
+limits and an allowlisted internal destination. Messages are suppressed when the
+account/session, local category choice, OS permission or channel no longer permits
+them. Foreground and background messages use the same display policy.
+
+PushLocalState stores installation revisions, acknowledged binding ranges,
+account-specific preferences, pending offline opt-outs and a bounded seven-day
+delivery/tap ledger in the already backup-excluded installation preferences.
+Logout/account switching invalidates bindings and taps and removes this app's
+displayed push notifications. Repeated delivery IDs cannot alert again after a
+process restart. Taps are resolved from the stored, previously validated message,
+not arbitrary Intent extras or external deep links.
+
+The backend rotates session IDs on refresh. An explicit saveRefreshedTokens path
+preserves already displayed taps only across authenticated same-account refreshes,
+while invalidating incoming-message bindings until re-registration. An ordinary
+login/logout does not preserve those taps. Foreground and background repositories
+share a refresh mutex; token comparison and storage use the same lock as logout,
+so an older response cannot overwrite a newer login or restore a signed-out account.
+
+Text posts immediately with a monochrome icon, private lock-screen visibility,
+immutable per-delivery PendingIntent, stable notification tag and one-day timeout.
+Optional images load via the existing WorkManager runtime: HTTPS only, bounded
+redirects/time/bytes and downsampled bitmaps. The worker rechecks account, preferences,
+permission and whether the notification remains visible before silently updating
+it. An image failure leaves the text intact. Worker classes and reflected data have
+release keep rules; no new dependency was required.
+
+Token rotation and auth session changes enqueue a network-constrained registration
+worker. Foreground sync remains active as well. Android never stores Admin SDK keys
+or manages campaigns directly through Firebase Console.
+
+Settings → Notifications now offers all four account-synced categories, OS permission
+request (Android 13+), device/channel settings and retryable sync errors. A first-visit
+Home explanation is optional and does not opt users into categories. Categories
+remain off until explicitly chosen. Offline opt-outs apply locally immediately,
+persist across process death, and are flushed before accepting stale server choices.
+
+Notification taps wait for authenticated navigation to be ready, including cold
+starts. Styles load by exact ID rather than the first 50 styles; missing styles
+show a friendly message with retry. Collections resolve their current name from
+the live catalogue before opening the filtered grid, with missing/offline handling.
+
+### Backend compatibility deployment
+
+GET /api/styles/:styleId returns the exact published style with optional authenticated
+favorite state. Invalid/deleted IDs return 404 and internal failures are sanitized.
+This endpoint was deployed in c2b9c45 and verified live against a published style.
+No notification environment settings or campaign delivery switches were changed.
+
+### Validation and rollout
+
+Focused Android checks include 17 notification tests plus 24 session, networking,
+profile and password regressions (41 total). Backend direct-style tests: 4 passed.
+All 41 focused checks passed. Debug APK, minified release APK and release lint
+completed successfully. The release configuration explicitly preserves Gson
+TypeToken metadata, saved delivery records and reflected worker constructors.
+The release APK is unsigned and still requires the normal signing/release process.
+The broad Android run reported four failures outside notifications: stale purchase
+error expectations, an unstubbed empty-image generation request, and two purchase
+event tests waiting indefinitely for an event. These workflows were not changed.
+
+Release lint also found a pre-existing API-27 navigation-bar attribute in the API-24
+base theme. It now lives in values-v27 with the same base theme and appearance.
+
+Before enabling delivery, install/sign the updated Android build through the normal
+test-release process and configure the separate backend worker described above.
+The connected Android 12 phone currently has the store build; it was inspected only,
+not replaced or uninstalled. Real-device FCM, permission and image/tap tests remain.
+
+Test checklist using SPECIFIC_USERS and a test account:
+
+1. Choose a category in Settings and grant OS permission; verify server registration.
+2. Send a matching-category campaign while foreground, background and after a normal
+   process restart. Force-stopping an Android app prevents FCM delivery until reopened.
+3. Repeat the same delivery payload: one visible alert; image updates must not re-alert.
+4. Open a notification from cold start, including with an expired access token.
+5. Open a newly published style outside the initial catalogue page and a collection;
+   verify deleted destinations and offline retry states.
+6. Sign out while offline and switch accounts; displayed and delayed old-account
+   notifications must not appear or navigate into the new profile.
+7. Disable a category offline, restart, reconnect, and confirm it stays off and syncs.
+8. Check Android 13+ allow/deny, OS-wide blocking and per-channel muting.
+
+Do not enable production sending based on unit/build checks alone. No live campaign
+was sent during implementation. Optional style-publish announcements and recurring
+inactivity automation remain separate phases.

@@ -4,7 +4,7 @@ import { getNotificationFirebaseApp } from "../../config/firebase.js";
 import { deliveryEnabled } from "./notification.types.js";
 import { notificationService } from "./notification.service.js";
 
-// Separate persistent process, never a timer hidden inside the web service.
+// Optional persistent process for hosting that must deliver while the web service sleeps.
 async function main() {
   if (!deliveryEnabled()) throw new Error("Notification delivery is disabled.");
   getNotificationFirebaseApp();
