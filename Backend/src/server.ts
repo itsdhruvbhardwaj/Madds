@@ -23,6 +23,8 @@ import { rewardedAdsRouter } from "./routes/rewardedAds.js";
 import { getHomeSectionCatalog, initializeHomeSectionCatalog } from "./services/home/homeCatalog.js";
 import { buildHomeFeed } from "./services/home/homeFeed.js";
 import { profileRouter } from "./routes/profile.js";
+import { notificationDevicesRouter } from "./routes/notificationDevices.js";
+import { adminNotificationsRouter } from "./modules/notifications/notification.routes.js";
 import { cleanupPendingProfileImages } from "./services/profileImages.js";
 import {
   completeGeneration,
@@ -231,6 +233,8 @@ app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Resp
 
 app.use("/api/auth", authRouter);
 app.use("/api/profile", profileRouter);
+app.use("/api/notifications", notificationDevicesRouter);
+app.use("/api/admin/notifications", adminNotificationsRouter);
 app.use("/api/admin", adminCatalogRouter);
 app.use("/api/me", favoritesRouter);
 app.use("/api", rewardedAdsRouter);

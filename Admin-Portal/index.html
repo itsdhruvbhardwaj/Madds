@@ -34,6 +34,7 @@
       <button class="side-link" data-panel="testing-panel"><span>✦</span> Prompt testing <small id="prompt-test-nav-status" class="test-nav-status" hidden></small></button>
       <button class="side-link" data-panel="collections-panel"><span>◈</span> Collections</button>
       <button class="side-link" data-panel="logs-panel"><span>≡</span> Change logs</button>
+      <button class="side-link" data-panel="notifications-panel"><span>♧</span> Notifications</button>
       <div class="sidebar-note"><span class="live-dot"></span> Connected to live catalogue</div>
       <button id="logout-button" class="side-logout">Sign out</button>
     </aside>
@@ -81,6 +82,16 @@
         <div class="collection-toolbar"><label for="collection-sort" class="muted">Sort collections</label><select id="collection-sort" aria-label="Sort collections"><option value="name-asc">Name: A to Z</option><option value="name-desc">Name: Z to A</option><option value="created-desc">Newest added</option><option value="created-asc">Oldest added</option><option value="updated-desc">Recently modified</option><option value="updated-asc">Least recently modified</option></select></div>
         <div class="collection-head"><span>Collection</span><span>Show on app Home</span><span>Styles</span><span>Actions</span></div>
         <div id="collections-list" class="collections-list"></div>
+      </section>
+
+      <section id="notifications-panel" class="panel-view" hidden>
+        <div class="page-heading"><div><p class="eyebrow">KEEP YOUR COMMUNITY CONNECTED</p><h1>Notifications</h1><p class="muted">Create campaigns and follow their delivery.</p></div><button id="push-new" class="button primary" type="button">＋ New campaign</button></div>
+        <div id="push-delivery-status" class="push-banner" role="status">Checking notification availability…</div>
+        <div id="push-error" class="form-error" role="alert"></div>
+        <div class="push-workspace">
+          <aside class="push-history" aria-label="Campaign history"><div class="push-section-heading"><h2>Campaigns</h2><button id="push-refresh" class="button secondary" type="button">Refresh</button></div><div id="push-campaigns" class="push-campaigns" aria-live="polite"></div><button id="push-more" class="button secondary" type="button" hidden>Load more campaigns</button></aside>
+          <section id="push-editor" class="push-editor" aria-label="Campaign editor"><p class="muted">Select a campaign or create a new draft.</p></section>
+        </div>
       </section>
 
       <section id="logs-panel" class="panel-view" hidden>
@@ -148,6 +159,7 @@
     <form id="rename-form" method="dialog"><header class="dialog-header"><div><p class="eyebrow">COLLECTION</p><h2>Rename collection</h2></div><button type="button" class="icon-button" data-close="rename-dialog">×</button></header><label>Collection name<input name="name" maxlength="60" required></label><footer class="dialog-footer"><button type="button" class="button secondary" data-close="rename-dialog">Cancel</button><button class="button primary" type="submit">Save name</button></footer></form>
   </dialog>
   <script src="config.js"></script>
-  <script src="app.js?v=20261029-image-compression" defer></script>
+  <script src="notifications.js?v=20261030-notifications" defer></script>
+  <script src="app.js?v=20261030-notifications" defer></script>
 </body>
 </html>

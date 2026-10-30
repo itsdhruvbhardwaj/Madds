@@ -16,6 +16,47 @@ The portal account must have a verified email and a password accepted by `/api/a
 
 Set `window.PICMEE_API_BASE` in `config.js` to the backend URL, then serve this folder with any static file server and open its local URL. For the production portal, deploy this folder as a static site and set the same backend URL in `config.js` before deploying.
 
+## Notification controls
+
+The Notifications tab uses the existing approved Studio login. It supports:
+
+- Draft creation/editing with a live text preview and optional HTTPS image preview.
+- All seven audience types, category selection, selected account IDs and creation windows.
+- Home, published-style and collection destinations from the current catalogue.
+- Audience sampling, immediate-send review and scheduling in the browser's timezone
+  with the exact UTC time shown before confirmation.
+- Cancellation, paginated campaigns and delivery history, and device-level results
+  labelled **Accepted by FCM**, not displayed/read.
+- Unsaved-change protection, operation locking, session cleanup and stale-draft
+  checks when another administrator edits a reviewed campaign.
+
+Deploy the updated backend notification APIs alongside these static assets. Studio
+reads the backend's deliveryEnabled flag. With delivery paused, drafts and previews
+remain usable while send/schedule controls are disabled. Leave backend delivery
+disabled until Android account-safe display and deduplication are tested.
+
+The backend accepts optional expectedRevision on draft edits, sends and scheduling.
+Studio always submits the revision it reviewed; stale actions fail without queuing
+a different version. Existing API clients without that field remain compatible.
+
+Local checks:
+
+```text
+node --test Admin-Portal/tests/notifications.test.cjs
+node Admin-Portal/tests/preview-server.cjs
+```
+
+The preview server at http://127.0.0.1:4178 uses in-memory fixture data, overrides
+the API URL only in the served fixture config, and never calls Firebase or the
+production backend. Any email/password can be used there. Add --enabled to exercise
+mock send/schedule controls. This does not enable production delivery.
+
+Browser verification covered draft save, new-style selection, audience sampling,
+send review/queueing, local-to-UTC scheduling, cancellation, completed delivery
+results, and paused delivery. Five frontend validation tests and nine backend
+notification API tests passed; JavaScript syntax and backend TypeScript builds pass.
+Production connectivity and real delivery still require deployment/device checks.
+
 ## Catalogue behavior
 
 - Style edits and new styles are saved directly to MongoDB and are returned by the existing public `/api/styles` API. Generation and favorites also read the live catalogue.

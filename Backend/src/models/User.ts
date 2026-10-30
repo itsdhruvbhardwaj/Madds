@@ -35,6 +35,13 @@ const UserSchema = new Schema(
     avatarId: { type: String, default: null },
     avatarBackground: { type: String, default: "gold" },
     profileSetupComplete: { type: Boolean, default: true },
+    lastActiveAt: { type: Date, default: null, index: true },
+    notificationPreferences: {
+      newStyles: { type: Boolean, default: false },
+      offers: { type: Boolean, default: false },
+      productUpdates: { type: Boolean, default: false },
+      reengagement: { type: Boolean, default: false },
+    },
     emailVerified: {
       type: Boolean,
       default: false,

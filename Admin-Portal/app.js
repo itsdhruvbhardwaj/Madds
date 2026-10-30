@@ -4,6 +4,7 @@
   const refreshKey = "picmee_admin_refresh";
   const state = { styles: [], collections: [], sections: [], logs: [], logMembers: [], logPage: 1, logPagination: null, pendingCloudinaryCleanup: 0, activePanel: "styles-panel", editingId: null, renamingId: null, styleEditorBaseline: null, catalogLoaded: false, catalogLoading: false, logsLoading: false, promptTestFile: null, promptTestOriginalUrl: null, promptTestResultUrl: null, promptTestDownloadUrl: null, promptTestGenerating: false };
   const byId = (id) => document.getElementById(id);
+  const notifications = window.MaddsNotifications.create({ api, notify, getCatalog: () => state });
 
   async function api(path, options = {}, retry = true) {
     const headers = new Headers(options.headers || {});
@@ -32,6 +33,7 @@
   }
 
   function clearSession() {
+    notifications.reset();
     sessionStorage.removeItem(tokenKey);
     sessionStorage.removeItem(refreshKey);
   }
@@ -84,6 +86,8 @@
       renderCollections();
       renderCollectionOptions();
       state.catalogLoaded = true;
+      notifications.catalogChanged();
+      if (state.activePanel === "notifications-panel") void notifications.refresh();
     } catch (error) {
       if (error.message.includes("not allowed")) {
         clearSession();
@@ -719,6 +723,7 @@
   byId("add-style").addEventListener("click", () => openStyleEditor());
   byId("refresh-button").addEventListener("click", () => {
     if (state.activePanel === "logs-panel") void loadLogs(1);
+    else if (state.activePanel === "notifications-panel") void notifications.refresh();
     else void loadCatalog();
   });
   document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => {
@@ -768,6 +773,7 @@
     document.querySelectorAll(".side-link").forEach((item) => item.classList.toggle("active", item === button));
     document.querySelectorAll(".panel-view").forEach((panel) => { panel.hidden = panel.id !== button.dataset.panel; });
     if (state.activePanel === "logs-panel") void loadLogs(1);
+    if (state.activePanel === "notifications-panel") void notifications.refresh();
   }));
   byId("log-member-filter").addEventListener("change", () => loadLogs(1));
   byId("log-action-filter").addEventListener("change", () => loadLogs(1));

@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const deletionMocks = vi.hoisted(() => ({
+  DeviceToken: { deleteMany: vi.fn() },
+  NotificationLog: { deleteMany: vi.fn() },
+  NotificationUserGate: { deleteMany: vi.fn() },
   AdminAuditLog: { deleteMany: vi.fn() },
   CreditTransaction: { deleteMany: vi.fn() },
   EmailChangeToken: { deleteMany: vi.fn() },
@@ -33,11 +36,16 @@ vi.mock("./models/Purchase.js", () => ({ Purchase: deletionMocks.Purchase }));
 vi.mock("./models/RewardedAdAttempt.js", () => ({ RewardedAdAttempt: deletionMocks.RewardedAdAttempt }));
 vi.mock("./models/Session.js", () => ({ Session: deletionMocks.Session }));
 vi.mock("./models/User.js", () => ({ User: deletionMocks.User }));
+vi.mock("./models/DeviceToken.js", () => ({ DeviceToken: deletionMocks.DeviceToken }));
+vi.mock("./modules/notifications/notification.models.js", () => ({ NotificationLog: deletionMocks.NotificationLog, NotificationUserGate: deletionMocks.NotificationUserGate }));
 vi.mock("./services/profileImages.js", () => ({ destroyProfileImage: deletionMocks.destroyProfileImage }));
 
 import { cleanupScheduledAccountDeletions } from "./services/accountDeletion.js";
 
 const ownedModels = [
+  deletionMocks.DeviceToken,
+  deletionMocks.NotificationLog,
+  deletionMocks.NotificationUserGate,
   deletionMocks.CreditTransaction,
   deletionMocks.EmailChangeToken,
   deletionMocks.EmailVerificationToken,
