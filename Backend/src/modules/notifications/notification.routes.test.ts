@@ -1,12 +1,13 @@
 import express from "express";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ create: vi.fn(), update: vi.fn(), findById: vi.fn(), init: vi.fn(), ready: vi.fn(), preview: vi.fn(), destination: vi.fn() }));
+const mocks = vi.hoisted(() => ({ create: vi.fn(), update: vi.fn(), findById: vi.fn(), init: vi.fn(), ready: vi.fn(), preview: vi.fn(), destination: vi.fn(), cloudinaryConfigured: vi.fn(), signature: vi.fn() }));
 vi.mock("../../middleware/auth.js", () => ({ requireAuth: (req: any, res: any, next: any) => {
   if (!req.headers.authorization) return res.sendStatus(401);
   req.user = { id: "admin-id", emailVerified: req.headers.authorization !== "Bearer unverified", email: req.headers.authorization === "Bearer user" ? "user@example.com" : "admin@example.com" }; next();
 } }));
 vi.mock("../../services/styles/catalog.js", () => ({ catalogDatabaseReady: mocks.ready }));
+vi.mock("../../services/cloudinaryAssets.js", () => ({ cloudinaryIsConfigured: mocks.cloudinaryConfigured, createNotificationImageUploadSignature: mocks.signature }));
 vi.mock("./notification.models.js", () => ({ initializeNotificationModels: mocks.init,
     NotificationCampaign: { create: mocks.create, findOneAndUpdate: mocks.update, findById: () => ({ lean: mocks.findById }) }, NotificationLog: { updateMany: vi.fn() },
 }));
@@ -21,6 +22,8 @@ describe("admin notification API", () => {
     mocks.ready.mockReturnValue(true); mocks.create.mockResolvedValue({ _id: id, ...draft, status: "DRAFT" });
     mocks.findById.mockResolvedValue({ _id: id, ...draft, status: "DRAFT", updatedAt: new Date() });
     mocks.update.mockResolvedValue({ _id: id, status: "SCHEDULED" });
+    mocks.cloudinaryConfigured.mockReturnValue(true);
+    mocks.signature.mockReturnValue({ cloudName: "madds", apiKey: "public-key", timestamp: 123, signature: "signed", folder: "picmee/notifications", publicId: "notification-id", expectedPublicId: "picmee/notifications/notification-id", tags: "picmee-notification" });
   });
   afterEach(() => vi.unstubAllEnvs());
   it("requires authentication and denies ordinary accounts before accessing campaigns", async () => {
@@ -33,6 +36,12 @@ describe("admin notification API", () => {
     expect((await request(app).post("/admin/push").set("Authorization", "Bearer admin").send({ ...draft, status: "SENT", createdBy: "victim" })).status).toBe(201);
     expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ createdBy: "admin-id", category: "productUpdates" }));
     expect(mocks.create.mock.calls[0][0]).not.toHaveProperty("status");
+  });
+  it("returns a short-lived Cloudinary upload signature only to administrators", async () => {
+    expect((await request(app).post("/admin/push/upload-signature")).status).toBe(401);
+    const response = await request(app).post("/admin/push/upload-signature").set("Authorization", "Bearer admin");
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ ok: true, folder: "picmee/notifications", expectedPublicId: "picmee/notifications/notification-id" });
   });
   it("refuses send and schedule while the rollout switch is off", async () => {
     for (const action of ["send", "schedule"]) {

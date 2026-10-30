@@ -30,7 +30,7 @@
       let url; try { url = new URL(values.imageUrl.trim()); } catch { throw new Error("Use a valid HTTPS image URL."); }
       if (url.protocol !== "https:" || url.username || url.password || url.href.length > 1000) throw new Error("Use a valid HTTPS image URL without credentials.");
     }
-    if (values.notificationType === "NEW_STYLE" && values.destination !== "style") throw new Error("A new-style campaign must open a published style.");
+    if (values.notificationType === "NEW_STYLE" && values.destination !== "style") throw new Error("A new-style notification must open a published style.");
     if (values.destination === "style" && !values.styleId) throw new Error("Choose a published style.");
     if (values.destination === "collection" && !values.collectionId) throw new Error("Choose a collection.");
     return { title, body, notificationType: values.notificationType, targetAudience: values.targetAudience,
@@ -38,6 +38,39 @@
       ...(values.destination === "style" ? { relatedStyleId: values.styleId } : {}),
       ...(values.destination === "collection" ? { collectionId: values.collectionId } : {}),
       ...(values.imageUrl.trim() ? { imageUrl: values.imageUrl.trim() } : {}) };
+  }
+
+  function canvasToBlob(canvas, type, quality) {
+    return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("This image could not be compressed.")), type, quality));
+  }
+  async function loadImage(file) {
+    const sourceUrl = URL.createObjectURL(file);
+    try {
+      const image = new Image(); image.src = sourceUrl; await image.decode();
+      return image;
+    } finally { URL.revokeObjectURL(sourceUrl); }
+  }
+  async function compressNotificationImage(file) {
+    if (!file || !["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new Error("Choose a JPG, PNG, or WebP image.");
+    const image = await loadImage(file);
+    const sourceWidth = image.naturalWidth, sourceHeight = image.naturalHeight;
+    if (!sourceWidth || !sourceHeight) throw new Error("This image has invalid dimensions.");
+    let scale = Math.min(1, 1200 / sourceWidth, 630 / sourceHeight);
+    const canvas = document.createElement("canvas"), context = canvas.getContext("2d", { alpha: true });
+    if (!context) throw new Error("This browser cannot compress the image.");
+    for (let pass = 0; pass < 10; pass += 1) {
+      canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+      canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      for (let quality = 0.88; quality >= 0.42; quality -= 0.08) {
+        let blob = await canvasToBlob(canvas, "image/webp", quality);
+        if (blob.type !== "image/webp") blob = await canvasToBlob(canvas, "image/jpeg", quality);
+        if (blob.size <= 300_000) return { file: blob, width: canvas.width, height: canvas.height };
+      }
+      scale *= 0.82;
+    }
+    throw new Error("Couldn't compress this image below 300 KB. Try a smaller image.");
   }
 
   function create({ api, notify, getCatalog }) {
@@ -50,14 +83,20 @@
     const options = (map, current) => Object.entries(map).map(([value, label]) => `<option value="${escape(value)}" ${current === value ? "selected" : ""}>${escape(label)}</option>`).join("");
     const error = (message = "") => { $("push-error").textContent = message; };
     const isDraft = () => !selected || selected.status === "DRAFT";
-    const canLeave = () => !busy && (!dirty || window.confirm("Discard unsaved campaign changes?"));
+    const canLeave = () => !busy && (!dirty || window.confirm("Discard unsaved notification changes?"));
+    const scheduleMinimum = () => {
+      const date = new Date(Date.now() + 60_000);
+      const pad = (number) => String(number).padStart(2, "0");
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    };
     function banner() {
       $("push-delivery-status").textContent = !available ? "Notification controls are unavailable. Deploy the notification backend, then refresh." : enabled ?
-        "Delivery enabled · Campaigns go only to eligible users who opted in." : "Delivery paused · You can save and preview drafts. Enable notification delivery on the backend to send campaigns.";
+        "Delivery enabled · Notifications go only to eligible users who opted in." : "Delivery paused · You can save and preview drafts. Enable notification delivery on the backend to send notifications.";
       $("push-delivery-status").classList.toggle("is-enabled", available && enabled);
     }
     function renderHistory() {
-      $("push-campaigns").innerHTML = campaigns.map((item) => `<button type="button" class="push-campaign ${selected?._id === item._id ? "is-selected" : ""}" data-campaign="${escape(item._id)}" aria-pressed="${selected?._id === item._id}"><span class="push-status">${escape(statusLabel(item.status))}</span><strong>${escape(item.title)}</strong><small>${escape(labels[item.targetAudience] || item.targetAudience)}</small><small>${escape(formatDate(item.scheduledAt || item.createdAt))}</small></button>`).join("") || '<p class="muted push-empty">No campaigns yet. Create your first draft.</p>';
+      const drafts = campaigns.filter((item) => item.status === "DRAFT");
+      $("push-campaigns").innerHTML = drafts.map((item) => `<button type="button" class="push-campaign ${selected?._id === item._id ? "is-selected" : ""}" data-campaign="${escape(item._id)}" aria-pressed="${selected?._id === item._id}"><span class="push-status">${escape(statusLabel(item.status))}</span><strong>${escape(item.title)}</strong><small>${escape(labels[item.targetAudience] || item.targetAudience)}</small><small>Last edited ${escape(formatDate(item.updatedAt || item.createdAt))}</small></button>`).join("") || '<p class="muted push-empty">No saved drafts. Start a notification when you are ready.</p>';
       $("push-more").hidden = !nextCursor;
       $("push-more").disabled = loading || busy;
     }
@@ -110,7 +149,7 @@
     }
     function renderEditor() {
       const item = selected || {}, draft = isDraft();
-      $("push-editor").innerHTML = `<div class="push-section-heading"><div><span class="push-status">${escape(statusLabel(item.status))}</span><h2>${item._id ? "Campaign details" : "New campaign"}</h2></div><span id="push-save-state" class="muted"></span></div>
+      $("push-editor").innerHTML = `<div class="push-section-heading"><div><span class="push-status">${escape(statusLabel(item.status))}</span><h2>${item._id ? "Notification details" : "New notification"}</h2></div><span id="push-save-state" class="muted"></span></div>
         <form id="push-form" class="push-form"><fieldset ${draft ? "" : "disabled"} class="push-fields">
           <div class="push-two-fields"><label>Category<select name="notificationType">${options(types, item.notificationType || "PRODUCT_UPDATE")}</select></label><label>Audience<select name="targetAudience">${options(labels, item.targetAudience || "ALL_USERS")}</select></label></div>
           <label id="push-users-field" hidden>User IDs<textarea name="userIds" rows="3" placeholder="Separate IDs with commas or new lines">${escape((item.targetConditions?.userIds || []).join("\n"))}</textarea><small class="field-hint">Use account IDs, not email addresses. Maximum 1,000.</small></label>
@@ -118,14 +157,14 @@
           <label>Title <span id="push-title-count" class="field-hint"></span><input name="title" maxlength="120" value="${escape(item.title)}" required></label>
           <label>Message <span id="push-body-count" class="field-hint"></span><textarea name="body" maxlength="500" rows="3" required>${escape(item.body)}</textarea></label>
           <div class="push-two-fields"><label>Open when tapped<select name="destination">${options({ home: "Home", style: "A published style", collection: "A collection" }, item.relatedStyleId ? "style" : item.collectionId ? "collection" : "home")}</select></label><label id="push-style-field" hidden>Style<select name="styleId"></select></label><label id="push-collection-field" hidden>Collection<select name="collectionId"></select></label></div>
-          <label>Image URL <span class="field-hint">Optional · HTTPS</span><input name="imageUrl" type="url" maxlength="1000" value="${escape(item.imageUrl)}" placeholder="https://…"></label>
+          <label>Notification image <span class="field-hint">Optional · JPG, PNG, or WebP · compressed to 300 KB</span><input name="imageUrl" type="hidden" value="${escape(item.imageUrl)}"><div class="image-upload-row"><input id="push-image-file" type="file" accept="image/jpeg,image/png,image/webp"><button id="push-image-upload" type="button" class="button secondary">Upload image</button><span id="push-image-status" class="field-hint">${item.imageUrl ? "Image uploaded" : "No image selected"}</span></div></label>
         </fieldset>
-        <div class="push-phone-preview" aria-label="Notification preview"><span class="push-app-name">madds · now</span><strong id="push-preview-title"></strong><p id="push-preview-body"></p><img id="push-preview-image" alt="Campaign image preview" referrerpolicy="no-referrer" hidden><small>Preview · Appearance varies by device</small></div>
+        <div class="push-phone-preview" aria-label="Notification preview"><span class="push-app-name">madds · now</span><strong id="push-preview-title"></strong><p id="push-preview-body"></p><img id="push-preview-image" alt="Notification image preview" referrerpolicy="no-referrer" hidden><small>Preview · Appearance varies by device</small></div>
         <p class="field-hint">Only users who allow this category and device notifications are eligible. Inactivity audiences exclude unknown activity.</p>
         <div class="push-actions">${draft ? '<button id="push-save" class="button primary" type="submit">Save draft</button>' : ""}<button id="push-preview" class="button secondary" type="button">Check audience</button></div>
         <div id="push-audience-result" class="push-audience-result" role="status"></div>
-        ${draft ? `<div class="push-sending"><h3>Delivery</h3><p class="field-hint">Save changes before reviewing a send.</p><button id="push-send" type="button" class="button secondary">Review send now</button><label>Schedule in ${escape(zone)}<input id="push-schedule-time" type="datetime-local" step="60"></label><button id="push-schedule" type="button" class="button secondary">Review schedule</button></div>` : `<p class="muted">${escape(item.status === "SCHEDULED" ? `Scheduled: ${formatDate(item.scheduledAt)}` : `Status: ${statusLabel(item.status)}`)}</p>`}
-        ${item._id && ["DRAFT", "SCHEDULED", "PROCESSING"].includes(item.status) ? '<button id="push-cancel" type="button" class="delete-button">Cancel campaign</button>' : ""}
+        ${draft ? `<div class="push-sending"><h3>Delivery</h3><p class="field-hint">Save changes before reviewing a send. Scheduling is available only for a future time.</p><button id="push-send" type="button" class="button secondary">Review send now</button><label>Schedule in ${escape(zone)}<input id="push-schedule-time" type="datetime-local" step="60" min="${scheduleMinimum()}"></label><button id="push-schedule" type="button" class="button secondary">Review schedule</button></div>` : `<p class="muted">${escape(item.status === "SCHEDULED" ? `Scheduled: ${formatDate(item.scheduledAt)}` : `Status: ${statusLabel(item.status)}`)}</p>`}
+        ${item._id && ["DRAFT", "SCHEDULED", "PROCESSING"].includes(item.status) ? '<button id="push-cancel" type="button" class="delete-button">Cancel notification</button>' : ""}
         </form><div id="push-stats"></div><div id="push-logs"></div>`;
       catalogChanged(); conditionalFields(); livePreview();
       baseline = JSON.stringify(values()); dirty = false; updateDirty(); renderDetails();
@@ -137,7 +176,28 @@
         if (url.protocol !== "https:" || url.username || url.password) { image.hidden = true; image.removeAttribute("src"); return; }
         image.hidden = false; image.src = url.href; image.onerror = () => { image.hidden = true; };
       }
-      $("push-form").elements.imageUrl.addEventListener("change", imagePreview); imagePreview();
+      async function uploadImage() {
+        const file = $("push-image-file").files?.[0], button = $("push-image-upload"), status = $("push-image-status");
+        if (!file) { status.textContent = "Choose an image first."; return; }
+        button.disabled = true; status.textContent = "Compressing image…";
+        try {
+          const compressed = await compressNotificationImage(file);
+          status.textContent = `Compressed to ${(compressed.file.size / 1000).toFixed(0)} KB · Uploading…`;
+          const signed = await api(`${base}/upload-signature`, { method: "POST" });
+          const upload = new FormData();
+          upload.append("file", compressed.file, compressed.file.type === "image/webp" ? "notification.webp" : "notification.jpg");
+          upload.append("api_key", signed.apiKey); upload.append("timestamp", String(signed.timestamp));
+          upload.append("folder", signed.folder); upload.append("public_id", signed.publicId); upload.append("tags", signed.tags); upload.append("signature", signed.signature);
+          const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/image/upload`, { method: "POST", body: upload });
+          const uploaded = await response.json().catch(() => ({}));
+          if (!response.ok || uploaded.public_id !== signed.expectedPublicId || typeof uploaded.secure_url !== "string") throw new Error(uploaded.error?.message || "Cloudinary couldn't upload the image.");
+          $("push-form").elements.imageUrl.value = uploaded.secure_url;
+          status.textContent = `Uploaded · ${(compressed.file.size / 1000).toFixed(0)} KB · ${compressed.width} × ${compressed.height}`;
+          imagePreview(); updateDirty();
+        } catch (failure) { status.textContent = failure.message || "Image upload failed."; }
+        finally { button.disabled = false; $("push-image-file").value = ""; }
+      }
+      $("push-image-upload").addEventListener("click", uploadImage); imagePreview();
       $("push-form").addEventListener("submit", save);
       $("push-preview").addEventListener("click", checkAudience);
       $("push-send")?.addEventListener("click", () => prepareReview("send"));
@@ -176,7 +236,7 @@
       if (loading || busy) return;
       loading = true; const session = epoch;
       $("push-refresh").disabled = true; $("push-more").disabled = true; error();
-      if (!campaigns.length) $("push-campaigns").textContent = "Loading campaigns…";
+      if (!campaigns.length) $("push-campaigns").textContent = "Loading drafts…";
       try {
         const data = await api(`${base}${more && nextCursor ? `?cursor=${encodeURIComponent(nextCursor)}` : ""}`);
         if (session !== epoch) return;
@@ -204,7 +264,7 @@
           body: JSON.stringify({ ...draft, ...(selected ? { expectedRevision: selected.revision ?? 0 } : {}) }) });
         if (session !== epoch) return;
         selected = result.campaign; selection++; stats = null; logs = []; logCursor = null;
-        campaigns = [selected, ...campaigns.filter((item) => item._id !== selected._id)]; renderHistory(); renderEditor(); notify("Campaign draft saved.");
+        campaigns = [selected, ...campaigns.filter((item) => item._id !== selected._id)]; renderHistory(); renderEditor(); notify("Notification draft saved.");
       } catch (failure) { if (session === epoch) error(failure.message); }
       finally { if (session === epoch) { busy = false; updateActions(); } }
     }
@@ -228,7 +288,7 @@
       try {
         const latest = (await api(`${base}/${id}`)).campaign;
         if (session !== epoch) return;
-        if (latest.status !== "DRAFT" || (latest.revision ?? 0) !== (selected.revision ?? 0)) throw new Error("This campaign changed. Refresh and review the latest version.");
+        if (latest.status !== "DRAFT" || (latest.revision ?? 0) !== (selected.revision ?? 0)) throw new Error("This notification changed. Refresh and review the latest version.");
         review = { id, action, scheduledAt, expectedRevision: latest.revision ?? 0 };
         showReview(latest);
       } catch (failure) { if (session === epoch) error(failure.message); }
@@ -237,7 +297,7 @@
     function showReview(campaign) {
       $("push-review-dialog")?.remove();
       const dialog = document.createElement("dialog"); dialog.id = "push-review-dialog"; dialog.className = "editor-dialog compact-dialog push-review-dialog";
-      dialog.innerHTML = `<div class="push-review-content"><h2>${review.action === "schedule" ? "Review schedule" : "Review send"}</h2><span class="push-app-name">${escape(types[campaign.notificationType])}</span><h3>${escape(campaign.title)}</h3><p class="push-review-body">${escape(campaign.body)}</p><p>Audience: <b>${escape(labels[campaign.targetAudience])}</b></p>${campaign.targetAudience === "SPECIFIC_USERS" ? `<p>${campaign.targetConditions.userIds.length} selected account IDs</p>` : ""}<p>Opens: ${escape(campaign.deepLink)}</p>${review.scheduledAt ? `<p>${escape(formatDate(review.scheduledAt))} · ${escape(zone)}<small class="field-hint">UTC: ${escape(review.scheduledAt)}</small></p>` : "<p>Delivery starts when the worker processes this campaign.</p>"}<p class="muted">Only eligible users who opted in will be included. The audience is checked again at delivery.</p><p id="push-review-error" class="form-error" role="alert"></p><div class="push-actions"><button id="push-review-back" type="button" class="button secondary">Back</button><button id="push-review-confirm" type="button" class="button primary">${review.action === "schedule" ? "Confirm schedule" : "Send campaign"}</button></div></div>`;
+      dialog.innerHTML = `<div class="push-review-content"><h2>${review.action === "schedule" ? "Review schedule" : "Review send"}</h2><span class="push-app-name">${escape(types[campaign.notificationType])}</span><h3>${escape(campaign.title)}</h3><p class="push-review-body">${escape(campaign.body)}</p><p>Audience: <b>${escape(labels[campaign.targetAudience])}</b></p>${campaign.targetAudience === "SPECIFIC_USERS" ? `<p>${campaign.targetConditions.userIds.length} selected account IDs</p>` : ""}<p>Opens: ${escape(campaign.deepLink)}</p>${review.scheduledAt ? `<p>${escape(formatDate(review.scheduledAt))} · ${escape(zone)}<small class="field-hint">UTC: ${escape(review.scheduledAt)}</small></p>` : "<p>Delivery starts when the worker processes this notification.</p>"}<p class="muted">Only eligible users who opted in will be included. The audience is checked again at delivery.</p><p id="push-review-error" class="form-error" role="alert"></p><div class="push-actions"><button id="push-review-back" type="button" class="button secondary">Back</button><button id="push-review-confirm" type="button" class="button primary">${review.action === "schedule" ? "Confirm schedule" : "Send notification"}</button></div></div>`;
       document.body.append(dialog); dialog.showModal();
       $("push-review-back").addEventListener("click", () => { dialog.close(); review = null; });
       dialog.addEventListener("cancel", (event) => { if (busy) event.preventDefault(); else review = null; });
@@ -251,25 +311,25 @@
         const result = await api(`${base}/${current.id}/${current.action}`, { method: "POST", body: JSON.stringify({ expectedRevision: current.expectedRevision, ...(current.scheduledAt ? { scheduledAt: current.scheduledAt } : {}) }) });
         if (session !== epoch) return;
         selected = result.campaign; campaigns = campaigns.map((item) => item._id === selected._id ? selected : item);
-        $("push-review-dialog").close(); review = null; selection++; renderHistory(); renderEditor(); void loadDetails(); notify(current.action === "schedule" ? "Campaign scheduled." : "Campaign queued for delivery.");
-      } catch (failure) { if (session === epoch) $("push-review-error").textContent = `${failure.message} Refresh the campaign before retrying if the outcome is uncertain.`; }
+        $("push-review-dialog").close(); review = null; selection++; renderHistory(); renderEditor(); void loadDetails(); notify(current.action === "schedule" ? "Notification scheduled." : "Notification queued for delivery.");
+      } catch (failure) { if (session === epoch) $("push-review-error").textContent = `${failure.message} Refresh the notification before retrying if the outcome is uncertain.`; }
       finally { if (session === epoch) { busy = false; updateActions(); if ($("push-review-confirm")) { $("push-review-confirm").disabled = false; $("push-review-back").disabled = false; } } }
     }
     async function cancelCampaign() {
-      if (busy || !selected || dirty || !window.confirm("Cancel this campaign? Unsent work will stop. A batch already submitted cannot be recalled.")) return;
+      if (busy || !selected || dirty || !window.confirm("Cancel this notification? Unsent work will stop. A batch already submitted cannot be recalled.")) return;
       busy = true; updateActions(); error(); const session = epoch;
       try {
         const result = await api(`${base}/${selected._id}/cancel`, { method: "POST" });
         if (session !== epoch) return;
         selected = result.campaign; campaigns = campaigns.map((item) => item._id === selected._id ? selected : item);
-        selection++; renderHistory(); renderEditor(); void loadDetails(); notify("Campaign cancelled. Already submitted batches cannot be recalled.");
+        selection++; renderHistory(); renderEditor(); void loadDetails(); notify("Notification cancelled. Already submitted batches cannot be recalled.");
       } catch (failure) { if (session === epoch) error(failure.message); }
       finally { if (session === epoch) { busy = false; updateActions(); } }
     }
     function reset() {
       epoch++; selection++; campaigns = []; selected = null; nextCursor = null; stats = null; logs = []; logCursor = null;
       busy = false; loading = false; available = false; enabled = false; dirty = false; review = null;
-      $("push-review-dialog")?.remove(); error(); renderHistory(); banner(); $("push-editor").innerHTML = '<p class="muted">Select a campaign or create a new draft.</p>'; $("push-refresh").disabled = false; $("push-new").disabled = false;
+      $("push-review-dialog")?.remove(); error(); renderHistory(); banner(); $("push-editor").innerHTML = '<p class="muted">Select a draft or create a new notification.</p>'; $("push-refresh").disabled = false; $("push-new").disabled = false;
     }
     $("push-new").addEventListener("click", () => { if (!canLeave()) return; selection++; selected = null; stats = null; logs = []; logCursor = null; error(); renderHistory(); renderEditor(); });
     $("push-refresh").addEventListener("click", refresh);

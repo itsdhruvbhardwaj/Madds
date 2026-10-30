@@ -45,6 +45,36 @@ export function createStyleImageUploadSignature(collectionNames: string[]): Clou
 }
 
 /**
+ * Notification images are uploaded directly from Madds Studio with a short-lived
+ * signature. Keeping the secret on the backend lets Studio upload efficiently
+ * without ever exposing Cloudinary credentials to the browser.
+ */
+export function createNotificationImageUploadSignature(): CloudinaryUploadSignature {
+  const folder = "picmee/notifications";
+  const timestamp = Math.floor(Date.now() / 1000);
+  const publicId = `notification-${randomUUID()}`;
+  const expectedPublicId = `${folder}/${publicId}`;
+  const tags = "picmee-notification";
+  const signature = signCloudinaryParameters({
+    folder,
+    public_id: publicId,
+    tags,
+    timestamp: String(timestamp),
+  });
+
+  return {
+    cloudName: env.cloudinaryCloudName,
+    apiKey: env.cloudinaryApiKey,
+    timestamp,
+    signature,
+    folder,
+    publicId,
+    expectedPublicId,
+    tags,
+  };
+}
+
+/**
  * Older Studio versions queued the bare `img-<uuid>` before uploading, while
  * Cloudinary prepends the upload folder to the resulting public_id. Resolve
  * those legacy queue IDs through the Admin Search API before retrying deletion.

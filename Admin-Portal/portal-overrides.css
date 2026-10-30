@@ -3,10 +3,10 @@
 .push-banner{padding:14px 17px;border:1px solid #65532b;background:#252116;border-radius:12px;color:#e2ce95;line-height:1.6;margin-bottom:18px;font-size:12px}
 .push-banner.is-enabled{border-color:#3e604a;background:#19251c;color:#bbd4bf}
 #push-error{margin:0 0 14px;min-height:18px;white-space:pre-wrap}
-.push-workspace{display:grid;grid-template-columns:minmax(230px,290px) minmax(0,1fr);gap:20px;align-items:start}
+.push-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(250px,310px);gap:20px;align-items:start}
 .push-history,.push-editor{padding:20px;border:1px solid var(--line);border-radius:15px;background:#141413;min-width:0}
 .push-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px}
-.push-section-heading h2{font-size:18px;margin:4px 0}.push-section-heading .button{font-size:11px;padding:8px 11px}
+.push-section-heading h2{font-size:18px;margin:4px 0}.push-section-heading p{margin:3px 0 0;font-size:11px}.push-section-heading .button{font-size:11px;padding:8px 11px}
 .push-campaigns{display:grid;gap:9px;margin-bottom:12px;max-height:70vh;overflow:auto}
 .push-campaign{width:100%;text-align:left;display:grid;gap:8px;padding:14px;background:#1b1b19;border:1px solid #363630;border-radius:11px;color:var(--text);overflow-wrap:anywhere}
 .push-campaign:hover,.push-campaign.is-selected{background:#282417;border-color:#a88d4d}.push-campaign strong{font-size:13px}.push-campaign small{font-size:11px;color:var(--muted)}
@@ -24,7 +24,7 @@
 .push-log-scroll{overflow:auto}.push-log-table{width:100%;border-collapse:collapse;font-size:11px;min-width:430px}.push-log-table th,.push-log-table td{text-align:left;vertical-align:top;padding:11px 8px;border-bottom:1px solid var(--line)}.push-log-table th{color:var(--muted);font-size:10px}.push-log-table td:last-child{overflow-wrap:anywhere;max-width:190px}
 .push-review-content{padding:25px}.push-review-content h2{margin:0 0 23px}.push-review-content h3{overflow-wrap:anywhere}.push-review-content p{font-size:12px;line-height:1.7;overflow-wrap:anywhere}.push-review-content .form-error{min-height:18px}.push-empty{font-size:12px;line-height:1.7}
 .push-editor .button:disabled,.push-history .button:disabled{opacity:.45;cursor:not-allowed}.push-review-dialog .button:disabled{opacity:.5;cursor:wait}
-@media(max-width:1100px){.push-workspace{grid-template-columns:230px minmax(0,1fr)}.push-two-fields{grid-template-columns:1fr}}
+@media(max-width:1100px){.push-workspace{grid-template-columns:minmax(0,1fr) 250px}.push-two-fields{grid-template-columns:1fr}}
 @media(max-width:850px){.push-workspace{grid-template-columns:1fr}.push-campaigns{max-height:290px}.push-history,.push-editor{padding:16px}.push-sending{grid-template-columns:1fr}.push-sending label{max-width:none}.push-sending .button{justify-self:start}}
 /* Madds Studio follows the app's monochrome palette with subtle gold accents. */
 :root{--bg:#090909;--surface:#151515;--surface2:#202020;--line:#343434;--text:#f5f5f2;--muted:#aaa9a4;--purple:#c7a653;--purple2:#e1c77e;--green:#9bba9c}
