@@ -24,6 +24,7 @@ import { getHomeSectionCatalog, initializeHomeSectionCatalog } from "./services/
 import { buildHomeFeed } from "./services/home/homeFeed.js";
 import { profileRouter } from "./routes/profile.js";
 import { notificationDevicesRouter } from "./routes/notificationDevices.js";
+import { styleDetailsRouter } from "./routes/styleDetails.js";
 import { adminNotificationsRouter } from "./modules/notifications/notification.routes.js";
 import { cleanupPendingProfileImages } from "./services/profileImages.js";
 import {
@@ -232,6 +233,7 @@ app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Resp
 });
 
 app.use("/api/auth", authRouter);
+app.use("/api/styles", styleDetailsRouter);
 app.use("/api/profile", profileRouter);
 app.use("/api/notifications", notificationDevicesRouter);
 app.use("/api/admin/notifications", adminNotificationsRouter);
