@@ -204,7 +204,7 @@ New variables:
 - NOTIFICATION_DELIVERY_ENABLED=false: send/schedule APIs reject queueing and the
   worker refuses startup while false. Leave false until Android account checks,
   local deduplication, permission, preferences UI and click handling are tested.
-- NOTIFICATION_COOLDOWN_HOURS=24: clamped to 1–168 hours. A conservative reservation
+- NOTIFICATION_COOLDOWN_HOURS=6: clamped to 1–168 hours. A conservative reservation
   counts even if sending fails; all devices of the same campaign share it.
 
 Atomic campaign/delivery leases support multiple workers. Recipient expansion uses

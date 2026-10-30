@@ -163,7 +163,7 @@ export class NotificationService {
           bindingVersion: log.bindingVersion }).select("+fcmToken").lean();
         let skip = !device || !await eligible(campaign, device, campaign.recipientCutoffAt);
         if (!skip) {
-          const hours = Math.min(168, Math.max(1, Number(process.env.NOTIFICATION_COOLDOWN_HOURS) || 24));
+          const hours = Math.min(168, Math.max(1, Number(process.env.NOTIFICATION_COOLDOWN_HOURS) || 6));
           try {
             await NotificationUserGate.findOneAndUpdate({ userId: log.userId,
               $or: [{ campaignId: campaign._id }, { nextAllowedAt: { $lte: new Date() } }] },
