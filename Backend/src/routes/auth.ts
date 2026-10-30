@@ -769,7 +769,7 @@ router.post("/google/password/setup", authRateLimiter, requireAuth, async (req: 
       return res.status(403).json({ ok: false, code: "GOOGLE_ACCOUNT_REQUIRED", error: "This password setup flow is only for Google sign-in accounts." });
     }
     if (user.passwordHash) {
-      return res.status(409).json({ ok: false, code: "PASSWORD_ALREADY_SET", error: "This account already has a password. Confirm deletion with that password." });
+      return res.status(409).json({ ok: false, code: "PASSWORD_ALREADY_SET", error: "This account already has a password. Use password reset if you need to change it." });
     }
     if (!user.emailVerified) {
       return res.status(403).json({ ok: false, code: "EMAIL_NOT_VERIFIED", error: "Verify your email address before setting a password." });
@@ -798,7 +798,7 @@ router.post("/google/password/setup", authRateLimiter, requireAuth, async (req: 
       return res.status(503).json({ ok: false, code: "EMAIL_SEND_FAILED", error: "We could not send the verification email. Please try again later." });
     }
 
-    return res.json({ ok: true, message: "Password verification email sent. Verify your email before deleting your account." });
+    return res.json({ ok: true, message: "Password verification email sent. Open the link to finish creating your password." });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to start password setup.";
     return res.status(500).json({ ok: false, error: message });
@@ -848,7 +848,7 @@ router.get("/google/password/verify", authRateLimiter, async (req: Request, res:
       return respond(409, { ok: false, code: "PASSWORD_SETUP_NOT_APPLIED", error: "Password setup could not be applied. Sign in again and request a new verification email." });
     }
 
-    return respond(200, { ok: true, message: "Email verified and password set. Confirm account deletion in PicMee with your new password." });
+    return respond(200, { ok: true, message: "Email verified and password created. You can now sign in using your email and password." });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to verify password setup.";
     return res.status(500).json({ ok: false, error: message });
