@@ -942,6 +942,9 @@ describe("refresh and logout", () => {
     expect(response.status).toBe(200);
     expect(response.body.ok).toBe(true);
     expect(response.body.user.email).toBe("token@example.com");
+    // Android replaces its cached User with /me. Omitting this boolean makes
+    // Gson deserialize it as false and suppress otherwise eligible pushes.
+    expect(response.body.user.isActive).toBe(true);
   });
 });
 

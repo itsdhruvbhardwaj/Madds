@@ -1138,6 +1138,7 @@ router.get("/me", authRateLimiter, requireAuth, async (req: AuthenticatedRequest
       name: user.name,
       email: user.email,
       emailVerified: user.emailVerified,
+      isActive: user.isActive !== false,
       profileImage: user.profileImage ?? null,
       ...appearanceFields(user),
       credits: user.credits ?? 0,

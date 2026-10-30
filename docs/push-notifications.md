@@ -1,5 +1,18 @@
 # Centralized push notifications
 
+### Device diagnostic — cached active-account flag
+
+A real-device FCM test reached MaddsMessagingService but was suppressed because
+the cached User had isActive=false. GET /api/auth/me omitted isActive, so Gson
+deserialized the missing primitive Boolean as false when replacing the profile
+cache. The endpoint now explicitly returns the authenticated active-account flag,
+with a regression assertion. Reopening the app refreshes an already affected cache.
+Account, session, binding and category restrictions remain enforced.
+
+Debug builds now log receipt and boolean suppression checks without payloads,
+account identifiers, tokens or private exception messages. Samsung's allowNoti
+diagnostic field alone was not a reliable indication of the Android app permission.
+
 ## Current hosting choice — shared free Render service
 
 Notification processing can now run inside the existing web service. Configure
