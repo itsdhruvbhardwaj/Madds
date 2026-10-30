@@ -15,6 +15,8 @@ import {
 export const GOOGLE_PLAY_PACKAGE_NAME = "com.itsdhruvbhardwaj.picme";
 
 const creditProducts = {
+  "madds_credits_40": { credits: 40, purchaseOptionId: "buy-40-credits" },
+  "madds_credits_110": { credits: 110, purchaseOptionId: "buy-110-credits" },
   "com.itsdhruvhardwaj.picme_credit_25": {
     credits: 250,
     purchaseOptionId: "buy-250-credits",

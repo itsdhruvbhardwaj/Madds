@@ -121,6 +121,15 @@ describe("Google Play credit-pack fulfillment", () => {
     billingMocks.consumeProductPurchase.mockResolvedValue(undefined);
   });
 
+  it.each([40, 110])("grants the verified %s-credit pack", async credits => {
+    const productId = `madds_credits_${credits}`;
+    billingMocks.getProductPurchaseV2.mockResolvedValue({ ...validPurchase,
+      productLineItem: [{ productId, productOfferDetails: { purchaseOptionId: `buy-${credits}-credits` } }] });
+    await expect(processGooglePlayPurchase({ userId: "user-1", productId, purchaseToken: `token-${credits}` }))
+      .resolves.toMatchObject({ status: "credited", creditsGranted: credits });
+    expect(billingMocks.userFindByIdAndUpdate).toHaveBeenCalledWith("user-1", { $inc: { credits } }, expect.anything());
+  });
+
   it("verifies and atomically grants the configured 250 credits before consuming", async () => {
     await expect(processGooglePlayPurchase({
       userId: "authenticated-user",
