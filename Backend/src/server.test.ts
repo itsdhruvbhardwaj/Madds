@@ -103,6 +103,7 @@ import { app } from "./server.js";
 import { OpenAIImageGenerator } from "./services/openai/generation.js";
 import { AdMobKeyFetchError, admobSsvVerifier, InvalidAdMobCallbackError } from "./services/rewardedAds/admobSsv.js";
 import { styles } from "./services/styles/styles.js";
+import * as styleCatalog from "./services/styles/catalog.js";
 
 vi.mock("openai", () => {
   return {
@@ -151,6 +152,21 @@ describe("Android App Links endpoint", () => {
 });
 
 describe("home configuration endpoint", () => {
+  it("bundles visible section previews in one public response without favorite lookups", async () => {
+    const sample = { ...styles[0], id: "feed-test", collections: ["Trending", "Popular"] };
+    const catalogue = vi.spyOn(styleCatalog, "listCatalogStyles").mockResolvedValueOnce([sample]);
+    try {
+      const response = await request(app).get("/api/home/config?includeStyles=true");
+      expect(response.status).toBe(200);
+      expect(catalogue).toHaveBeenCalledTimes(1);
+      expect(response.body.sections.every((section: any) => section.visible && Array.isArray(section.styles))).toBe(true);
+      expect(response.body.sections.find((section: any) => section.slug === "Trending").styles[0].id).toBe("feed-test");
+      expect(favoriteStyleMocks.find).not.toHaveBeenCalled();
+    } finally {
+      catalogue.mockRestore();
+    }
+  });
+
   it("returns the ordered, visible initial home sections", async () => {
     const response = await request(app).get("/api/home/config");
 

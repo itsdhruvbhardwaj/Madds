@@ -21,6 +21,7 @@ import { favoritesRouter } from "./routes/favorites.js";
 import { googlePlayBillingRouter } from "./routes/googlePlayBilling.js";
 import { rewardedAdsRouter } from "./routes/rewardedAds.js";
 import { getHomeSectionCatalog, initializeHomeSectionCatalog } from "./services/home/homeCatalog.js";
+import { buildHomeFeed } from "./services/home/homeFeed.js";
 import {
   completeGeneration,
   fingerprintGenerationRequest,
@@ -141,8 +142,15 @@ app.get("/health", (_req: Request, res: Response) => {
   res.json({ ok: true, service: "ai-photo-studio-backend" });
 });
 
-app.get("/api/home/config", async (_req: Request, res: Response) => {
-  res.json({ sections: await getHomeSectionCatalog() });
+app.get("/api/home/config", async (req: Request, res: Response) => {
+  const sections = await getHomeSectionCatalog();
+  if (req.query.includeStyles !== "true") {
+    res.json({ sections });
+    return;
+  }
+  // Public catalogue only: one catalogue read replaces a request per section.
+  const styles = await listCatalogStyles();
+  res.json(buildHomeFeed(sections, styles));
 });
 
 app.get("/api/collections", async (_req: Request, res: Response) => {
