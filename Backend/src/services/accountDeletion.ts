@@ -10,6 +10,7 @@ import { Purchase } from "../models/Purchase.js";
 import { RewardedAdAttempt } from "../models/RewardedAdAttempt.js";
 import { Session } from "../models/Session.js";
 import { User } from "../models/User.js";
+import { destroyProfileImage } from "./profileImages.js";
 
 const userOwnedModels = [
   CreditTransaction,
@@ -26,7 +27,7 @@ const userOwnedModels = [
 
 export async function cleanupScheduledAccountDeletions(now = new Date()): Promise<number> {
   const dueUsers = await User.find({ deletionScheduledAt: { $lte: now } })
-    .select("_id")
+    .select("_id profileImagePublicId profileImageCleanupIds")
     .lean();
   let deletedCount = 0;
 
@@ -54,6 +55,11 @@ export async function cleanupScheduledAccountDeletions(now = new Date()): Promis
 
     if (!alreadyClaimed) {
       continue;
+    }
+
+    // Delete only managed uploads; external Google photos are never touched.
+    for (const publicId of new Set<string>([user.profileImagePublicId, ...(user.profileImageCleanupIds ?? [])].filter(Boolean))) {
+      await destroyProfileImage(publicId);
     }
 
     await Promise.all([

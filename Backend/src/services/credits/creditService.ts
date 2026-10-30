@@ -267,7 +267,7 @@ export async function createUserWithWelcomeCredits(details: NewUserDetails) {
   try {
     const createdUser = await session.withTransaction(async () => {
       const [user] = await User.create(
-        [{ ...details, credits: WELCOME_CREDITS }],
+        [{ ...details, credits: WELCOME_CREDITS, profileSetupComplete: false }],
         { session },
       );
       if (!user) {

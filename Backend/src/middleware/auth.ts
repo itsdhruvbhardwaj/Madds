@@ -2,11 +2,12 @@ import type { NextFunction, Request, Response } from "express";
 import type { JwtPayload } from "jsonwebtoken";
 
 import { verifyAccessToken } from "../lib/auth.js";
+import { appearanceFields, type AppearanceFields } from "../services/profileAppearance.js";
 import { Session } from "../models/Session.js";
 import { User } from "../models/User.js";
 
 export type AuthenticatedRequest = Request & {
-  user?: {
+  user?: AppearanceFields & {
     id: string;
     email?: string;
     name?: string;
@@ -93,6 +94,7 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
         ? user.credits
         : 0,
       profileImage: user.profileImage ?? null,
+      ...appearanceFields(user),
       hasPassword: Boolean(user.passwordHash),
       hasGoogleLogin: Boolean(user.googleId),
     };

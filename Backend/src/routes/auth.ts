@@ -3,6 +3,7 @@ import rateLimit from "express-rate-limit";
 import { OAuth2Client } from "google-auth-library";
 
 import { env } from "../config/env.js";
+import { appearanceFields } from "../services/profileAppearance.js";
 import { createAccessToken, createRandomToken, createRefreshToken, getRefreshSessionExpiryDate, hashPassword, hashRefreshToken, hashToken, isStrongPassword, isValidEmail, sanitizeUser, comparePassword } from "../lib/auth.js";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth.js";
 import { EmailVerificationToken } from "../models/EmailVerificationToken.js";
@@ -1138,6 +1139,7 @@ router.get("/me", authRateLimiter, requireAuth, async (req: AuthenticatedRequest
       email: user.email,
       emailVerified: user.emailVerified,
       profileImage: user.profileImage ?? null,
+      ...appearanceFields(user),
       credits: user.credits ?? 0,
       hasPassword: user.hasPassword,
       hasGoogleLogin: user.hasGoogleLogin,

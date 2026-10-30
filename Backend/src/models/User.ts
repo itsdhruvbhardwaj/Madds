@@ -29,6 +29,12 @@ const UserSchema = new Schema(
       type: String,
       default: "",
     },
+    profileImagePublicId: { type: String, default: "" },
+    profileImageCleanupIds: { type: [String], default: [] },
+    profileAppearance: { type: String, enum: ["photo", "avatar", "default"], default: "photo" },
+    avatarId: { type: String, default: null },
+    avatarBackground: { type: String, default: "gold" },
+    profileSetupComplete: { type: Boolean, default: true },
     emailVerified: {
       type: Boolean,
       default: false,

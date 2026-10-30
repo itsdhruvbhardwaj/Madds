@@ -8,9 +8,11 @@ const deletionMocks = vi.hoisted(() => ({
   FavoriteStyle: { deleteMany: vi.fn() },
   Generation: { deleteMany: vi.fn() },
   PasswordResetToken: { deleteMany: vi.fn() },
+  PasswordSetupToken: { deleteMany: vi.fn() },
   Purchase: { deleteMany: vi.fn() },
   RewardedAdAttempt: { deleteMany: vi.fn() },
   Session: { deleteMany: vi.fn() },
+  destroyProfileImage: vi.fn(),
   User: {
     find: vi.fn(),
     findOne: vi.fn(),
@@ -26,10 +28,12 @@ vi.mock("./models/EmailVerificationToken.js", () => ({ EmailVerificationToken: d
 vi.mock("./models/FavoriteStyle.js", () => ({ FavoriteStyle: deletionMocks.FavoriteStyle }));
 vi.mock("./models/Generation.js", () => ({ Generation: deletionMocks.Generation }));
 vi.mock("./models/PasswordResetToken.js", () => ({ PasswordResetToken: deletionMocks.PasswordResetToken }));
+vi.mock("./models/PasswordSetupToken.js", () => ({ PasswordSetupToken: deletionMocks.PasswordSetupToken }));
 vi.mock("./models/Purchase.js", () => ({ Purchase: deletionMocks.Purchase }));
 vi.mock("./models/RewardedAdAttempt.js", () => ({ RewardedAdAttempt: deletionMocks.RewardedAdAttempt }));
 vi.mock("./models/Session.js", () => ({ Session: deletionMocks.Session }));
 vi.mock("./models/User.js", () => ({ User: deletionMocks.User }));
+vi.mock("./services/profileImages.js", () => ({ destroyProfileImage: deletionMocks.destroyProfileImage }));
 
 import { cleanupScheduledAccountDeletions } from "./services/accountDeletion.js";
 
@@ -40,6 +44,7 @@ const ownedModels = [
   deletionMocks.FavoriteStyle,
   deletionMocks.Generation,
   deletionMocks.PasswordResetToken,
+  deletionMocks.PasswordSetupToken,
   deletionMocks.Purchase,
   deletionMocks.RewardedAdAttempt,
   deletionMocks.Session,
@@ -48,6 +53,7 @@ const ownedModels = [
 describe("scheduled account deletion cleanup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    deletionMocks.destroyProfileImage.mockResolvedValue(undefined);
     for (const model of [...ownedModels, deletionMocks.AdminAuditLog]) {
       model.deleteMany.mockResolvedValue({ deletedCount: 1 });
     }
@@ -102,6 +108,28 @@ describe("scheduled account deletion cleanup", () => {
       deletionScheduledAt: { $lte: now },
       deletionCleanupStartedAt: { $ne: null },
     });
+  });
+
+  it("removes managed profile photos and queued replacements before deleting an account", async () => {
+    deletionMocks.User.find.mockReturnValue({ select: () => ({ lean: async () => [{
+      _id: "expired-user", profileImagePublicId: "profile/current", profileImageCleanupIds: ["profile/old", "profile/current"],
+    }] }) });
+    deletionMocks.User.updateOne.mockResolvedValue({ matchedCount: 1 });
+    deletionMocks.User.deleteOne.mockResolvedValue({ deletedCount: 1 });
+    expect(await cleanupScheduledAccountDeletions()).toBe(1);
+    expect(deletionMocks.destroyProfileImage).toHaveBeenCalledTimes(2);
+    expect(deletionMocks.destroyProfileImage).toHaveBeenCalledWith("profile/current");
+    expect(deletionMocks.destroyProfileImage).toHaveBeenCalledWith("profile/old");
+  });
+
+  it("retains an account for retry when managed photo deletion fails", async () => {
+    deletionMocks.User.find.mockReturnValue({ select: () => ({ lean: async () => [{
+      _id: "expired-user", profileImagePublicId: "profile/current",
+    }] }) });
+    deletionMocks.User.updateOne.mockResolvedValue({ matchedCount: 1 });
+    deletionMocks.destroyProfileImage.mockRejectedValue(new Error("temporary failure"));
+    await expect(cleanupScheduledAccountDeletions()).rejects.toThrow("temporary failure");
+    expect(deletionMocks.User.deleteOne).not.toHaveBeenCalled();
   });
 
   it("skips a candidate that was cancelled before the cleanup claim", async () => {

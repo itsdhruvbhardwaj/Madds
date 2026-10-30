@@ -22,6 +22,8 @@ import { googlePlayBillingRouter } from "./routes/googlePlayBilling.js";
 import { rewardedAdsRouter } from "./routes/rewardedAds.js";
 import { getHomeSectionCatalog, initializeHomeSectionCatalog } from "./services/home/homeCatalog.js";
 import { buildHomeFeed } from "./services/home/homeFeed.js";
+import { profileRouter } from "./routes/profile.js";
+import { cleanupPendingProfileImages } from "./services/profileImages.js";
 import {
   completeGeneration,
   fingerprintGenerationRequest,
@@ -228,6 +230,7 @@ app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Resp
 });
 
 app.use("/api/auth", authRouter);
+app.use("/api/profile", profileRouter);
 app.use("/api/admin", adminCatalogRouter);
 app.use("/api/me", favoritesRouter);
 app.use("/api", rewardedAdsRouter);
@@ -538,7 +541,9 @@ if (isDirectExecution) {
         await initializeStyleCatalog();
         await initializeHomeSectionCatalog();
         await cleanupScheduledAccountDeletions();
+        void cleanupPendingProfileImages().catch(() => console.warn("Profile cleanup deferred."));
         const accountDeletionCleanupTimer = setInterval(() => {
+          void cleanupPendingProfileImages().catch(() => console.warn("Profile cleanup deferred."));
           void cleanupScheduledAccountDeletions().catch((error: unknown) => {
             console.error(
               "Account deletion cleanup failed.",

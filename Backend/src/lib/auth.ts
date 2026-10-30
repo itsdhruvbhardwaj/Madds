@@ -5,8 +5,9 @@ import type { JwtPayload } from "jsonwebtoken";
 import jwt from "jsonwebtoken";
 
 import { env } from "../config/env.js";
+import { appearanceFields, type AppearanceFields } from "../services/profileAppearance.js";
 
-export type AuthenticatedUser = {
+export type AuthenticatedUser = AppearanceFields & {
   id: string;
   email: string;
   name: string;
@@ -105,7 +106,7 @@ export function isStrongPassword(value: string): boolean {
   return value.length >= 8 && /[A-Z]/.test(value) && /[a-z]/.test(value) && /\d/.test(value);
 }
 
-export function sanitizeUser(user: {
+export function sanitizeUser(user: AppearanceFields & {
   _id?: { toString(): string } | string;
   id?: string;
   name?: string;
@@ -129,6 +130,7 @@ export function sanitizeUser(user: {
       ? user.credits
       : 0,
     profileImage: user.profileImage ?? null,
+    ...appearanceFields(user),
     hasPassword: Boolean(user.passwordHash),
     hasGoogleLogin: Boolean(user.googleId),
   };
