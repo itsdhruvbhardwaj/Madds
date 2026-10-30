@@ -96,7 +96,9 @@
     }
     function renderHistory() {
       const drafts = campaigns.filter((item) => item.status === "DRAFT");
+      const recent = campaigns.filter((item) => item.status !== "DRAFT");
       $("push-campaigns").innerHTML = drafts.map((item) => `<button type="button" class="push-campaign ${selected?._id === item._id ? "is-selected" : ""}" data-campaign="${escape(item._id)}" aria-pressed="${selected?._id === item._id}"><span class="push-status">${escape(statusLabel(item.status))}</span><strong>${escape(item.title)}</strong><small>${escape(labels[item.targetAudience] || item.targetAudience)}</small><small>Last edited ${escape(formatDate(item.updatedAt || item.createdAt))}</small></button>`).join("") || '<p class="muted push-empty">No saved drafts. Start a notification when you are ready.</p>';
+      $("push-recent").innerHTML = recent.length ? `<h3>Recent activity</h3>${recent.map((item) => `<button type="button" class="push-campaign ${selected?._id === item._id ? "is-selected" : ""}" data-campaign="${escape(item._id)}" aria-pressed="${selected?._id === item._id}"><span class="push-status">${escape(statusLabel(item.status))}</span><strong>${escape(item.title)}</strong><small>${escape(formatDate(item.scheduledAt || item.createdAt))}</small></button>`).join("")}` : "";
       $("push-more").hidden = !nextCursor;
       $("push-more").disabled = loading || busy;
     }
@@ -236,7 +238,7 @@
       if (loading || busy) return;
       loading = true; const session = epoch;
       $("push-refresh").disabled = true; $("push-more").disabled = true; error();
-      if (!campaigns.length) $("push-campaigns").textContent = "Loading drafts…";
+      if (!campaigns.length) { $("push-campaigns").textContent = "Loading drafts…"; $("push-recent").textContent = ""; }
       try {
         const data = await api(`${base}${more && nextCursor ? `?cursor=${encodeURIComponent(nextCursor)}` : ""}`);
         if (session !== epoch) return;
@@ -335,6 +337,7 @@
     $("push-refresh").addEventListener("click", refresh);
     $("push-more").addEventListener("click", () => loadCampaigns(true));
     $("push-campaigns").addEventListener("click", (event) => { const button = event.target.closest("[data-campaign]"); if (button) void open(button.dataset.campaign); });
+    $("push-recent").addEventListener("click", (event) => { const button = event.target.closest("[data-campaign]"); if (button) void open(button.dataset.campaign); });
     window.addEventListener("beforeunload", (event) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } });
     return { refresh, reset, catalogChanged };
   }
