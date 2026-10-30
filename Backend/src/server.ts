@@ -15,6 +15,7 @@ import { CreditTransaction } from "./models/CreditTransaction.js";
 import { FavoriteStyle } from "./models/FavoriteStyle.js";
 import { Generation } from "./models/Generation.js";
 import { RewardedAdAttempt } from "./models/RewardedAdAttempt.js";
+import { Purchase } from "./models/Purchase.js";
 import { authRouter } from "./routes/auth.js";
 import { adminCatalogRouter } from "./routes/adminCatalog.js";
 import { favoritesRouter } from "./routes/favorites.js";
@@ -543,6 +544,7 @@ if (isDirectExecution) {
           CreditTransaction.init(),
           FavoriteStyle.init(),
           RewardedAdAttempt.init(),
+          Purchase.init(),
         ]);
         const { initializeStyleCatalog } = await import("./services/styles/catalog.js");
         await initializeStyleCatalog();

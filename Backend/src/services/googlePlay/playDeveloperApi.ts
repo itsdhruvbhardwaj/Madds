@@ -5,6 +5,7 @@ const apiBaseUrl = "https://androidpublisher.googleapis.com/androidpublisher/v3"
 
 export type GooglePlayProductPurchase = {
   packageName?: string;
+  obfuscatedExternalAccountId?: string;
   purchaseStateContext?: {
     purchaseState?: string;
   };
@@ -13,6 +14,8 @@ export type GooglePlayProductPurchase = {
     productOfferDetails?: {
       purchaseOptionId?: string;
       consumptionState?: string;
+      quantity?: number;
+      refundableQuantity?: number;
     };
   }>;
   orderId?: string;

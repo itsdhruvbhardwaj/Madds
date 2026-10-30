@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
 
 const billingMocks = vi.hoisted(() => {
   const session = {
@@ -343,6 +344,8 @@ describe("Google Play credit-pack fulfillment", () => {
   });
 
   it("records consumption already confirmed by the verified Play response", async () => {
+    existingPurchase = { userId: "user-1", productId: "com.itsdhruvhardwaj.picme_credit_25",
+      purchaseToken: "already-consumed-token", status: "verified", creditsGranted: 250, consumedAt: null };
     billingMocks.getProductPurchaseV2.mockResolvedValue({
       ...validPurchase,
       productLineItem: [{
@@ -362,6 +365,39 @@ describe("Google Play credit-pack fulfillment", () => {
 
     expect(billingMocks.consumeProductPurchase).not.toHaveBeenCalled();
     expect(billingMocks.purchaseUpdateOne).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a consumed token with no fulfillment record instead of crediting it again", async () => {
+    billingMocks.getProductPurchaseV2.mockResolvedValue({ ...validPurchase, productLineItem: [{
+      productId: "com.itsdhruvhardwaj.picme_credit_25", productOfferDetails: { consumptionState: "CONSUMPTION_STATE_CONSUMED" },
+    }] });
+    await expect(processGooglePlayPurchase({userId:"user-1", productId:"com.itsdhruvhardwaj.picme_credit_25", purchaseToken:"unknown-consumed"})).rejects.toBeInstanceOf(InvalidGooglePlayPurchaseError);
+    expect(billingMocks.userFindByIdAndUpdate).not.toHaveBeenCalled();
+  });
+
+  it("validates Google's account binding before granting or consuming", async () => {
+    billingMocks.getProductPurchaseV2.mockResolvedValue({ ...validPurchase,
+      obfuscatedExternalAccountId: createHash("sha256").update("madds:user-1").digest("hex") });
+    await expect(processGooglePlayPurchase({userId:"other-user",productId:"com.itsdhruvhardwaj.picme_credit_25",purchaseToken:"wrong-account"})).rejects.toBeInstanceOf(GooglePlayPurchaseConflictError);
+    expect(billingMocks.userFindByIdAndUpdate).not.toHaveBeenCalled();
+    expect(billingMocks.consumeProductPurchase).not.toHaveBeenCalled();
+    await expect(processGooglePlayPurchase({userId:"user-1",productId:"com.itsdhruvhardwaj.picme_credit_25",purchaseToken:"right-account"})).resolves.toMatchObject({status:"credited",creditsGranted:250});
+  });
+
+  it("grants credits for the verified retained quantity, never a client-supplied amount", async () => {
+    billingMocks.getProductPurchaseV2.mockResolvedValue({ ...validPurchase, productLineItem: [{
+      productId: "com.itsdhruvhardwaj.picme_credit_25", productOfferDetails: { quantity: 3, refundableQuantity: 2 },
+    }] });
+    await expect(processGooglePlayPurchase({userId:"user-1",productId:"com.itsdhruvhardwaj.picme_credit_25",purchaseToken:"multi-quantity"})).resolves.toMatchObject({creditsGranted:500});
+    expect(billingMocks.userFindByIdAndUpdate).toHaveBeenCalledWith("user-1",{$inc:{credits:500}},expect.anything());
+  });
+
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER])("rejects invalid verified quantity %s", async quantity => {
+    billingMocks.getProductPurchaseV2.mockResolvedValue({ ...validPurchase, productLineItem: [{
+      productId: "com.itsdhruvhardwaj.picme_credit_25", productOfferDetails: { quantity },
+    }] });
+    await expect(processGooglePlayPurchase({userId:"user-1",productId:"com.itsdhruvhardwaj.picme_credit_25",purchaseToken:"invalid-quantity"})).rejects.toBeInstanceOf(InvalidGooglePlayPurchaseError);
+    expect(billingMocks.userFindByIdAndUpdate).not.toHaveBeenCalled();
   });
 
   it("allows a retry after consumption failure without granting twice", async () => {

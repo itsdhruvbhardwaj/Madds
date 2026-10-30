@@ -1,4 +1,5 @@
 import mongoose, { type ClientSession } from "mongoose";
+import { createHash } from "node:crypto";
 
 import { CreditTransaction } from "../../models/CreditTransaction.js";
 import { Purchase } from "../../models/Purchase.js";
@@ -59,7 +60,7 @@ function validateVerifiedPurchase(
   purchase: GooglePlayProductPurchase,
   productId: CreditProductId,
   requestPurchaseOptionId?: string,
-): { purchaseOptionId?: string; consumptionState?: string } {
+): { purchaseOptionId?: string; consumptionState?: string; quantity: number } {
   const product = creditProducts[productId];
   if (purchase.packageName && purchase.packageName !== GOOGLE_PLAY_PACKAGE_NAME) {
     throw new InvalidGooglePlayPurchaseError();
@@ -87,9 +88,16 @@ function validateVerifiedPurchase(
     throw new InvalidGooglePlayPurchaseError();
   }
 
+  const quantity = items[0].productOfferDetails?.quantity ?? 1;
+  const refundableQuantity = items[0].productOfferDetails?.refundableQuantity ?? quantity;
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || !Number.isSafeInteger(refundableQuantity) ||
+      refundableQuantity < 1 || refundableQuantity > quantity || !Number.isSafeInteger(refundableQuantity * product.credits)) {
+    throw new InvalidGooglePlayPurchaseError();
+  }
   return {
     purchaseOptionId: verifiedPurchaseOptionId,
     consumptionState: items[0].productOfferDetails?.consumptionState,
+    quantity: refundableQuantity,
   };
 }
 
@@ -122,8 +130,9 @@ async function fulfillVerifiedPurchase(input: {
   purchaseToken: string;
   purchaseOptionId?: string;
   purchase: GooglePlayProductPurchase;
+  quantity: number;
 }): Promise<GooglePlayFulfillmentResult> {
-  const credits = creditProducts[input.productId].credits;
+  const credits = creditProducts[input.productId].credits * input.quantity;
   const session: ClientSession = await mongoose.startSession();
 
   try {
@@ -157,6 +166,7 @@ async function fulfillVerifiedPurchase(input: {
             orderId: input.purchase.orderId ?? "",
             purchaseOptionId: input.purchaseOptionId,
             creditsGranted: credits,
+            quantity: input.quantity,
             status: "verified",
             purchaseTime: purchaseTime && Number.isFinite(purchaseTime.getTime())
               ? purchaseTime
@@ -237,11 +247,23 @@ export async function processGooglePlayPurchase(input: {
     input.productId,
     input.purchaseOptionId,
   );
+  // New app builds bind purchases to a non-PII SHA-256 account identifier.
+  // Older builds didn't send one; preserve their existing recovery behavior.
+  if (verifiedPurchase.obfuscatedExternalAccountId !== undefined &&
+      verifiedPurchase.obfuscatedExternalAccountId !== createHash("sha256").update(`madds:${input.userId}`).digest("hex")) {
+    throw new GooglePlayPurchaseConflictError();
+  }
+  if (verifiedLineItem.consumptionState === "CONSUMPTION_STATE_CONSUMED") {
+    const existing = await getExistingPurchase(input.purchaseToken);
+    if (!existing) throw new InvalidGooglePlayPurchaseError();
+    existingPurchaseResult(existing, input.userId, input.productId);
+  }
   const result = await fulfillVerifiedPurchase({
     ...input,
     productId: input.productId,
     purchaseOptionId: verifiedLineItem.purchaseOptionId,
     purchase: verifiedPurchase,
+    quantity: verifiedLineItem.quantity,
   });
 
   const purchase = await getExistingPurchase(input.purchaseToken);

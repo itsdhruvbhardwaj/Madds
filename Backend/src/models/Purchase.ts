@@ -30,6 +30,7 @@ const PurchaseSchema = new Schema(
       type: Number,
       default: 0,
     },
+    quantity: { type: Number, default: 1 },
     amount: {
       type: Number,
       default: 0,
