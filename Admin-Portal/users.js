@@ -3,11 +3,13 @@
   const date = v => v ? new Date(v).toLocaleString() : "—";
   function create({ api, notify }) {
     const $ = id => document.getElementById(id), base = "/api/admin/users";
-    let page = 1, epoch = 0, historyTicket = 0, selected = null, selectedBalance = 0, busy = false, pending = null, query = "", status = "";
+    let page = 1, epoch = 0, historyTicket = 0, activeHistory = null, selected = null, selectedBalance = 0, busy = false, pending = null, query = "", status = "";
     const accountStatus = u => u.isActive === false ? "Suspended" : !u.emailVerified ? "Email unverified" : u.deletionScheduledAt ? "Deletion scheduled" : "Active";
     function closeDetails() {
       const detail = $("user-details"); detail.hidden = true; $("users-panel").append(detail);
       $("user-detail-row")?.remove();
+      $("users-list").querySelectorAll(".is-expanded").forEach(row => row.classList.remove("is-expanded"));
+      activeHistory = null; historyTicket++;
       $("users-list").querySelectorAll("[data-user]").forEach(b => { b.textContent = "View"; b.setAttribute("aria-expanded", "false"); });
       selected = null; ++epoch;
     }
@@ -28,6 +30,7 @@
       if (selected === id) { closeDetails(); return; }
       closeDetails();
       const anchor = $("user-row-" + id); if (!anchor) return;
+      anchor.classList.add("is-expanded");
       const row = document.createElement("tr"); row.id = "user-detail-row";
       const cell = document.createElement("td"); cell.colSpan = 5; row.append(cell); anchor.after(row); cell.append($("user-details"));
       const view = anchor.querySelector("[data-user]"); view.textContent = "Close"; view.setAttribute("aria-expanded", "true");
@@ -53,14 +56,22 @@
         };
         $("user-change").oninput = () => { pending = null; };
         $("user-change").onsubmit = change;
-        $("user-details").querySelectorAll("[data-history]").forEach(b => b.onclick = () => history(b.dataset.history));
+        $("user-details").querySelectorAll("[data-history]").forEach(b => b.onclick = () => {
+          if (activeHistory === b.dataset.history) {
+            activeHistory = null; historyTicket++;
+            $("user-history").hidden = true; $("user-history").textContent = "";
+            $("user-details").querySelectorAll("[data-history]").forEach(tab => { tab.classList.remove("is-active"); tab.setAttribute("aria-expanded", "false"); });
+          } else void history(b.dataset.history);
+        });
         void history("generations");
       } catch (e) { if (ticket === epoch) $("user-details").textContent = e.message; }
     }
     async function history(kind, cursor = "", previous = []) {
       const id = selected, ticket = epoch, request = ++historyTicket; if (!id) return;
+      activeHistory = kind; $("user-history").hidden = false;
+      if (!cursor) $("user-history").textContent = "Loading history…";
       try {
-        $("user-details").querySelectorAll("[data-history]").forEach(b => b.classList.toggle("is-active", b.dataset.history === kind));
+        $("user-details").querySelectorAll("[data-history]").forEach(b => { b.classList.toggle("is-active", b.dataset.history === kind); b.setAttribute("aria-expanded", String(b.dataset.history === kind)); b.setAttribute("aria-controls", "user-history"); });
         const result = await api(`${base}/${id}/${kind}?cursor=${cursor}`); if (id !== selected || ticket !== epoch || request !== historyTicket) return;
         const rows = [...previous, ...result.rows];
         const heads = kind === "generations" ? ["Style", "Time", "Status"] : kind === "credits" ? ["Time", "Type", "Change", "Balance", "Reason"] : ["Time", "Administrator", "Action", "Reason"];
