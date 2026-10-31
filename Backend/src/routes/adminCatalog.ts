@@ -193,7 +193,7 @@ router.patch("/catalog/styles/verification", async (req: AuthenticatedRequest, r
       const updates = styles.filter(style => (style.verified === true) !== verified);
       if (!updates.length) return 0;
       await CatalogStyle.updateMany({ id: { $in: updates.map(style => style.id) } }, { $set: { verified } }, { session, runValidators: true });
-      await CatalogAuditLog.create(updates.map(style => ({ actorEmail: req.user!.email, actorName: req.user!.name || "", action: "STYLE_UPDATED", itemId: style.id, itemName: `${style.name} — ${verified ? "Verified" : "Unverified"}` })), { session });
+      await CatalogAuditLog.create(updates.map(style => ({ actorEmail: req.user!.email, actorName: req.user!.name || "", action: "STYLE_UPDATED", itemId: style.id, itemName: `${style.name} — ${verified ? "Verified" : "Unverified"}` })), { session, ordered: true });
       return updates.length;
     });
     return res.json({ ok: true, changed, selected: selectedIds.length, verified });

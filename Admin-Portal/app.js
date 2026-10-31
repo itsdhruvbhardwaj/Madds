@@ -177,7 +177,7 @@
     byId("style-count").textContent = String(state.styles.length);
     byId("result-count").textContent = `${filtered.length} shown`;
     const grid = byId("styles-grid");
-    bulkStyles.catalogChanged();
+    bulkStyles.catalogChanged(filtered);
     if (!filtered.length) {
       grid.innerHTML = '<div class="empty-state">No styles match. Try another search or add a new style.</div>';
       return;

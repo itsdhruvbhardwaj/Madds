@@ -34,6 +34,17 @@ describe("bulk catalogue verification", () => {
     for (const body of [{ ids: [], verified: true }, { ids: ["style-one"], verified: "true" }]) expect((await request(app).patch("/admin/catalog/styles/verification").set("Authorization", "Bearer admin").send(body)).status).toBe(400);
     expect(CatalogStyle.updateMany).not.toHaveBeenCalled();
   });
+  it("uses ordered audit writes when changing multiple styles in one transaction", async () => {
+    vi.mocked(CatalogStyle.find).mockReturnValue({ select: () => ({ session: () => ({ lean: async () => [{ id: "style-one", name: "One", verified: false }, { id: "style-two", name: "Two", verified: false }] }) }) } as any);
+    vi.mocked(CatalogAuditLog.create).mockImplementation(async (docs: any, options: any) => {
+      if (docs.length > 1 && options.session && !options.ordered) throw new Error("Multiple transactional writes must be ordered");
+      return docs;
+    });
+    const response = await request(app).patch("/admin/catalog/styles/verification").set("Authorization", "Bearer admin").send({ ids: ["style-one", "style-two"], verified: true });
+    expect(response.status).toBe(200);
+    expect(response.body.changed).toBe(2);
+    expect(CatalogAuditLog.create).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ ordered: true }));
+  });
   it("refuses stale selections without updating styles", async () => {
     expect((await request(app).patch("/admin/catalog/styles/verification").set("Authorization", "Bearer admin").send({ ids: ["deleted-style"], verified: false })).status).toBe(409);
     expect(CatalogStyle.updateMany).not.toHaveBeenCalled();
