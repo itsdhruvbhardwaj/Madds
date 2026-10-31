@@ -35,6 +35,7 @@
       <button class="side-link" data-panel="collections-panel"><span>◈</span> Collections</button>
       <button class="side-link" data-panel="logs-panel"><span>≡</span> Change logs</button>
       <button class="side-link" data-panel="notifications-panel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg> Notifications</button>
+      <button class="side-link" data-panel="users-panel"><span>♙</span> Users</button>
       <div class="sidebar-note"><span class="live-dot"></span> Connected to live catalogue</div>
       <button id="logout-button" class="side-logout">Sign out</button>
     </aside>
@@ -94,6 +95,12 @@
         </div>
       </section>
 
+      <section id="users-panel" class="panel-view" hidden>
+        <div class="page-heading"><div><p class="eyebrow">ACCOUNT SUPPORT</p><h1>Users</h1><p class="muted">Manage accounts, credits, and creation history.</p></div></div>
+        <form id="users-search" class="logs-toolbar"><label>Find a user<input name="q" maxlength="120" placeholder="Name, email, or user ID"></label><label>Status<select name="status"><option value="">All users</option><option value="active">Active</option><option value="suspended">Suspended</option></select></label><button class="button primary">Search</button></form>
+        <p id="users-error" class="form-error" role="alert"></p><div id="users-list"></div><div class="logs-pagination"><span id="users-count" class="muted"></span><div><button id="users-prev" class="button secondary">Previous</button><button id="users-next" class="button secondary">Next</button></div></div>
+        <section id="user-details" class="push-editor" hidden></section>
+      </section>
       <section id="logs-panel" class="panel-view" hidden>
         <div class="page-heading"><div><p class="eyebrow">TEAM ACTIVITY</p><h1>Change logs</h1><p class="muted">Read-only history of catalogue and Home screen changes.</p></div></div>
         <div class="logs-toolbar"><label>Team member<select id="log-member-filter"><option value="">All team members</option></select></label><label>Change type<select id="log-action-filter"><option value="">All changes</option><option value="STYLE_CREATED">Style created</option><option value="STYLE_UPDATED">Style updated</option><option value="STYLE_DELETED">Style deleted</option><option value="COLLECTION_CREATED">Collection created</option><option value="COLLECTION_RENAMED">Collection renamed</option><option value="COLLECTION_DELETED">Collection deleted</option><option value="HOME_SECTION_UPDATED">Home visibility changed</option></select></label><button id="logs-refresh" class="button secondary">Refresh logs</button></div>
@@ -160,6 +167,7 @@
   </dialog>
   <script src="config.js"></script>
   <script src="notifications.js?v=20261030-notifications" defer></script>
+  <script src="users.js?v=20261031" defer></script>
   <script src="app.js?v=20261030-notifications" defer></script>
 </body>
 </html>
