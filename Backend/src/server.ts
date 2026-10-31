@@ -11,6 +11,7 @@ import { connectToDatabase } from "./config/database.js";
 import { env } from "./config/env.js";
 import { requireAuth, type AuthenticatedRequest } from "./middleware/auth.js";
 import { cleanupScheduledAccountDeletions } from "./services/accountDeletion.js";
+import { cleanupUnverifiedSignups } from "./services/unverifiedSignupCleanup.js";
 import { CreditTransaction } from "./models/CreditTransaction.js";
 import { FavoriteStyle } from "./models/FavoriteStyle.js";
 import { Generation } from "./models/Generation.js";
@@ -552,8 +553,10 @@ if (isDirectExecution) {
         await initializeStyleCatalog();
         await initializeHomeSectionCatalog();
         await cleanupScheduledAccountDeletions();
+        await cleanupUnverifiedSignups();
         void cleanupPendingProfileImages().catch(() => console.warn("Profile cleanup deferred."));
         const accountDeletionCleanupTimer = setInterval(() => {
+          void cleanupUnverifiedSignups().catch(() => console.warn("Unverified signup cleanup deferred."));
           void cleanupPendingProfileImages().catch(() => console.warn("Profile cleanup deferred."));
           void cleanupScheduledAccountDeletions().catch((error: unknown) => {
             console.error(

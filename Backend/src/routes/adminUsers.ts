@@ -47,11 +47,21 @@ router.get("/:id/:history", async (req, res) => {
   const filter = { userId: req.params.id, ...(cursor ? { _id: { $lt: cursor } } : {}) };
   const model = req.params.history === "generations" ? Generation : req.params.history === "credits" ? CreditTransaction : req.params.history === "activity" ? Audit : null;
   if (!model) return res.sendStatus(404);
-  const projection = req.params.history === "generations" ? "styleId status createdAt" : req.params.history === "credits" ? "amount type balanceAfter description createdAt" : "actorEmail action reason amount balanceAfter createdAt";
+  const projection = req.params.history === "generations" ? "styleId status createdAt" : req.params.history === "credits" ? "amount type balanceAfter description referenceId createdAt" : "actorEmail action reason amount balanceAfter createdAt";
   const rows = await model.find(filter).select(projection).sort({ _id: -1 }).limit(26).lean();
   if (req.params.history === "generations") {
     const styles = await CatalogStyle.find({ id: { $in: rows.map((r: any) => r.styleId) } }).select("id name").lean();
     for (const row of rows) row.styleName = row.styleId === "custom-prompt" ? "Custom creation" : styles.find((s: any) => s.id === row.styleId)?.name || row.styleId;
+  }
+  if (req.params.history === "credits") {
+    const linked = await Generation.find({ userId: req.params.id, _id: { $in: rows.filter((r: any) => ["GENERATION", "REFUND"].includes(r.type) && /^[a-f0-9]{24}$/i.test(r.referenceId || "")).map((r: any) => r.referenceId) } }).select("styleId").lean();
+    const styles = await CatalogStyle.find({ id: { $in: linked.map((g: any) => g.styleId) } }).select("id name").lean();
+    for (const row of rows) {
+      const generation = linked.find((g: any) => String(g._id) === row.referenceId);
+      if (!generation) continue;
+      const name = generation.styleId === "custom-prompt" ? "Custom creation" : styles.find((s: any) => s.id === generation.styleId)?.name || generation.styleId;
+      row.description = row.type === "GENERATION" ? `Generation: ${name}` : `Refund for failed generation: ${name}`;
+    }
   }
   res.json({ rows: rows.slice(0, 25), nextCursor: rows.length > 25 ? String(rows[24]._id) : null });
 });

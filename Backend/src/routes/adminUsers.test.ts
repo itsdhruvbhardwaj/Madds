@@ -1,6 +1,9 @@
 import express from "express";
 import request from "supertest";
 import mongoose from "mongoose";
+import { Generation } from "../models/Generation.js";
+import { CatalogStyle } from "../models/CatalogStyle.js";
+import { CreditTransaction } from "../models/CreditTransaction.js";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({ user: vi.fn(), update: vi.fn(), ledger: vi.fn(), audit: vi.fn(), previous: vi.fn() }));
 vi.mock("../middleware/auth.js", () => ({ requireAuth: (req: any, res: any, next: any) => {
@@ -8,7 +11,7 @@ vi.mock("../middleware/auth.js", () => ({ requireAuth: (req: any, res: any, next
   req.user = { id: "aaaaaaaaaaaaaaaaaaaaaaaa", email: req.headers.authorization === "Bearer admin" ? "admin@example.com" : "user@example.com", emailVerified: true }; next();
 } }));
 vi.mock("../models/User.js", () => ({ User: { findById: () => ({ session: () => ({ lean: m.user }), select: () => ({ lean: m.user }) }), findOneAndUpdate: (...args: any[]) => { m.update(...args); return { lean: m.user }; } } }));
-vi.mock("../models/CreditTransaction.js", () => ({ CreditTransaction: { create: m.ledger } }));
+vi.mock("../models/CreditTransaction.js", () => ({ CreditTransaction: { create: m.ledger, find: vi.fn() } }));
 import { adminUsersRouter } from "./adminUsers.js";
 const app = express(); app.use(express.json()); app.use("/users", adminUsersRouter);
 const id = "bbbbbbbbbbbbbbbbbbbbbbbb";
@@ -57,5 +60,14 @@ describe("admin user controls", () => {
     const r = await request(app).get(`/users/${id}`).set("Authorization", "Bearer admin");
     expect(r.body.user).toMatchObject({ hasPassword: true, hasGoogleLogin: true });
     expect(JSON.stringify(r.body)).not.toMatch(/secret|private-id|passwordHash/);
+  });
+  it("uses the linked generation and current style title in credit history", async () => {
+    const generationId = "cccccccccccccccccccccccc";
+    vi.mocked(CreditTransaction.find).mockReturnValue({ select: () => ({ sort: () => ({ limit: () => ({ lean: async () => [{ type: "GENERATION", referenceId: generationId, description: "Generation using style old-slug" }] }) }) }) } as any);
+    vi.spyOn(Generation, "find").mockReturnValue({ select: () => ({ lean: async () => [{ _id: generationId, styleId: "old-slug" }] }) } as any);
+    vi.spyOn(CatalogStyle, "find").mockReturnValue({ select: () => ({ lean: async () => [{ id: "old-slug", name: "Updated style title" }] }) } as any);
+    const r = await request(app).get(`/users/${id}/credits`).set("Authorization", "Bearer admin");
+    expect(r.status).toBe(200);
+    expect(r.body.rows[0].description).toBe("Generation: Updated style title");
   });
 });
