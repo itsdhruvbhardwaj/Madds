@@ -87,7 +87,10 @@ export const env = {
     return process.env.OPENROUTER_API_KEY ?? "";
   },
   get openRouterImageModel() {
-    return process.env.OPENROUTER_IMAGE_MODEL ?? "qwen/qwen-image-2.1-turbo";
+    return process.env.OPENROUTER_IMAGE_MODEL ?? "openai/gpt-image-2.5-sunburst";
+  },
+  get openRouterImageQuality() {
+    return process.env.OPENROUTER_IMAGE_QUALITY ?? "medium";
   },
   get openRouterImageResolution() {
     return process.env.OPENROUTER_IMAGE_RESOLUTION ?? "1K";

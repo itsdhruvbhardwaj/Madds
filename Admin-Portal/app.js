@@ -383,13 +383,13 @@
     if (state.promptTestGenerating) return;
     state.promptTestGenerating = true;
     button.disabled = true;
-    button.textContent = "Generating with Qwen…";
+    button.textContent = "Generating with Sunburst…";
     byId("prompt-test-progress").hidden = false;
     if (!state.promptTestResultUrl) byId("prompt-test-empty").hidden = true;
-    byId("prompt-test-progress-status").textContent = "Sending your image and prompt to Qwen…";
+    byId("prompt-test-progress-status").textContent = "Sending your image and prompt to Sunburst…";
     byId("prompt-test-nav-status").hidden = false;
     byId("prompt-test-nav-status").textContent = "Generating";
-    const progressMessages = ["Qwen is creating your style preview…", "Working on the details…", "Still generating. You can keep using the other Studio sections."];
+    const progressMessages = ["Sunburst is creating your style preview…", "Working on the details…", "Still generating. You can keep using the other Studio sections."];
     let messageIndex = 0;
     const progressTimer = window.setInterval(() => {
       messageIndex = Math.min(messageIndex + 1, progressMessages.length - 1);
@@ -400,7 +400,7 @@
       body.append("image", state.promptTestFile);
       body.append("prompt", prompt);
       const result = await api("/api/admin/catalog/test-generation", { method: "POST", body });
-      if (!result.image) throw new Error("Qwen returned no image. Try again.");
+      if (!result.image) throw new Error("Sunburst returned no image. Try again.");
       if (state.promptTestResultUrl) URL.revokeObjectURL(state.promptTestResultUrl);
       const imageBlob = await fetch(result.image).then((response) => response.blob());
       state.promptTestResultUrl = URL.createObjectURL(imageBlob);
@@ -436,7 +436,7 @@
     const image = new Image();
     button.disabled = true;
     button.textContent = "Preparing download…";
-    status.textContent = "Cropping and compressing a copy. The Qwen preview is unchanged.";
+    status.textContent = "Cropping and compressing a copy. The Sunburst preview is unchanged.";
 
     try {
       image.src = state.promptTestResultUrl;

@@ -58,7 +58,7 @@ router.post("/catalog/test-generation", promptTestUpload.single("image"), async 
   try {
     const result = await new OpenRouterImageGenerator().generate({
       prompt,
-      // 3:4 is Qwen's closest native portrait ratio to Madds Studio's 5:7 export.
+      // Keep the portrait preview close to Studio's default 5:7 export.
       aspectRatio: "3:4",
       images: [{
         path: "",
@@ -74,7 +74,7 @@ router.post("/catalog/test-generation", promptTestUpload.single("image"), async 
     });
   } catch (error) {
     console.error("Studio prompt test failed.", error instanceof Error ? error.message : "UNKNOWN");
-    return res.status(502).json({ ok: false, error: "Qwen could not generate an image. Check the prompt and try again." });
+    return res.status(502).json({ ok: false, error: "The image model could not generate an image. Check the prompt and try again." });
   }
 });
 

@@ -58,7 +58,9 @@ export class OpenRouterImageGenerator implements GenerationProvider {
         body: JSON.stringify({
           model: env.openRouterImageModel,
           prompt: input.prompt,
-          resolution: input.resolution ?? env.openRouterImageResolution,
+          ...(env.openRouterImageModel === "openai/gpt-image-2.5-sunburst"
+            ? { quality: env.openRouterImageQuality }
+            : { resolution: input.resolution ?? env.openRouterImageResolution }),
           aspect_ratio: input.aspectRatio ?? env.openRouterImageAspectRatio,
           ...(input.images.length > 0
             ? { input_references: input.images.map(toImageReference) }

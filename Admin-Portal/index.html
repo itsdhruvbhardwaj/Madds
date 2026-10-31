@@ -52,25 +52,25 @@
       </section>
 
       <section id="testing-panel" class="panel-view" hidden>
-        <div class="page-heading"><div><p class="eyebrow">PROMPT WORKBENCH</p><h1>Prompt testing</h1><p class="muted">Try an original photo and prompt with Qwen. The photo and prompt are sent to OpenRouter for generation; test images are not saved to Cloudinary.</p></div></div>
+        <div class="page-heading"><div><p class="eyebrow">PROMPT WORKBENCH</p><h1>Prompt testing</h1><p class="muted">Try an original photo and prompt with Sunburst. The photo and prompt are sent to OpenRouter for generation; test images are not saved to Cloudinary.</p></div></div>
         <div class="prompt-test-layout">
           <section class="prompt-test-controls">
             <label class="test-image-picker" for="prompt-test-image"><span class="test-image-icon">＋</span><span><b id="prompt-test-file-name">Choose original image</b><small>JPG, PNG, or WebP · up to 10 MB</small></span></label>
             <input id="prompt-test-image" type="file" accept="image/jpeg,image/png,image/webp" hidden>
             <img id="prompt-test-original-preview" class="test-original-preview" alt="Selected original image" hidden>
-            <label class="test-prompt-label" for="prompt-test-prompt">Prompt<textarea id="prompt-test-prompt" maxlength="10000" rows="9" placeholder="Describe the look you want Qwen to create…"></textarea></label>
+            <label class="test-prompt-label" for="prompt-test-prompt">Prompt<textarea id="prompt-test-prompt" maxlength="10000" rows="9" placeholder="Describe the look you want Sunburst to create…"></textarea></label>
             <p class="test-cost-note">Each generation uses the team’s OpenRouter account and may incur a charge.</p>
             <p id="prompt-test-error" class="form-error" role="alert"></p>
             <button id="generate-test-image" class="button primary" type="button">Generate test image</button>
           </section>
           <section class="prompt-test-result" aria-live="polite">
-            <div id="prompt-test-progress" class="test-generation-progress" role="status" aria-live="polite" hidden><span class="generation-orbit"><i></i></span><h2>Creating your test image</h2><p id="prompt-test-progress-status">Qwen is generating your image…</p><div class="generation-progress-track"><i></i></div><small>You can keep working in other Studio sections. This test will be here when you return.</small></div>
+            <div id="prompt-test-progress" class="test-generation-progress" role="status" aria-live="polite" hidden><span class="generation-orbit"><i></i></span><h2>Creating your test image</h2><p id="prompt-test-progress-status">Sunburst is generating your image…</p><div class="generation-progress-track"><i></i></div><small>You can keep working in other Studio sections. This test will be here when you return.</small></div>
             <div id="prompt-test-empty" class="test-empty-state"><span>✦</span><h2>Your test image will appear here</h2><p>Change the prompt or source photo and generate again until the result looks right.</p></div>
             <img id="prompt-test-result-image" class="test-result-image" alt="Generated prompt test image" hidden>
             <div id="test-export-controls" class="test-export-controls" hidden>
               <label>Download aspect ratio<select id="test-export-aspect"><option value="5:7" selected>5:7 · Madds style card</option><option value="3:4">3:4</option><option value="2:3">2:3</option><option value="4:5">4:5</option><option value="1:1">1:1</option><option value="9:16">9:16</option><option value="16:9">16:9</option></select></label>
               <label>Compression quality <span><output id="test-export-quality-value">82%</output><input id="test-export-quality" type="range" min="40" max="100" step="1" value="82"></span></label>
-              <p>Download is capped at 300 KB. Studio may reduce quality or dimensions to meet the limit. The preview above stays at the original Qwen quality.</p>
+              <p>Download is capped at 300 KB. Studio may reduce quality or dimensions to meet the limit. The preview above stays at the original Sunburst quality.</p>
               <button id="download-test-image" class="button secondary" type="button">Prepare and download</button>
               <span id="download-test-status" class="field-hint" role="status"></span>
             </div>
