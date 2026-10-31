@@ -120,7 +120,7 @@
         <div class="id-preview-field"><span class="field-label">Internal style ID</span><span id="style-id-preview" class="style-id-preview">style-id-from-name</span><span class="field-hint">Generated from the name on creation, then kept stable so app references and favorites keep working.</span></div>
         <label class="wide">Short description<textarea name="description" maxlength="300" rows="2" required></textarea></label>
         <fieldset class="wide"><legend>Collections</legend><div id="collection-checkboxes" class="checkbox-grid"></div></fieldset>
-        <div class="wide prompt-editor"><div class="prompt-editor-heading"><label for="style-prompt">Generation prompt</label><button id="copy-style-prompt" class="button secondary" type="button">Copy prompt</button></div><textarea id="style-prompt" name="prompt" maxlength="10000" rows="6" required></textarea><span id="copy-prompt-status" class="field-hint" role="status"></span></div>
+        <div class="wide prompt-editor"><div class="prompt-editor-heading"><label for="style-prompt">Generation prompt</label><button id="copy-style-prompt" class="button secondary" type="button">Copy prompt</button></div><textarea id="style-prompt" name="prompt" maxlength="10000" rows="6" required aria-describedby="style-prompt-count"></textarea><span id="style-prompt-count" class="field-hint prompt-count" role="status">0 characters · 0 / 200 words</span><span id="copy-prompt-status" class="field-hint" role="status"></span></div>
         <input name="thumbnail" type="hidden">
         <input name="thumbnailPublicId" type="hidden">
         <input name="previewImages" type="hidden">

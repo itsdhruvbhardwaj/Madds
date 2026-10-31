@@ -24,6 +24,15 @@ describe("bulk catalogue verification", () => {
     expect((await request(app).patch("/admin/catalog/styles/verification")).status).toBe(401);
     expect((await request(app).patch("/admin/catalog/styles/verification").set("Authorization", "Bearer user")).status).toBe(403);
   });
+  it("allows exactly 200 style-prompt words but rejects 201 across whitespace", async () => {
+    const input = { name: "Word count test", description: "Test", prompt: Array(200).fill("word").join(" \n ") };
+    const allowed = await request(app).post("/admin/catalog/styles").set("Authorization", "Bearer admin").send(input);
+    // The word limit passes; this deliberately incomplete fixture next fails cover validation.
+    expect(allowed.body.error).toBe("Upload a cover image to Cloudinary before saving.");
+    const rejected = await request(app).post("/admin/catalog/styles").set("Authorization", "Bearer admin").send({ ...input, prompt: input.prompt + "\tword" });
+    expect(rejected.status).toBe(400);
+    expect(rejected.body.error).toContain("200 words");
+  });
   it("updates only changed styles and writes an audit record in the same transaction", async () => {
     const r = await request(app).patch("/admin/catalog/styles/verification").set("Authorization", "Bearer admin").send({ ids: ["style-one", "style-two", "style-one"], verified: true });
     expect(r.body).toMatchObject({ ok: true, selected: 2, changed: 1 });

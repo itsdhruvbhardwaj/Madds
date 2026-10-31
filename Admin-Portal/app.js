@@ -673,6 +673,7 @@
     renderCollectionOptions();
     if (style) for (const input of form.querySelectorAll('input[name="collections"]')) input.checked = style.collections.includes(input.value);
     state.styleEditorBaseline = styleEditorSnapshot();
+    updatePromptCount();
     byId("copy-prompt-status").textContent = "";
     byId("copy-style-prompt").textContent = "Copy prompt";
     byId("style-dialog").showModal();
@@ -747,6 +748,16 @@
     state.styleEditorBaseline = null;
     byId("style-dialog").close();
   });
+  function updatePromptCount() {
+    const input = byId("style-prompt"), trimmed = input.value.trim();
+    const words = trimmed ? trimmed.split(/\s+/u).length : 0;
+    const count = byId("style-prompt-count");
+    count.textContent = `${Array.from(input.value).length} characters · ${words} / 200 words${words > 200 ? " — remove " + (words - 200) + " words to save" : ""}`;
+    count.classList.toggle("is-over-limit", words > 200);
+    input.setCustomValidity(words > 200 ? "The generation prompt must contain no more than 200 words." : "");
+    return words <= 200;
+  }
+  byId("style-prompt").addEventListener("input", updatePromptCount);
   byId("copy-style-prompt").addEventListener("click", async () => {
     const prompt = byId("style-prompt").value;
     const status = byId("copy-prompt-status");
@@ -839,6 +850,7 @@
   byId("style-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
+    if (!updatePromptCount()) { byId("style-prompt").reportValidity(); return; }
     const fields = new FormData(form);
     if (!fields.get("thumbnail") || !fields.get("thumbnailPublicId")) {
       byId("form-error").textContent = "Upload a cover image before saving.";
