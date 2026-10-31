@@ -19,7 +19,21 @@ describe("notification category preferences and activity", () => {
   });
   it("only updates explicit category choices for the authenticated account", async () => {
     expect((await request(app).patch("/push/preferences").set("Authorization", "Bearer test").send({ newStyles: true })).status).toBe(200);
-    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ _id: "user-a" }), { $set: { "notificationPreferences.newStyles": true } }, { new: true });
+    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ _id: "user-a" }), { $set: { "notificationPreferences.newStyles": true, notificationDefaultsEligible: false } }, { new: true });
+  });
+  it("initializes all categories only for eligible new accounts", async () => {
+    mocks.user.mockResolvedValue({ notificationPreferences: { newStyles: true, offers: true, productUpdates: true, reengagement: true } });
+    const response = await request(app).post("/push/preferences/initialize").set("Authorization", "Bearer test");
+    expect(response.status).toBe(200);
+    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ _id: "user-a", notificationDefaultsEligible: true }), { $set: {
+      notificationDefaultsEligible: false, "notificationPreferences.newStyles": true, "notificationPreferences.offers": true,
+      "notificationPreferences.productUpdates": true, "notificationPreferences.reengagement": true,
+    } }, { new: true });
+  });
+  it("preserves existing preferences when defaults were already configured", async () => {
+    mocks.user.mockResolvedValueOnce(null).mockResolvedValueOnce({ notificationPreferences: { offers: false, newStyles: true } });
+    const response = await request(app).post("/push/preferences/initialize").set("Authorization", "Bearer test");
+    expect(response.body.preferences).toEqual({ newStyles: true, offers: false, productUpdates: false, reengagement: false });
   });
   it.each([{ userId: "other" }, { offers: "true" }, {}, { authVersion: 0 }])("rejects unknown/nonboolean preference writes %j", async (body) => {
     expect((await request(app).patch("/push/preferences").set("Authorization", "Bearer test").send(body)).status).toBe(400);

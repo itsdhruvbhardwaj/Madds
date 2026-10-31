@@ -13,6 +13,18 @@ router.get("/preferences", async (req: AuthenticatedRequest, res) => {
   return res.json({ ok: true, preferences: preferencesFor(user) });
 });
 
+router.post("/preferences/initialize", async (req: AuthenticatedRequest, res) => {
+  // Called after device permission is granted. Atomic and one-time: a later
+  // permission grant or reinstall must never overwrite category choices.
+  const user = await User.findOneAndUpdate({ _id: req.user!.id, isActive: { $ne: false }, deletionScheduledAt: null,
+    notificationDefaultsEligible: true }, { $set: {
+      notificationDefaultsEligible: false,
+      ...Object.fromEntries(notificationCategories.map(key => [`notificationPreferences.${key}`, true])),
+    } }, { new: true }).select("notificationPreferences");
+  const current = user || await User.findById(req.user!.id).select("notificationPreferences").lean();
+  return current ? res.json({ ok: true, preferences: preferencesFor(current) }) : res.sendStatus(404);
+});
+
 router.patch("/preferences", async (req: AuthenticatedRequest, res) => {
   const input = req.body;
   if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length === 0 ||
@@ -21,7 +33,7 @@ router.patch("/preferences", async (req: AuthenticatedRequest, res) => {
   }
   const update = Object.fromEntries(Object.entries(input).map(([key, value]) => [`notificationPreferences.${key}`, value]));
   const user = await User.findOneAndUpdate({ _id: req.user!.id, isActive: { $ne: false }, deletionScheduledAt: null },
-    { $set: update }, { new: true }).select("notificationPreferences");
+    { $set: { ...update, notificationDefaultsEligible: false } }, { new: true }).select("notificationPreferences");
   return user ? res.json({ ok: true, preferences: preferencesFor(user) }) : res.sendStatus(404);
 });
 

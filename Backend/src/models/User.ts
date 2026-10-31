@@ -42,6 +42,8 @@ const UserSchema = new Schema(
       productUpdates: { type: Boolean, default: false },
       reengagement: { type: Boolean, default: false },
     },
+    // Persisted on new accounts only; legacy users retain their saved choices.
+    notificationDefaultsEligible: { type: Boolean, default: false },
     emailVerified: {
       type: Boolean,
       default: false,
