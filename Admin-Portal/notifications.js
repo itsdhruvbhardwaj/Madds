@@ -97,7 +97,7 @@
     function renderHistory() {
       const drafts = campaigns.filter((item) => item.status === "DRAFT");
       const recent = campaigns.filter((item) => item.status !== "DRAFT");
-      $("push-campaigns").innerHTML = drafts.map((item) => `<button type="button" class="push-campaign ${selected?._id === item._id ? "is-selected" : ""}" data-campaign="${escape(item._id)}" aria-pressed="${selected?._id === item._id}"><span class="push-status">${escape(statusLabel(item.status))}</span><strong>${escape(item.title)}</strong><small>${escape(labels[item.targetAudience] || item.targetAudience)}</small><small>Last edited ${escape(formatDate(item.updatedAt || item.createdAt))}</small></button>`).join("") || '<p class="muted push-empty">No saved drafts. Start a notification when you are ready.</p>';
+      $("push-campaigns").innerHTML = drafts.map((item) => `<div class="push-draft-card"><button type="button" class="push-campaign ${selected?._id === item._id ? "is-selected" : ""}" data-campaign="${escape(item._id)}" aria-pressed="${selected?._id === item._id}"><span class="push-status">${escape(statusLabel(item.status))}</span><strong>${escape(item.title)}</strong><small>${escape(labels[item.targetAudience] || item.targetAudience)}</small><small>Last edited ${escape(formatDate(item.updatedAt || item.createdAt))}</small></button><button type="button" class="delete-button push-card-clear" data-clear-draft="${escape(item._id)}" aria-label="Clear draft: ${escape(item.title)}" ${busy ? "disabled" : ""}>Clear</button></div>`).join("") || '<p class="muted push-empty">No saved drafts. Start a notification when you are ready.</p>';
       $("push-recent").innerHTML = recent.length ? `<h3>Recent activity</h3>${recent.map((item) => `<button type="button" class="push-campaign ${selected?._id === item._id ? "is-selected" : ""}" data-campaign="${escape(item._id)}" aria-pressed="${selected?._id === item._id}"><span class="push-status">${escape(statusLabel(item.status))}</span><strong>${escape(item.title)}</strong><small>${escape(formatDate(item.scheduledAt || item.createdAt))}</small></button>`).join("")}` : "";
       $("push-more").hidden = !nextCursor;
       $("push-more").disabled = loading || busy;
@@ -319,6 +319,19 @@
       } catch (failure) { if (session === epoch) $("push-review-error").textContent = `${failure.message} Refresh the notification before retrying if the outcome is uncertain.`; }
       finally { if (session === epoch) { busy = false; updateActions(); if ($("push-review-confirm")) { $("push-review-confirm").disabled = false; $("push-review-back").disabled = false; } } }
     }
+    async function clearDraftCard(id) {
+      const item = campaigns.find(item => item._id === id);
+      if (busy || !item || item.status !== "DRAFT" || !window.confirm(`Clear draft “${item.title}”? Its saved content${selected?._id === id ? " and unsaved edits" : ""} will be discarded.`)) return;
+      busy = true; updateActions(); renderHistory(); error(); const session = epoch;
+      try {
+        await api(`${base}/${id}`, { method: "DELETE", body: JSON.stringify({ expectedRevision: item.revision ?? 0 }) });
+        if (session !== epoch) return;
+        campaigns = campaigns.filter(item => item._id !== id);
+        if (selected?._id === id) { selected = null; selection++; stats = null; logs = []; logCursor = null; renderEditor(); }
+        renderHistory(); notify("Draft cleared.");
+      } catch (failure) { if (session === epoch) error(failure.message); }
+      finally { if (session === epoch) { busy = false; updateActions(); renderHistory(); } }
+    }
     async function clearDraft() {
       if (busy || !isDraft() || !window.confirm("Clear this draft? Its saved content and unsaved edits will be discarded.")) return;
       busy = true; updateActions(); error(); const session = epoch;
@@ -353,7 +366,7 @@
     $("push-new").addEventListener("click", () => { if (!canLeave()) return; selection++; selected = null; stats = null; logs = []; logCursor = null; error(); renderHistory(); renderEditor(); });
     $("push-refresh").addEventListener("click", refresh);
     $("push-more").addEventListener("click", () => loadCampaigns(true));
-    $("push-campaigns").addEventListener("click", (event) => { const button = event.target.closest("[data-campaign]"); if (button) void open(button.dataset.campaign); });
+    $("push-campaigns").addEventListener("click", (event) => { const clear = event.target.closest("[data-clear-draft]"); if (clear) { void clearDraftCard(clear.dataset.clearDraft); return; } const button = event.target.closest("[data-campaign]"); if (button) void open(button.dataset.campaign); });
     $("push-recent").addEventListener("click", (event) => { const button = event.target.closest("[data-campaign]"); if (button) void open(button.dataset.campaign); });
     window.addEventListener("beforeunload", (event) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } });
     return { refresh, reset, catalogChanged };

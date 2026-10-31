@@ -1,4 +1,7 @@
 [hidden]{display:none!important}
+.sidebar>.side-link[data-panel="logs-panel"]{margin-top:auto;margin-bottom:12px}.sidebar>.sidebar-note{margin-top:0}
+.push-draft-card{display:grid;gap:8px}.push-card-clear{justify-self:end;padding:6px 12px!important;font-size:11px!important}.push-card-clear:disabled{opacity:.45;cursor:wait}
+@media(max-width:760px){.sidebar>.side-link[data-panel="logs-panel"]{margin:0}}
 /* Keep expanded account details visibly inset within the selected user row. */
 table.users-table>tbody>tr#user-detail-row>td{padding:18px 24px 26px;background:#0b0b0a;border-bottom:1px solid #49402b}
 table.users-table>tbody>tr#user-detail-row #user-details{box-sizing:border-box;margin:0;padding:26px;border:1px solid #71603a;border-radius:18px;background:#171612;box-shadow:0 12px 28px #0005}
