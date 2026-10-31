@@ -43,7 +43,7 @@
           <div class="user-summary"><div><span>Available credits</span><strong>${Number(u.credits)}</strong></div><div><span>Joined</span><b>${esc(date(u.createdAt))}</b></div><div><span>Last active</span><b>${esc(date(u.lastActiveAt))}</b></div><div><span>Login</span><b>${[u.hasGoogleLogin ? "Google" : "", u.hasPassword ? "Password" : ""].filter(Boolean).join(" + ") || "Email"}</b></div></div>
           ${u.deletionScheduledAt ? `<p class="muted">Deletion scheduled: ${esc(date(u.deletionScheduledAt))}</p>` : ""}
           <form id="user-change" class="user-controls"><h3>Manage account</h3><div class="user-control-fields"><label>Action<select name="action"><option value="add">Add credits</option><option value="deduct">Deduct credits</option><option value="restore" ${u.isActive !== false ? "disabled" : ""}>Activate account${u.isActive !== false ? " (already active)" : ""}</option><option value="suspend" ${u.isActive === false ? "disabled" : ""}>Suspend account${u.isActive === false ? " (already suspended)" : ""}</option></select></label><label id="user-amount-field">Credits<input name="amount" type="number" step="1" min="1" max="100000" placeholder="Enter amount" required><small id="user-amount-hint">Enter a positive whole number.</small></label><label>Reason<textarea name="reason" minlength="5" maxlength="500" required rows="2" placeholder="Why is this change needed?"></textarea></label></div><button class="button primary" id="user-submit">Review change</button><p id="user-change-error" class="form-error" role="alert"></p></form>
-          <div class="user-history-tabs"><button class="button secondary is-active" data-history="generations">Generations</button><button class="button secondary" data-history="credits">Credit history</button><button class="button secondary" data-history="activity">Admin activity</button></div><div id="user-history"></div>`;
+          <div class="user-history-tabs"><button class="button secondary" data-history="generations" aria-expanded="false">Generations</button><button class="button secondary" data-history="credits" aria-expanded="false">Credit history</button><button class="button secondary" data-history="activity" aria-expanded="false">Admin activity</button></div><div id="user-history" hidden></div>`;
         $("user-submit").textContent = "Save changes";
         $("user-close").onclick = () => { if (!busy) closeDetails(); };
         $("user-change").elements.action.onchange = e => {
@@ -64,7 +64,6 @@
             $("user-details").querySelectorAll("[data-history]").forEach(tab => { tab.classList.remove("is-active"); tab.setAttribute("aria-expanded", "false"); });
           } else void history(b.dataset.history);
         });
-        void history("generations");
       } catch (e) { if (ticket === epoch) $("user-details").textContent = e.message; }
     }
     async function history(kind, cursor = "", previous = []) {
