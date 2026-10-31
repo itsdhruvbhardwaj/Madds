@@ -90,9 +90,10 @@
       return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
     };
     function banner() {
-      $("push-delivery-status").textContent = !available ? "Notification controls are unavailable. Deploy the notification backend, then refresh." : enabled ?
-        "Delivery enabled · Notifications go only to eligible users who opted in." : "Delivery paused · You can save and preview drafts. Enable notification delivery on the backend to send notifications.";
-      $("push-delivery-status").classList.toggle("is-enabled", available && enabled);
+      $("push-delivery-status").hidden = available && enabled;
+      $("push-delivery-status").textContent = !available ? "Notification controls are unavailable. Refresh to try again." :
+        "Delivery is paused. You can continue saving and previewing drafts.";
+      $("push-delivery-status").classList.remove("is-enabled");
     }
     function renderHistory() {
       const drafts = campaigns.filter((item) => item.status === "DRAFT");
