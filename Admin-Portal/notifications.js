@@ -118,6 +118,7 @@
           (id === "push-save" && !draft);
       }
       $("push-new").disabled = busy;
+      if ($("push-clear")) $("push-clear").disabled = busy || !draft || (selected && !available);
     }
     function livePreview() {
       if (!$("push-form")) return;
@@ -163,7 +164,7 @@
         </fieldset>
         <div class="push-phone-preview" aria-label="Notification preview"><span class="push-app-name">madds · now</span><strong id="push-preview-title"></strong><p id="push-preview-body"></p><img id="push-preview-image" alt="Notification image preview" referrerpolicy="no-referrer" hidden><small>Preview · Appearance varies by device</small></div>
         <p class="field-hint">Only users who allow this category and device notifications are eligible. Inactivity audiences exclude unknown activity.</p>
-        <div class="push-actions">${draft ? '<button id="push-save" class="button primary" type="submit">Save draft</button>' : ""}<button id="push-preview" class="button secondary" type="button">Check audience</button></div>
+        <div class="push-actions">${draft ? '<button id="push-save" class="button primary" type="submit">Save draft</button><button id="push-clear" class="delete-button" type="button">Clear draft</button>' : ""}<button id="push-preview" class="button secondary" type="button">Check audience</button></div>
         <div id="push-audience-result" class="push-audience-result" role="status"></div>
         ${draft ? `<div class="push-sending"><h3>Delivery</h3><p class="field-hint">Save changes before reviewing a send. Scheduling is available only for a future time.</p><button id="push-send" type="button" class="button secondary">Review send now</button><label>Schedule in ${escape(zone)}<input id="push-schedule-time" type="datetime-local" step="60" min="${scheduleMinimum()}"></label><button id="push-schedule" type="button" class="button secondary">Review schedule</button></div>` : `<p class="muted">${escape(item.status === "SCHEDULED" ? `Scheduled: ${formatDate(item.scheduledAt)}` : `Status: ${statusLabel(item.status)}`)}</p>`}
         ${item._id && ["DRAFT", "SCHEDULED", "PROCESSING"].includes(item.status) ? '<button id="push-cancel" type="button" class="delete-button">Cancel notification</button>' : ""}
@@ -205,6 +206,7 @@
       $("push-send")?.addEventListener("click", () => prepareReview("send"));
       $("push-schedule")?.addEventListener("click", () => prepareReview("schedule"));
       $("push-cancel")?.addEventListener("click", cancelCampaign);
+      $("push-clear")?.addEventListener("click", clearDraft);
     }
     function renderDetails() {
       if (!$("push-stats")) return;
@@ -316,6 +318,21 @@
         $("push-review-dialog").close(); review = null; selection++; renderHistory(); renderEditor(); void loadDetails(); notify(current.action === "schedule" ? "Notification scheduled." : "Notification queued for delivery.");
       } catch (failure) { if (session === epoch) $("push-review-error").textContent = `${failure.message} Refresh the notification before retrying if the outcome is uncertain.`; }
       finally { if (session === epoch) { busy = false; updateActions(); if ($("push-review-confirm")) { $("push-review-confirm").disabled = false; $("push-review-back").disabled = false; } } }
+    }
+    async function clearDraft() {
+      if (busy || !isDraft() || !window.confirm("Clear this draft? Its saved content and unsaved edits will be discarded.")) return;
+      busy = true; updateActions(); error(); const session = epoch;
+      try {
+        if (selected) {
+          const id = selected._id;
+          await api(`${base}/${id}`, { method: "DELETE", body: JSON.stringify({ expectedRevision: selected.revision ?? 0 }) });
+          if (session !== epoch) return;
+          campaigns = campaigns.filter(item => item._id !== id);
+        }
+        selected = null; selection++; stats = null; logs = []; logCursor = null;
+        renderHistory(); renderEditor(); notify("Draft cleared.");
+      } catch (failure) { if (session === epoch) error(failure.message); }
+      finally { if (session === epoch) { busy = false; updateActions(); } }
     }
     async function cancelCampaign() {
       if (busy || !selected || dirty || !window.confirm("Cancel this notification? Unsent work will stop. A batch already submitted cannot be recalled.")) return;

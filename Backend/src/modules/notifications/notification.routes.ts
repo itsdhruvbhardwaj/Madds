@@ -66,6 +66,13 @@ router.patch("/:id", async (req, res) => {
   return campaign ? res.json({ ok: true, campaign }) : res.status(409).json({ ok: false, error: "The draft changed or is already scheduled. Refresh before editing." });
 });
 
+router.delete("/:id", async (req, res) => {
+  const revision = req.body?.expectedRevision;
+  if (!Number.isSafeInteger(revision) || revision < 0) return res.status(400).json({ ok: false, error: "Refresh the draft before clearing it." });
+  const removed = await NotificationCampaign.findOneAndDelete({ _id: req.params.id, status: "DRAFT", revision });
+  return removed ? res.json({ ok: true }) : res.status(409).json({ ok: false, error: "This draft changed or has already been scheduled. Refresh before clearing it." });
+});
+
 router.post("/:id/preview", async (req, res) => {
   const campaign = await NotificationCampaign.findById(req.params.id).lean();
   if (!campaign) return res.status(404).json({ ok: false, error: "Notification not found." });

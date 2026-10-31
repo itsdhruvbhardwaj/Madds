@@ -9,7 +9,7 @@ vi.mock("../../middleware/auth.js", () => ({ requireAuth: (req: any, res: any, n
 vi.mock("../../services/styles/catalog.js", () => ({ catalogDatabaseReady: mocks.ready }));
 vi.mock("../../services/cloudinaryAssets.js", () => ({ cloudinaryIsConfigured: mocks.cloudinaryConfigured, createNotificationImageUploadSignature: mocks.signature }));
 vi.mock("./notification.models.js", () => ({ initializeNotificationModels: mocks.init,
-    NotificationCampaign: { create: mocks.create, findOneAndUpdate: mocks.update, findById: () => ({ lean: mocks.findById }) }, NotificationLog: { updateMany: vi.fn() },
+    NotificationCampaign: { create: mocks.create, findOneAndUpdate: mocks.update, findOneAndDelete: mocks.update, findById: () => ({ lean: mocks.findById }) }, NotificationLog: { updateMany: vi.fn() },
 }));
 vi.mock("./notification.service.js", () => ({ notificationService: { preview: mocks.preview }, validateDestination: mocks.destination }));
 import { adminNotificationsRouter } from "./notification.routes.js";
@@ -36,6 +36,13 @@ describe("admin notification API", () => {
     expect((await request(app).post("/admin/push").set("Authorization", "Bearer admin").send({ ...draft, status: "SENT", createdBy: "victim" })).status).toBe(201);
     expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ createdBy: "admin-id", category: "productUpdates" }));
     expect(mocks.create.mock.calls[0][0]).not.toHaveProperty("status");
+  });
+  it("clears only the reviewed draft and refuses changed or scheduled notifications", async () => {
+    expect((await request(app).delete(`/admin/push/${id}`).set("Authorization", "Bearer admin").send({ expectedRevision: 2 })).status).toBe(200);
+    expect(mocks.update).toHaveBeenCalledWith({ _id: id, status: "DRAFT", revision: 2 });
+    mocks.update.mockResolvedValue(null);
+    expect((await request(app).delete(`/admin/push/${id}`).set("Authorization", "Bearer admin").send({ expectedRevision: 2 })).status).toBe(409);
+    expect((await request(app).delete(`/admin/push/${id}`).set("Authorization", "Bearer admin").send({})).status).toBe(400);
   });
   it("returns a short-lived Cloudinary upload signature only to administrators", async () => {
     expect((await request(app).post("/admin/push/upload-signature")).status).toBe(401);
