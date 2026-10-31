@@ -1,4 +1,9 @@
 [hidden]{display:none!important}
+/* Keep expanded account details visibly inset within the selected user row. */
+table.users-table>tbody>tr#user-detail-row>td{padding:18px 24px 26px;background:#0b0b0a;border-bottom:1px solid #49402b}
+table.users-table>tbody>tr#user-detail-row #user-details{box-sizing:border-box;margin:0;padding:26px;border:1px solid #71603a;border-radius:18px;background:#171612;box-shadow:0 12px 28px #0005}
+table.users-table>tbody>tr#user-detail-row .user-detail-heading{padding-bottom:18px;border-bottom:1px solid #3e3829}
+@media(max-width:650px){table.users-table>tbody>tr#user-detail-row>td{padding:12px}table.users-table>tbody>tr#user-detail-row #user-details{padding:18px}}
 /* Account support: inline details and readable controls. */
 .users-table>tbody>tr.is-expanded>td{background:#292417;border-top:1px solid #ac914d;border-bottom:0}.users-table>tbody>tr.is-expanded>td:first-child{box-shadow:inset 3px 0 #c7a653}.users-table>tbody>tr.is-expanded>td:first-child strong{color:#efd38b}.users-table .is-expanded .user-view{border-color:#c7a653;background:#42371e;color:#f1d991}.users-table .is-expanded .user-view:before{content:"▾ ";font-size:13px}#user-detail-row>td{border-bottom:2px solid #8d773e}#user-detail-row #user-details{background:linear-gradient(180deg,#211e14 0,#111110 140px);border-top:1px solid #665630}
 #users-search{background:#151513;border-color:var(--line);border-radius:16px;padding:20px;gap:16px}#users-search label:first-child{flex:1}
