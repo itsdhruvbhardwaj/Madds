@@ -2,10 +2,19 @@
   const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   function create({ api, notify, getCatalog, reload }) {
     const $ = id => document.getElementById(id);
-    let selected = new Set(), collections = new Set(), busy = false;
+    let selected = new Set(), collections = new Set(), busy = false, active = false;
     function update() {
+      $("style-bulk-controls").setAttribute("aria-busy", String(busy));
+      $("style-bulk-panel").hidden = !active;
+      $("style-bulk-toggle").disabled = busy;
+      $("style-bulk-toggle").setAttribute("aria-expanded", String(active));
+      $("style-bulk-toggle-hint").textContent = active ? "Selection mode on · Collapse ⌃" : "Expand to select styles ⌄";
+      $("styles-grid").querySelectorAll(".style-select-label").forEach(label => label.hidden = !active);
       $("style-selection-count").textContent = `${selected.size} of ${getCatalog().styles.length} selected`;
-      for (const id of ["style-bulk-verify", "style-bulk-unverify"]) $(id).disabled = busy || !selected.size;
+      for (const id of ["style-bulk-verify", "style-bulk-unverify"]) {
+        $(id).disabled = busy || !selected.size;
+        $(id).title = !selected.size ? "Select styles first" : "";
+      }
       for (const id of ["style-select-all", "style-select-clear"]) $(id).disabled = busy;
       $("style-bulk-collection-options").querySelectorAll("input").forEach(el => el.disabled = busy);
       $("styles-grid").querySelectorAll("[data-bulk-style]").forEach(input => {
@@ -27,7 +36,7 @@
       }); update();
     }
     async function save(verified) {
-      if (busy || !selected.size) return;
+      if (busy || !active || !selected.size) return;
       const ids = [...selected];
       if (!window.confirm(`Mark ${ids.length} selected styles as ${verified ? "verified" : "unverified"}?\n${verified ? "They will become visible in the app and website." : "They will be hidden from the app and website."}`)) return;
       busy = true; update();
@@ -39,6 +48,12 @@
       } catch (error) { notify(error.message, true); }
       finally { busy = false; update(); }
     }
+    $("style-bulk-toggle").onclick = () => {
+      if (busy) return;
+      active = !active;
+      if (!active) { selected.clear(); collections.clear(); $("style-bulk-collections").open = false; }
+      catalogChanged();
+    };
     $("style-select-all").onclick = () => { selected = new Set(getCatalog().styles.map(s => s.id)); collections.clear(); catalogChanged(); };
     $("style-select-clear").onclick = () => { selected.clear(); collections.clear(); catalogChanged(); };
     $("style-bulk-collection-options").onchange = e => {
@@ -51,7 +66,8 @@
       if (e.target.checked) selected.add(id); else selected.delete(id); update();
     });
     $("style-bulk-verify").onclick = () => save(true); $("style-bulk-unverify").onclick = () => save(false);
-    return { catalogChanged, decorateCards, reset() { selected.clear(); collections.clear(); update(); } };
+    update();
+    return { catalogChanged, decorateCards, reset() { active = false; selected.clear(); collections.clear(); update(); } };
   }
   window.MaddsStyleBulk = { create };
 })();
