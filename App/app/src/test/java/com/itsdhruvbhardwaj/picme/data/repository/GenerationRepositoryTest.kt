@@ -35,7 +35,7 @@ class GenerationRepositoryTest {
     @Before
     fun setup() {
         MockitoAnnotations.openMocks(this)
-        repository = GenerationRepository(apiService, contentResolver, tokenStorage)
+        repository = GenerationRepository(apiService, contentResolver, tokenStorage) { _, _, _ -> mock() }
     }
 
     @Test

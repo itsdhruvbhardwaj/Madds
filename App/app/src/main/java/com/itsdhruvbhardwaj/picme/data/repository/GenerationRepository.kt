@@ -8,7 +8,7 @@ import com.itsdhruvbhardwaj.picme.data.model.ErrorResponse
 import com.itsdhruvbhardwaj.picme.data.model.GenerationResponse
 import com.itsdhruvbhardwaj.picme.data.model.InsufficientCreditsResponse
 import com.itsdhruvbhardwaj.picme.data.remote.StyleApiService
-import com.itsdhruvbhardwaj.picme.utils.FileUtils
+import com.itsdhruvbhardwaj.picme.utils.GenerationPhotoProcessor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -29,7 +29,8 @@ class AmbiguousOutcomeException(message: String) : Exception(message)
 class GenerationRepository(
     private val apiService: StyleApiService,
     private val contentResolver: ContentResolver,
-    private val tokenStorage: AuthTokenStorage
+    private val tokenStorage: AuthTokenStorage,
+    private val preparePhoto: (ContentResolver, Uri, String) -> okhttp3.MultipartBody.Part = GenerationPhotoProcessor::multipart
 ) {
 
     /**
@@ -41,9 +42,10 @@ class GenerationRepository(
         idempotencyKey: String
     ): Result<GenerationResponse> = withContext(Dispatchers.IO) {
         val styleIdBody = styleId.toRequestBody("text/plain".toMediaTypeOrNull())
+        if (imageUris.isEmpty()) return@withContext Result.failure(Exception("No images selected"))
         executeGeneration(idempotencyKey) { auth, key ->
-            val imageParts = imageUris.mapNotNull { uri ->
-                FileUtils.uriToMultipartPart(contentResolver, uri, "images")
+            val imageParts = imageUris.map { uri ->
+                preparePhoto(contentResolver, uri, "images")
             }
             if (imageParts.size != imageUris.size) throw Exception("Failed to process images")
             
@@ -61,8 +63,8 @@ class GenerationRepository(
     ): Result<GenerationResponse> = withContext(Dispatchers.IO) {
         val promptBody = prompt.toRequestBody("text/plain".toMediaTypeOrNull())
         executeGeneration(idempotencyKey) { auth, key ->
-            val imageParts = imageUris.mapNotNull { uri ->
-                FileUtils.uriToMultipartPart(contentResolver, uri, "images")
+            val imageParts = imageUris.map { uri ->
+                preparePhoto(contentResolver, uri, "images")
             }
             apiService.generateCustomImage(auth, key, promptBody, imageParts)
         }
