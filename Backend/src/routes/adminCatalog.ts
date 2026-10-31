@@ -1,5 +1,6 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
+import mongoose from "mongoose";
 import { fileTypeFromBuffer } from "file-type";
 
 import { env } from "../config/env.js";
@@ -175,6 +176,30 @@ router.get("/catalog/logs", async (req: Request, res: Response) => {
     })),
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   });
+});
+
+router.patch("/catalog/styles/verification", async (req: AuthenticatedRequest, res: Response) => {
+  if (req.user?.emailVerified !== true) return res.status(403).json({ ok: false, error: "Verified administrator access required." });
+  const { ids, verified } = req.body || {};
+  if (typeof verified !== "boolean" || !Array.isArray(ids) || !ids.length || ids.length > 2000 || ids.some(id => typeof id !== "string" || !styleIdPattern.test(id))) {
+    return res.status(400).json({ ok: false, error: "Select 1 to 2,000 valid styles and a verification status." });
+  }
+  const selectedIds = [...new Set<string>(ids)];
+  const session = await mongoose.startSession();
+  try {
+    const changed = await session.withTransaction(async () => {
+      const styles = await CatalogStyle.find({ id: { $in: selectedIds } }).select("id name verified").session(session).lean();
+      if (styles.length !== selectedIds.length) throw new Error("Selection changed. Refresh styles and try again.");
+      const updates = styles.filter(style => (style.verified === true) !== verified);
+      if (!updates.length) return 0;
+      await CatalogStyle.updateMany({ id: { $in: updates.map(style => style.id) } }, { $set: { verified } }, { session, runValidators: true });
+      await CatalogAuditLog.create(updates.map(style => ({ actorEmail: req.user!.email, actorName: req.user!.name || "", action: "STYLE_UPDATED", itemId: style.id, itemName: `${style.name} — ${verified ? "Verified" : "Unverified"}` })), { session });
+      return updates.length;
+    });
+    return res.json({ ok: true, changed, selected: selectedIds.length, verified });
+  } catch (error) {
+    return res.status(409).json({ ok: false, error: error instanceof Error && error.message.startsWith("Selection changed") ? error.message : "Could not update the styles. Refresh before trying again." });
+  } finally { await session.endSession(); }
 });
 
 router.post("/catalog/styles", async (req: AuthenticatedRequest, res: Response) => {

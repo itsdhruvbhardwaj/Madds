@@ -6,6 +6,7 @@
   const byId = (id) => document.getElementById(id);
   const notifications = window.MaddsNotifications.create({ api, notify, getCatalog: () => state });
   const users = window.MaddsUsers.create({ api, notify });
+  const bulkStyles = window.MaddsStyleBulk.create({ api, notify, getCatalog: () => state, reload: loadCatalog });
 
   async function api(path, options = {}, retry = true) {
     const headers = new Headers(options.headers || {});
@@ -34,6 +35,7 @@
   }
 
   function clearSession() {
+    bulkStyles.reset();
     users.reset();
     notifications.reset();
     sessionStorage.removeItem(tokenKey);
@@ -175,6 +177,7 @@
     byId("style-count").textContent = String(state.styles.length);
     byId("result-count").textContent = `${filtered.length} shown`;
     const grid = byId("styles-grid");
+    bulkStyles.catalogChanged();
     if (!filtered.length) {
       grid.innerHTML = '<div class="empty-state">No styles match. Try another search or add a new style.</div>';
       return;
@@ -194,11 +197,12 @@
       return `<article class="style-card website-style-card" data-style-open="${escapeHtml(style.id)}"><div class="style-image ${coverUrl ? "" : "missing-image"}">${img}${collectionBadge}</div><div class="style-body"><h3 class="style-card-title">${escapeHtml(style.name)}</h3><div class="style-description">${escapeHtml(style.description)}</div><div class="style-admin-footer"><span class="style-id">ID · ${escapeHtml(style.id)}</span>${verificationBadge}<span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
     }).join("");
     grid.querySelectorAll("[data-style-open]").forEach((card) => card.addEventListener("click", (event) => {
-      if (event.target.closest("button, a")) return;
+      if (event.target.closest("button, a, input, label")) return;
       openStyleEditor(card.dataset.styleOpen);
     }));
     grid.querySelectorAll("[data-edit]").forEach((button) => button.addEventListener("click", () => openStyleEditor(button.dataset.edit)));
     grid.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", () => deleteStyle(button.dataset.delete)));
+    bulkStyles.decorateCards();
   }
 
   const styleImageMaxBytes = 300_000;
