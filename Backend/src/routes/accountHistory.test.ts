@@ -1,6 +1,8 @@
 import express from "express";
 import request from "supertest";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+import { Generation } from "../models/Generation.js";
+import { CatalogStyle } from "../models/CatalogStyle.js";
 const m = vi.hoisted(() => ({ purchase: vi.fn(), credit: vi.fn(), limit: vi.fn(), rows: vi.fn() }));
 vi.mock("../middleware/auth.js", () => ({ requireAuth: (req: any, res: any, next: any) => {
   if (!req.headers.authorization) return res.sendStatus(401);
@@ -13,6 +15,7 @@ import { accountHistoryRouter } from "./accountHistory.js";
 const app = express(); app.use("/me", accountHistoryRouter);
 describe("account history", () => {
   beforeEach(() => { vi.clearAllMocks(); m.rows.mockResolvedValue([]); });
+  afterEach(() => vi.restoreAllMocks());
   it.each(["purchases", "credit-history"])("requires authentication for %s", async path => {
     expect((await request(app).get(`/me/${path}`)).status).toBe(401);
   });
@@ -26,5 +29,19 @@ describe("account history", () => {
     m.rows.mockResolvedValue([{ amount: 1 }, { amount: 2 }, { amount: 3 }]);
     const r = await request(app).get("/me/credit-history?limit=2").set("Authorization", "Bearer test");
     expect(r.body.transactions).toHaveLength(2); expect(r.body.hasMore).toBe(true);
+  });
+  it("returns current style names and plain reward and purchase labels", async () => {
+    const referenceId = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    m.rows.mockResolvedValue([{ type: "GENERATION", referenceId, description: "Generation using style old-id" }, { type: "REWARDED_AD", amount: 1, description: "Verified AdMob rewarded ad" }, { type: "PURCHASE", amount: 250, description: "Google Play purchase: internal-id" }]);
+    vi.spyOn(Generation, "find").mockReturnValue({ select: () => ({ lean: async () => [{ _id: referenceId, styleId: "old-id" }] }) } as any);
+    vi.spyOn(CatalogStyle, "find").mockReturnValue({ select: () => ({ lean: async () => [{ id: "old-id", name: "Updated style name" }] }) } as any);
+    const r = await request(app).get("/me/credit-history").set("Authorization", "Bearer test");
+    expect(r.body.transactions.map((t: any) => t.displayName)).toEqual(["Updated style name", "Rewarded ad", "250 credit purchase"]);
+    expect(Generation.find).toHaveBeenCalledWith(expect.objectContaining({ userId: "signed-in-user" }));
+  });
+  it("labels purchased packs by credits rather than product ID", async () => {
+    m.rows.mockResolvedValue([{ productId: "com.internal.product", creditsGranted: 110 }]);
+    const r = await request(app).get("/me/purchases").set("Authorization", "Bearer test");
+    expect(r.body.purchases[0].displayName).toBe("110 credits");
   });
 });
