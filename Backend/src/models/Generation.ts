@@ -41,6 +41,12 @@ const GenerationSchema = new Schema(
       type: String,
       default: "",
     },
+    resultParts: Number,
+    resultExpiresAt: Date,
+    providerCompletedAt: Date,
+    viewedAt: Date,
+    appReceivedAt: Date,
+    resultFetchedAt: Date,
   },
   { timestamps: true },
 );

@@ -4,6 +4,7 @@ import { EmailChangeToken } from "../models/EmailChangeToken.js";
 import { EmailVerificationToken } from "../models/EmailVerificationToken.js";
 import { FavoriteStyle } from "../models/FavoriteStyle.js";
 import { Generation } from "../models/Generation.js";
+import { GenerationResult } from "../models/GenerationResult.js";
 import { PasswordResetToken } from "../models/PasswordResetToken.js";
 import { PasswordSetupToken } from "../models/PasswordSetupToken.js";
 import { Purchase } from "../models/Purchase.js";
@@ -16,6 +17,7 @@ import { NotificationLog, NotificationUserGate } from "../modules/notifications/
 import { destroyProfileImage } from "./profileImages.js";
 
 const userOwnedModels = [
+  GenerationResult,
   Feedback,
   DeviceToken,
   NotificationLog,

@@ -20,6 +20,9 @@ import { Purchase } from "./models/Purchase.js";
 import { authRouter } from "./routes/auth.js";
 import { accountHistoryRouter } from "./routes/accountHistory.js";
 import { feedbackRouter } from "./routes/feedback.js";
+import { generationRecoveryRouter } from "./routes/generationRecovery.js";
+import { saveGenerationResult } from "./services/generationRecovery.js";
+import { GenerationResult } from "./models/GenerationResult.js";
 import { adminCatalogRouter } from "./routes/adminCatalog.js";
 import { adminUsersRouter } from "./routes/adminUsers.js";
 import { favoritesRouter } from "./routes/favorites.js";
@@ -124,7 +127,7 @@ app.use(
     max: 20,
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => req.path === "/api/ads/admob/ssv" || (
+    skip: (req) => req.path === "/api/ads/admob/ssv" || req.path === "/api/generations" || req.path.startsWith("/api/generations/") || (
       req.method === "GET" && ["/api/home/config", "/api/collections", "/api/styles"].includes(req.path)
     ),
   }),
@@ -243,6 +246,7 @@ app.use("/api/styles", styleDetailsRouter);
 app.use("/api/profile", profileRouter);
 app.use("/api/notifications", notificationDevicesRouter);
 app.use("/api", feedbackRouter);
+app.use("/api/generations", generationRecoveryRouter);
 app.use("/api/admin/notifications", adminNotificationsRouter);
 app.use("/api/admin/users", adminUsersRouter);
 app.use("/api/admin", adminCatalogRouter);
@@ -423,6 +427,14 @@ app.post(
       });
     }
 
+    // New apps receive an operation ID immediately. Paid work continues once;
+    // status/result requests never execute this provider call again.
+    if (req.get("X-Generation-Recovery") === "1") {
+      res.status(202).json({ ok: true, generationId: reservation.generationId, status: "processing" });
+    }
+    const reply = res.headersSent
+      ? { status: (_status: number) => ({ json: (_body: unknown) => undefined }) }
+      : res;
     let result;
     try {
       const generator = createImageGenerator();
@@ -438,14 +450,14 @@ app.post(
           const refunded = await refundGeneration(reservation.generationId, "PROVIDER_REJECTED");
           if (!refunded) {
             console.error("Generation refund was not committed.", reservation.generationId);
-            return res.status(500).json({
+            return reply.status(500).json({
               ok: false,
               code: "GENERATION_REFUND_PENDING",
               error: "Generation failed, but its refund is pending reconciliation.",
               generationId: reservation.generationId,
             });
           }
-          return res.status(502).json({
+          return reply.status(502).json({
             ok: false,
             code: "GENERATION_FAILED_CREDITS_REFUNDED",
             error: "Image generation failed. Reserved credits were refunded.",
@@ -457,7 +469,7 @@ app.post(
             reservation.generationId,
             refundError instanceof Error ? refundError.name : "UNKNOWN",
           );
-          return res.status(500).json({
+          return reply.status(500).json({
             ok: false,
             code: "GENERATION_REFUND_PENDING",
             error: "Generation failed, but its refund is pending reconciliation.",
@@ -475,7 +487,7 @@ app.post(
           stateError instanceof Error ? stateError.name : "UNKNOWN",
         );
       }
-      return res.status(504).json({
+      return reply.status(504).json({
         ok: false,
         code: "GENERATION_OUTCOME_UNKNOWN",
         error: "The provider outcome is uncertain. Reserved credits remain held; retrying this key will not start another generation.",
@@ -483,9 +495,11 @@ app.post(
       });
     }
 
+    const image = `data:${result.mimeType ?? `image/${env.imageFormat}`};base64,${result.base64}`;
     try {
+      await saveGenerationResult(userId, reservation.generationId, image);
       const completed = await completeGeneration(reservation.generationId);
-      if (!completed) {
+      if (!completed && !await Generation.exists({ _id: reservation.generationId, userId, status: "completed", resultParts: { $gt: 0 } })) {
         throw new Error("Generation completion state was not updated.");
       }
     } catch (error) {
@@ -494,7 +508,7 @@ app.post(
         reservation.generationId,
         error instanceof Error ? error.name : "UNKNOWN",
       );
-      return res.status(503).json({
+      return reply.status(503).json({
         ok: false,
         code: "GENERATION_FINALIZATION_PENDING",
         error: "Generation completed, but its result could not be finalized. Do not retry with a new key.",
@@ -502,9 +516,10 @@ app.post(
       });
     }
 
-    return res.status(200).json({
+    return reply.status(200).json({
       ok: true,
-      image: `data:${result.mimeType ?? `image/${env.imageFormat}`};base64,${result.base64}`,
+      image,
+      generationId: reservation.generationId,
       usage: result.usage,
     });
   },
@@ -548,6 +563,7 @@ if (isDirectExecution) {
       if (database) {
         await Promise.all([
           Generation.init(),
+          GenerationResult.init(),
           CreditTransaction.init(),
           FavoriteStyle.init(),
           RewardedAdAttempt.init(),

@@ -47,7 +47,7 @@ router.get("/:id/:history", async (req, res) => {
   const filter = { userId: req.params.id, ...(cursor ? { _id: { $lt: cursor } } : {}) };
   const model = req.params.history === "generations" ? Generation : req.params.history === "credits" ? CreditTransaction : req.params.history === "activity" ? Audit : null;
   if (!model) return res.sendStatus(404);
-  const projection = req.params.history === "generations" ? "styleId status createdAt" : req.params.history === "credits" ? "amount type balanceAfter description referenceId createdAt" : "actorEmail action reason amount balanceAfter createdAt";
+  const projection = req.params.history === "generations" ? "styleId status createdAt providerCompletedAt resultExpiresAt appReceivedAt viewedAt failureCode creditsCost" : req.params.history === "credits" ? "amount type balanceAfter description referenceId createdAt" : "actorEmail action reason amount balanceAfter createdAt";
   const rows = await model.find(filter).select(projection).sort({ _id: -1 }).limit(26).lean();
   if (req.params.history === "generations") {
     const styles = await CatalogStyle.find({ id: { $in: rows.map((r: any) => r.styleId) } }).select("id name").lean();

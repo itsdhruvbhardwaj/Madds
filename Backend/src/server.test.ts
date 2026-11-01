@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 
+vi.mock("./services/generationRecovery.js", () => ({ saveGenerationResult: vi.fn().mockResolvedValue(undefined), readGenerationResult: vi.fn() }));
+
 process.env.OPENAI_API_KEY = "test-api-key";
 
 const generationMocks = vi.hoisted(() => ({
@@ -468,7 +470,13 @@ describe("style favorites endpoints", () => {
 
 describe("generation endpoint", () => {
   beforeEach(() => {
-    generationMocks.generate.mockResolvedValue({
+    vi.spyOn(styleCatalog, "getCatalogStyle").mockImplementation(async id => styles.find(s => s.id === id));
+  });
+  afterEach(() => { vi.mocked(styleCatalog.getCatalogStyle).mockRestore(); });
+
+  beforeEach(() => {
+    generationMocks.edit.mockReset().mockResolvedValue({ data: [{ b64_json: "abc123" }], usage: { input_tokens: 12, output_tokens: 8, total_tokens: 20 } });
+    generationMocks.generate.mockReset().mockResolvedValue({
       data: [{ b64_json: "abc123" }],
       usage: { input_tokens: 12, output_tokens: 8, total_tokens: 20 },
     });
@@ -479,6 +487,22 @@ describe("generation endpoint", () => {
     generationMocks.completeGeneration.mockResolvedValue(true);
     generationMocks.refundGeneration.mockResolvedValue(true);
     generationMocks.markGenerationOutcomeUnknown.mockResolvedValue(true);
+  });
+
+  it("accepts recovery submissions before the provider finishes and stores the paid result once", async () => {
+    let finish!: (value: any) => void;
+    generationMocks.edit.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const response = await request(app).post("/api/generate")
+      .set("Authorization", "Bearer test-token").set("Idempotency-Key", "recovery-request-123")
+      .set("X-Generation-Recovery", "1").field("styleId", "professional-portrait")
+      .attach("images", Buffer.from("fake-image-data"), { filename: "portrait.png", contentType: "image/png" });
+    expect(response.status).toBe(202);
+    expect(response.body).toMatchObject({ generationId: "generation-123", status: "processing" });
+    expect(generationMocks.reserveGenerationCredits).toHaveBeenCalledTimes(1);
+    expect(generationMocks.completeGeneration).not.toHaveBeenCalled();
+    finish({ data: [{ b64_json: "abc123" }] });
+    await vi.waitFor(() => expect(generationMocks.completeGeneration).toHaveBeenCalledTimes(1));
+    expect(generationMocks.edit).toHaveBeenCalledTimes(1);
   });
 
   it("rejects unauthenticated requests before processing the upload", async () => {

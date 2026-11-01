@@ -49,6 +49,7 @@ export class OpenAIImageGenerator implements GenerationProvider {
     this.client = new OpenAI({
       apiKey: env.openAiApiKey,
       timeout: env.openAiTimeoutMs,
+      maxRetries: 0,
     });
   }
 
