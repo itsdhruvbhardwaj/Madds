@@ -6,6 +6,7 @@
   const byId = (id) => document.getElementById(id);
   const notifications = window.MaddsNotifications.create({ api, notify, getCatalog: () => state });
   const users = window.MaddsUsers.create({ api, notify });
+  const feedback = window.MaddsFeedback.create({ api, notify });
   const bulkStyles = window.MaddsStyleBulk.create({ api, notify, getCatalog: () => state, reload: loadCatalog });
 
   async function api(path, options = {}, retry = true) {
@@ -35,6 +36,7 @@
   }
 
   function clearSession() {
+    feedback.reset();
     bulkStyles.reset();
     users.reset();
     notifications.reset();
@@ -732,6 +734,7 @@
     if (state.activePanel === "logs-panel") void loadLogs(1);
     else if (state.activePanel === "notifications-panel") void notifications.refresh();
     else if (state.activePanel === "users-panel") void users.refresh();
+    else if (state.activePanel === "feedback-panel") void feedback.refresh();
     else void loadCatalog();
   });
   document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => {
@@ -793,6 +796,7 @@
     if (state.activePanel === "logs-panel") void loadLogs(1);
     if (state.activePanel === "notifications-panel") void notifications.refresh();
     if (state.activePanel === "users-panel") void users.refresh();
+    if (state.activePanel === "feedback-panel") void feedback.refresh();
   }));
   byId("log-member-filter").addEventListener("change", () => loadLogs(1));
   byId("log-action-filter").addEventListener("change", () => loadLogs(1));

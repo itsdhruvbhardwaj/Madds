@@ -10,11 +10,13 @@ import { Purchase } from "../models/Purchase.js";
 import { RewardedAdAttempt } from "../models/RewardedAdAttempt.js";
 import { Session } from "../models/Session.js";
 import { User } from "../models/User.js";
+import { Feedback } from "../models/Feedback.js";
 import { DeviceToken } from "../models/DeviceToken.js";
 import { NotificationLog, NotificationUserGate } from "../modules/notifications/notification.models.js";
 import { destroyProfileImage } from "./profileImages.js";
 
 const userOwnedModels = [
+  Feedback,
   DeviceToken,
   NotificationLog,
   NotificationUserGate,

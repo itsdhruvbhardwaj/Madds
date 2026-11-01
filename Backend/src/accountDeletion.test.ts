@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("./models/Feedback.js", () => ({ Feedback: { deleteMany: vi.fn().mockResolvedValue({ deletedCount: 0 }) } }));
 
 const deletionMocks = vi.hoisted(() => ({
   DeviceToken: { deleteMany: vi.fn() },

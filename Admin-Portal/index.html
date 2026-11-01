@@ -9,7 +9,7 @@
   <title>Madds Studio · Style Manager</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="portal-overrides.css?v=20261031-user-container">
-  <link rel="stylesheet" href="studio-modern.css?v=20261031-bulk-styles">
+  <link rel="stylesheet" href="studio-modern.css?v=20261101-feedback">
 </head>
 <body>
   <main id="login-view" class="login-shell">
@@ -35,6 +35,7 @@
       <button class="side-link" data-panel="testing-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"/></svg> Prompt testing <small id="prompt-test-nav-status" class="test-nav-status" hidden></small></button>
       <button class="side-link" data-panel="collections-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg> Collections</button>
       <button class="side-link" data-panel="notifications-panel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg> Notifications</button>
+      <button class="side-link" data-panel="feedback-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/><path d="M7 8h10M7 12h6"/></svg> Feedback</button>
       <button class="side-link" data-panel="users-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m2 4a5 5 0 0 1 3 4v2"/></svg> Users</button>
       <button class="side-link" data-panel="logs-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg> Change logs</button>
       <div class="sidebar-note"><span class="live-dot"></span> Connected to live catalogue</div>
@@ -97,6 +98,7 @@
         </div>
       </section>
 
+      <section id="feedback-panel" class="panel-view" hidden><div class="page-heading"><div><p class="eyebrow">LISTEN TO YOUR COMMUNITY</p><h1>Feedback</h1><p class="muted">Suggestions and bug reports from Madds users.</p></div><button id="feedback-refresh" class="button secondary">Refresh</button></div><div class="logs-toolbar"><label>Status<select id="feedback-filter"><option value="">All feedback</option><option value="NEW">New</option><option value="IN_REVIEW">In review</option><option value="RESOLVED">Resolved</option></select></label></div><p id="feedback-error" class="form-error" role="alert"></p><div id="feedback-list"></div><div class="logs-pagination"><button id="feedback-prev" class="button secondary">Previous</button><span id="feedback-page" class="muted"></span><button id="feedback-next" class="button secondary">Next</button></div></section>
       <section id="users-panel" class="panel-view" hidden>
         <div class="page-heading"><div><p class="eyebrow">ACCOUNT SUPPORT</p><h1>Users</h1><p class="muted">Manage accounts, credits, and creation history.</p></div></div>
         <form id="users-search" class="logs-toolbar"><label>Find a user<input name="q" maxlength="120" placeholder="Name, email, or user ID"></label><label>Status<select name="status"><option value="">All users</option><option value="active">Active</option><option value="suspended">Suspended</option></select></label><button class="button primary">Search</button></form>
@@ -170,7 +172,8 @@
   <script src="config.js"></script>
   <script src="notifications.js?v=20261031-modern" defer></script>
   <script src="users.js?v=20261031-history-collapsed" defer></script>
+  <script src="feedback.js?v=20261101" defer></script>
   <script src="style-bulk.js?v=20261031-filtered-selection" defer></script>
-  <script src="app.js?v=20261031-filtered-selection" defer></script>
+  <script src="app.js?v=20261101-feedback" defer></script>
 </body>
 </html>
