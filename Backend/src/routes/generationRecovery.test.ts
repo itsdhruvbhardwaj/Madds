@@ -14,6 +14,12 @@ const app = express(); app.use(express.json()); app.use("/api/generations", gene
 const id = "bbbbbbbbbbbbbbbbbbbbbbbb";
 beforeEach(() => { vi.clearAllMocks(); m.stale.mockResolvedValue({}); m.one.mockReturnValue({ lean: async () => null }); });
 describe("generation recovery endpoints", () => {
+  it("resolves a saved key with a nonempty display name before it appears in the list", async () => {
+    m.one.mockReturnValue({ lean: async () => ({ _id: id, styleId: "portrait", status: "processing" }) });
+    const r = await request(app).get("/api/generations/by-key/request-key").set("Authorization", "Bearer user");
+    expect(r.status).toBe(200); expect(r.body.styleName).toBe("portrait");
+    expect(m.one.mock.calls[0][0].userId).toBe("aaaaaaaaaaaaaaaaaaaaaaaa");
+  });
   it("requires authentication and never exposes another account's result", async () => {
     expect((await request(app).get(`/api/generations/${id}/result`)).status).toBe(401);
     expect((await request(app).get(`/api/generations/${id}/result`).set("Authorization", "Bearer user")).status).toBe(404);

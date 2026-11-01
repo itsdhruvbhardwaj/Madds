@@ -12,7 +12,7 @@ router.use(rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacy
 router.use(requireAuth, (_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 const validId = (id: unknown) => typeof id === "string" && /^[a-f0-9]{24}$/i.test(id);
 function summary(g: any) {
-  return { id: String(g._id), styleId: g.styleId, status: g.status, failureCode: g.failureCode,
+  return { id: String(g._id), styleId: g.styleId, styleName: g.styleId === "custom-prompt" ? "Custom creation" : g.styleId || "Your photo", status: g.status, failureCode: g.failureCode,
     createdAt: g.createdAt, resultExpiresAt: g.resultExpiresAt,
     resultAvailable: Boolean(g.resultParts && new Date(g.resultExpiresAt).getTime() > Date.now()),
     viewedAt: g.viewedAt, creditsCost: g.creditsCost };
