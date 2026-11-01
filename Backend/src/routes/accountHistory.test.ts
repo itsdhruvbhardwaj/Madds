@@ -3,12 +3,12 @@ import request from "supertest";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { Generation } from "../models/Generation.js";
 import { CatalogStyle } from "../models/CatalogStyle.js";
-const m = vi.hoisted(() => ({ purchase: vi.fn(), credit: vi.fn(), limit: vi.fn(), rows: vi.fn() }));
+const m = vi.hoisted(() => ({ purchase: vi.fn(), credit: vi.fn(), limit: vi.fn(), skip: vi.fn(), rows: vi.fn() }));
 vi.mock("../middleware/auth.js", () => ({ requireAuth: (req: any, res: any, next: any) => {
   if (!req.headers.authorization) return res.sendStatus(401);
   req.user = { id: "signed-in-user" }; next();
 } }));
-const query = () => ({ select: () => ({ sort: () => ({ skip: () => ({ limit: (value: number) => { m.limit(value); return { lean: m.rows }; } }) }) }) });
+const query = () => ({ select: () => ({ sort: () => ({ skip: (offset: number) => { m.skip(offset); return { limit: (value: number) => { m.limit(value); return { lean: m.rows }; } }; } }) }) });
 vi.mock("../models/Purchase.js", () => ({ Purchase: { find: (...args: any[]) => { m.purchase(...args); return query(); } } }));
 vi.mock("../models/CreditTransaction.js", () => ({ CreditTransaction: { find: (...args: any[]) => { m.credit(...args); return query(); } } }));
 import { accountHistoryRouter } from "./accountHistory.js";
@@ -23,12 +23,21 @@ describe("account history", () => {
     for (const path of ["purchases", "credit-history"]) expect((await request(app).get(`/me/${path}?userId=victim&limit=999`).set("Authorization", "Bearer test")).status).toBe(200);
     expect(m.purchase).toHaveBeenCalledWith({ userId: "signed-in-user" });
     expect(m.credit).toHaveBeenCalledWith({ userId: "signed-in-user" });
-    expect(m.limit).toHaveBeenCalledWith(51);
+    expect(m.limit).toHaveBeenCalledWith(21);
   });
   it("returns only the requested page and indicates more records", async () => {
     m.rows.mockResolvedValue([{ amount: 1 }, { amount: 2 }, { amount: 3 }]);
     const r = await request(app).get("/me/credit-history?limit=2").set("Authorization", "Bearer test");
     expect(r.body.transactions).toHaveLength(2); expect(r.body.hasMore).toBe(true);
+  });
+  it.each(["purchases", "credit-history"])("returns at most 20 records for %s and offsets subsequent pages", async path => {
+    m.rows.mockResolvedValue(Array.from({ length: 21 }, () => ({ amount: 1, creditsGranted: 40 })));
+    const r = await request(app).get(`/me/${path}?page=2&limit=20`).set("Authorization", "Bearer test");
+    expect(r.body[path === "purchases" ? "purchases" : "transactions"]).toHaveLength(20);
+    expect(r.body.hasMore).toBe(true); expect(m.skip).toHaveBeenCalledWith(20);
+    m.rows.mockResolvedValue([{ amount: 1 }]);
+    const last = await request(app).get(`/me/${path}?page=3&limit=20`).set("Authorization", "Bearer test");
+    expect(last.body.hasMore).toBe(false);
   });
   it("returns current style names and plain reward and purchase labels", async () => {
     const referenceId = "aaaaaaaaaaaaaaaaaaaaaaaa";

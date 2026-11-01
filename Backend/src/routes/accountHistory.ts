@@ -6,13 +6,13 @@ import { Generation } from "../models/Generation.js";
 import { CatalogStyle } from "../models/CatalogStyle.js";
 
 const router: Router = Router();
-const defaultLimit = 30;
-const maxLimit = 50;
+const defaultLimit = 20;
+const maxLimit = 20;
 function pageOptions(req: AuthenticatedRequest) {
   const requested = Number(req.query.limit);
   const limit = Number.isInteger(requested) ? Math.min(Math.max(requested, 1), maxLimit) : defaultLimit;
   const page = Number(req.query.page);
-  const skip = Number.isInteger(page) && page > 1 ? Math.min((page - 1) * limit, 10000) : 0;
+  const skip = Number.isSafeInteger(page) && page > 1 && Number.isSafeInteger((page - 1) * limit) ? (page - 1) * limit : 0;
   return { limit, skip };
 }
 
