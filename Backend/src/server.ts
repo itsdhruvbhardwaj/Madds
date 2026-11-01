@@ -18,6 +18,7 @@ import { Generation } from "./models/Generation.js";
 import { RewardedAdAttempt } from "./models/RewardedAdAttempt.js";
 import { Purchase } from "./models/Purchase.js";
 import { authRouter } from "./routes/auth.js";
+import { accountHistoryRouter } from "./routes/accountHistory.js";
 import { adminCatalogRouter } from "./routes/adminCatalog.js";
 import { adminUsersRouter } from "./routes/adminUsers.js";
 import { favoritesRouter } from "./routes/favorites.js";
@@ -246,6 +247,7 @@ app.use("/api/admin", adminCatalogRouter);
 app.use("/api/me", favoritesRouter);
 app.use("/api", rewardedAdsRouter);
 app.use("/api", googlePlayBillingRouter);
+app.use("/api/me", accountHistoryRouter);
 
 app.post(
   "/api/generate",
