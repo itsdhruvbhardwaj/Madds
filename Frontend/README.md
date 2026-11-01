@@ -1,6 +1,20 @@
 # Madds website
 
-Static, dependency-free website for `maddsofficial.com` with Home, App, and About Us pages.
+Static, dependency-free website for `maddsofficial.com` with Home, App, About Madds, Help & Support, Contact, Privacy Policy, and Terms of Service pages.
+
+Support contact: `madds.support@gmail.com`. Email links open the visitor's email
+application; this website does not submit support requests through a backend form.
+
+App-ready destinations:
+
+- `help.html`: FAQs and troubleshooting
+- `contact.html`: support, feedback, and privacy contact
+- `about.html`: About Madds
+- `privacy.html`: Privacy Policy
+- `terms.html`: Terms of Service
+
+The old `about.html#privacy-policy` anchor remains available and links to the
+dedicated privacy page. Shared support-page styling is in `support.css`.
 
 ## Local preview
 
