@@ -48,6 +48,22 @@
       ...(values.imageUrl.trim() ? { imageUrl: values.imageUrl.trim() } : {}) };
   }
 
+  async function prepareDelivery({ api, base, selected, draft, dirty, previewName, onSaved, isCurrent = () => true }) {
+    const save = !selected || dirty;
+    const result = save ? await api(selected ? `${base}/${selected._id}` : base, {
+      method: selected ? "PATCH" : "POST",
+      body: JSON.stringify({ ...draft, ...(selected ? { expectedRevision: selected.revision ?? 0 } : {}) }),
+    }) : await api(`${base}/${selected._id}`);
+    if (!isCurrent()) return null;
+    const campaign = result.campaign;
+    if (!campaign || campaign.status !== "DRAFT" || (!save && (campaign.revision ?? 0) !== (selected.revision ?? 0))) {
+      throw new Error("This notification changed. Refresh and review the latest version.");
+    }
+    if (save) onSaved(campaign);
+    const preview = await api(`${base}/${campaign._id}/preview`, { method: "POST", body: JSON.stringify({ previewName }) });
+    return isCurrent() ? { campaign, ...preview } : null;
+  }
+
   function canvasToBlob(canvas, type, quality) {
     return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("This image could not be compressed.")), type, quality));
   }
@@ -122,9 +138,9 @@
       if ($("push-form")) { $("push-form").querySelector("fieldset").disabled = busy || !draft; conditionalFields(); }
       for (const id of ["push-save", "push-preview", "push-send", "push-schedule", "push-cancel"]) {
         const button = $(id); if (!button) continue;
-        button.disabled = busy || !available || (id !== "push-save" && (!selected || dirty)) ||
+        button.disabled = busy || !available || (id === "push-cancel" && (!selected || dirty)) ||
           (["push-send", "push-schedule"].includes(id) && (!draft || !enabled)) ||
-          (id === "push-save" && !draft);
+          (["push-save", "push-preview"].includes(id) && !draft);
       }
       $("push-new").disabled = busy;
       if ($("push-clear")) $("push-clear").disabled = busy || !draft || (selected && !available);
@@ -176,9 +192,9 @@
         <p id="push-cooldown-state" class="field-hint">${cooldownHours ? `Notification cooldown: ${cooldownHours} hours.` : "Testing mode: notification cooldown is off."}</p>
         <div class="push-phone-preview" aria-label="Notification preview"><span class="push-app-name">madds · now</span><strong id="push-preview-title"></strong><p id="push-preview-body"></p><img id="push-preview-image" alt="Notification image preview" referrerpolicy="no-referrer" hidden><small>Preview · Appearance varies by device</small></div>
         <p class="field-hint">Only users who allow this category and device notifications are eligible. Inactivity audiences exclude unknown activity.</p>
-        <div class="push-actions">${draft ? '<button id="push-save" class="button primary" type="submit">Save draft</button><button id="push-clear" class="delete-button" type="button">Clear draft</button>' : ""}<button id="push-preview" class="button secondary" type="button">Check audience</button></div>
+        <div class="push-actions">${draft ? '<button id="push-send" class="button primary" type="button">Send notification</button><button id="push-save" class="button secondary" type="submit">Save draft (optional)</button><button id="push-clear" class="delete-button" type="button">Clear draft</button>' : ""}<button id="push-preview" class="button secondary" type="button">Check audience (optional)</button></div>
         <div id="push-audience-result" class="push-audience-result" role="status"></div>
-        ${draft ? `<div class="push-sending"><h3>Delivery</h3><p class="field-hint">Save changes before reviewing a send. Scheduling is available only for a future time.</p><button id="push-send" type="button" class="button secondary">Review send now</button><label>Schedule in ${escape(zone)}<input id="push-schedule-time" type="datetime-local" step="60" min="${scheduleMinimum()}"></label><button id="push-schedule" type="button" class="button secondary">Review schedule</button></div>` : `<p class="muted">${escape(item.status === "SCHEDULED" ? `Scheduled: ${formatDate(item.scheduledAt)}` : `Status: ${statusLabel(item.status)}`)}</p>`}
+        ${draft ? `<details class="push-sending"><summary>Schedule for later (optional)</summary><p class="field-hint">Your changes are saved and the audience is checked automatically before you confirm. Scheduling is optional.</p><label>Schedule in ${escape(zone)}<input id="push-schedule-time" type="datetime-local" step="60" min="${scheduleMinimum()}"></label><button id="push-schedule" type="button" class="button secondary">Schedule notification</button></details>` : `<p class="muted">${escape(item.status === "SCHEDULED" ? `Scheduled: ${formatDate(item.scheduledAt)}` : `Status: ${statusLabel(item.status)}`)}</p>`}
         ${item._id && ["DRAFT", "SCHEDULED", "PROCESSING"].includes(item.status) ? '<button id="push-cancel" type="button" class="delete-button">Cancel notification</button>' : ""}
         </form><div id="push-stats"></div><div id="push-logs"></div>`;
       catalogChanged(); conditionalFields(); livePreview();
@@ -291,36 +307,47 @@
       } catch (failure) { if (session === epoch) error(failure.message); }
       finally { if (session === epoch) { busy = false; updateActions(); } }
     }
-    async function checkAudience() {
-      if (busy || !selected || dirty) return;
-      busy = true; updateActions(); error(); const ticket = selection, session = epoch;
-      try {
-        const result = await api(`${base}/${selected._id}/preview`, { method: "POST", body: JSON.stringify({ previewName: $("push-preview-name")?.value || "" }) });
-        if (ticket !== selection || session !== epoch) return;
-        const sample = result.audience;
-        $("push-audience-result").textContent = `${sample.eligibleDevicesInSample} eligible devices among ${sample.scannedDevices} checked${sample.hasMoreDevices ? "; more devices are available" : ""}. Eligibility and notification preferences are checked again when sending.`;
-      } catch (failure) { if (session === epoch) error(failure.message); }
-      finally { if (session === epoch) { busy = false; updateActions(); } }
-    }
+    async function checkAudience() { await prepareReview("audience"); }
     async function prepareReview(action) {
-      if (busy || !enabled || !selected || dirty || !isDraft()) return;
-      let scheduledAt;
-      try { if (action === "schedule") scheduledAt = localSchedule($("push-schedule-time").value); }
-      catch (failure) { error(failure.message); return; }
-      busy = true; updateActions(); error(); const session = epoch, id = selected._id;
+      if (busy || !available || !isDraft() || (action !== "audience" && !enabled)) return;
+      let scheduledAt, draft, snapshot, previewName;
       try {
-        const latest = (await api(`${base}/${id}`)).campaign;
-        if (session !== epoch) return;
-        if (latest.status !== "DRAFT" || (latest.revision ?? 0) !== (selected.revision ?? 0)) throw new Error("This notification changed. Refresh and review the latest version.");
-        review = { id, action, scheduledAt, expectedRevision: latest.revision ?? 0 };
-        showReview(latest);
+        const form = $("push-form"), data = values(); data.destination = form.elements.destination.value;
+        draft = buildDraft(data); snapshot = JSON.stringify(values()); previewName = $("push-preview-name")?.value || "";
+        if (action === "schedule") scheduledAt = localSchedule($("push-schedule-time").value);
+      } catch (failure) { error(failure.message); return; }
+      busy = true; updateActions(); error(); const session = epoch;
+      let saved = false, audienceMessage = "";
+      try {
+        const result = await prepareDelivery({ api, base, selected, draft, dirty, previewName,
+          isCurrent: () => session === epoch,
+          onSaved: campaign => {
+            selected = campaign; selection++; stats = null; logs = []; logCursor = null;
+            baseline = snapshot; dirty = false; saved = true;
+            campaigns = [selected, ...campaigns.filter(item => item._id !== selected._id)]; renderHistory();
+          } });
+        if (!result || session !== epoch) return;
+        const sample = result.audience;
+        audienceMessage = `${sample.eligibleDevicesInSample} eligible devices among ${sample.scannedDevices} checked${sample.hasMoreDevices ? "; more devices are available" : ""}. Preferences are checked again at delivery.`;
+        if (action !== "audience") {
+          review = { id: result.campaign._id, action, scheduledAt, expectedRevision: result.campaign.revision ?? 0,
+            preview: result.preview, audienceMessage };
+          showReview(result.campaign);
+        }
       } catch (failure) { if (session === epoch) error(failure.message); }
-      finally { if (session === epoch) { busy = false; updateActions(); } }
+      finally {
+        if (session === epoch) {
+          busy = false;
+          if (saved) { renderEditor(); $("push-preview-name").value = previewName; livePreview(); }
+          if (audienceMessage) $("push-audience-result").textContent = audienceMessage;
+          updateActions();
+        }
+      }
     }
     function showReview(campaign) {
       $("push-review-dialog")?.remove();
       const dialog = document.createElement("dialog"); dialog.id = "push-review-dialog"; dialog.className = "editor-dialog compact-dialog push-review-dialog";
-      dialog.innerHTML = `<div class="push-review-content"><h2>${review.action === "schedule" ? "Review schedule" : "Review send"}</h2><span class="push-app-name">${escape(types[campaign.notificationType])}</span><h3>${escape(campaign.title)}</h3><p class="push-review-body">${escape(campaign.body)}</p><p>Audience: <b>${escape(labels[campaign.targetAudience])}</b></p>${campaign.targetAudience === "SPECIFIC_USERS" ? `<p>${campaign.targetConditions.userIds.length} selected account IDs</p>` : ""}<p>Opens: ${escape(campaign.deepLink)}</p>${review.scheduledAt ? `<p>${escape(formatDate(review.scheduledAt))} · ${escape(zone)}<small class="field-hint">UTC: ${escape(review.scheduledAt)}</small></p>` : "<p>Delivery starts when the worker processes this notification.</p>"}<p class="muted">Only eligible users who opted in will be included. The audience is checked again at delivery.</p><p id="push-review-error" class="form-error" role="alert"></p><div class="push-actions"><button id="push-review-back" type="button" class="button secondary">Back</button><button id="push-review-confirm" type="button" class="button primary">${review.action === "schedule" ? "Confirm schedule" : "Send notification"}</button></div></div>`;
+      dialog.innerHTML = `<div class="push-review-content"><h2>${review.action === "schedule" ? "Confirm schedule" : "Send notification?"}</h2><span class="push-app-name">${escape(types[campaign.notificationType])}</span><h3>${escape(review.preview?.title || campaign.title)}</h3><p class="push-review-body">${escape(review.preview?.body || campaign.body)}</p><p class="field-hint">Changes saved. Personalized text is a preview; recipients use their own name.</p><p>Audience: <b>${escape(labels[campaign.targetAudience])}</b></p><p>${escape(review.audienceMessage)}</p>${campaign.targetAudience === "SPECIFIC_USERS" ? `<p>${campaign.targetConditions.userIds.length} selected account IDs</p>` : ""}<p>Opens: ${escape(campaign.deepLink)}</p>${review.scheduledAt ? `<p>${escape(formatDate(review.scheduledAt))} · ${escape(zone)}<small class="field-hint">UTC: ${escape(review.scheduledAt)}</small></p>` : "<p>Delivery starts when the worker processes this notification.</p>"}<p class="muted">Only eligible users who opted in will be included. The audience is checked again at delivery.</p><p id="push-review-error" class="form-error" role="alert"></p><div class="push-actions"><button id="push-review-back" type="button" class="button secondary">Back</button><button id="push-review-confirm" type="button" class="button primary">${review.action === "schedule" ? "Confirm schedule" : "Send notification"}</button></div></div>`;
       document.body.append(dialog); dialog.showModal();
       $("push-review-back").addEventListener("click", () => { dialog.close(); review = null; });
       dialog.addEventListener("cancel", (event) => { if (busy) event.preventDefault(); else review = null; });
@@ -390,7 +417,7 @@
     window.addEventListener("beforeunload", (event) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } });
     return { refresh, reset, catalogChanged };
   }
-  const exported = { create, buildDraft, localSchedule, personalizedPreview };
+  const exported = { create, buildDraft, localSchedule, personalizedPreview, prepareDelivery };
   if (typeof module !== "undefined" && module.exports) module.exports = exported;
   else window.MaddsNotifications = exported;
 })();
