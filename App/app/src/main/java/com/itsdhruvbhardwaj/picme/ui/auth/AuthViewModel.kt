@@ -6,11 +6,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.billingclient.api.Purchase
 import com.itsdhruvbhardwaj.picme.data.model.User
+import com.itsdhruvbhardwaj.picme.data.model.PurchaseHistoryItem
+import com.itsdhruvbhardwaj.picme.data.model.CreditHistoryItem
+import com.itsdhruvbhardwaj.picme.data.model.ProfileAppearanceRequest
 import com.itsdhruvbhardwaj.picme.data.repository.AuthRepository
 import com.itsdhruvbhardwaj.picme.utils.AdManager
 import com.itsdhruvbhardwaj.picme.utils.BillingManager
+import com.itsdhruvbhardwaj.picme.utils.billingAccountId
 import com.itsdhruvbhardwaj.picme.utils.RewardedAdLoadState
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -36,6 +41,12 @@ class AuthViewModel(
 
     private val _passwordSetupState = MutableStateFlow<PasswordSetupState>(PasswordSetupState.Idle)
     val passwordSetupState: StateFlow<PasswordSetupState> = _passwordSetupState.asStateFlow()
+    private val _passwordResetEmailState = MutableStateFlow<PasswordResetEmailState>(PasswordResetEmailState.Idle)
+    val passwordResetEmailState = _passwordResetEmailState.asStateFlow()
+    private val _isDeletingAccount = MutableStateFlow(false)
+    val isDeletingAccount = _isDeletingAccount.asStateFlow()
+    private var verifyingSetupToken: String? = null
+    private var verifiedSetupToken: String? = null
 
     private val _isRewardedAdLoading = MutableStateFlow(false)
     val isRewardedAdLoading: StateFlow<Boolean> = _isRewardedAdLoading.asStateFlow()
@@ -46,7 +57,14 @@ class AuthViewModel(
     private val _isDeletionCancellationLoading = MutableStateFlow(false)
     val isDeletionCancellationLoading: StateFlow<Boolean> = _isDeletionCancellationLoading.asStateFlow()
 
+    val creditProducts = billingManager?.products ?: MutableStateFlow<Map<String, com.android.billingclient.api.ProductDetails>>(emptyMap()).asStateFlow()
     val productDetails = billingManager?.productDetails ?: MutableStateFlow(null).asStateFlow()
+    val creditProductLoading = billingManager?.productLoading ?: MutableStateFlow(false).asStateFlow()
+    val creditProductError = billingManager?.productError ?: MutableStateFlow<String?>(null).asStateFlow()
+    fun refreshCreditProduct() { billingManager?.refreshCreditProduct() }
+    suspend fun getPurchases(page: Int = 1) = authRepository.getPurchases(page)
+    suspend fun sendFeedback(request: com.itsdhruvbhardwaj.picme.data.model.FeedbackRequest) = authRepository.sendFeedback(request)
+    suspend fun getCreditHistory(page: Int = 1) = authRepository.getCreditHistory(page)
 
     // SharedFlow for transient UI events (like ad errors or purchase success)
     private val _uiEvent = MutableSharedFlow<String>()
@@ -54,6 +72,21 @@ class AuthViewModel(
 
     private val checkSessionMutex = Mutex()
     private val purchaseVerificationMutex = Mutex()
+    private val verifiedPurchases = mutableSetOf<String>()
+
+    suspend fun saveProfileAppearance(request: ProfileAppearanceRequest): Result<User> =
+        authRepository.updateProfileAppearance(request).also { applyProfileUpdate(it) }
+
+    suspend fun saveProfilePhoto(jpeg: ByteArray): Result<User> =
+        authRepository.uploadProfilePhoto(jpeg).also { applyProfileUpdate(it) }
+
+    private fun applyProfileUpdate(result: Result<User>) {
+        result.onSuccess { user ->
+            if ((_authState.value as? AuthState.Authenticated)?.user?.id == user.id) {
+                _authState.value = AuthState.Authenticated(user)
+            }
+        }
+    }
 
     // Temporary storage for credentials during deletion-pending login attempt
     private var pendingDeletionEmail: String? = null
@@ -102,7 +135,7 @@ class AuthViewModel(
     /**
      * Checks for an existing session and attempts restoration.
      */
-    fun checkSession(isInitial: Boolean = false) {
+    fun checkSession(isInitial: Boolean = false): Job =
         viewModelScope.launch {
             if (checkSessionMutex.isLocked) return@launch
 
@@ -119,6 +152,7 @@ class AuthViewModel(
 
                 if (userResult.isSuccess) {
                     _authState.value = AuthState.Authenticated(userResult.getOrThrow())
+                    if (isInitial) processPendingPurchases()
                 } else {
                     val errorMessage = userResult.exceptionOrNull()?.message
                     if (isTemporarySessionError(errorMessage)) {
@@ -145,7 +179,6 @@ class AuthViewModel(
                 }
             }
         }
-    }
 
     private fun handleSessionFailure(error: String?) {
         if (isTemporarySessionError(error)) {
@@ -270,33 +303,49 @@ class AuthViewModel(
     /**
      * Starts the Google Play Billing purchase flow for the credit pack.
      */
-    fun startPurchaseFlow(activity: Activity) {
+    fun startPurchaseFlow(activity: Activity, productId: String = BillingManager.CREDIT_PRODUCT_ID) {
         if (_isPurchaseLoading.value) return
+        val userId = authRepository.getCachedUser()?.id
+        if (userId == null || billingManager == null) {
+            viewModelScope.launch { _uiEvent.emit("Please sign in before buying credits.") }
+            return
+        }
         _isPurchaseLoading.value = true
-        billingManager?.launchPurchaseFlow(activity)
+        billingManager.launchPurchaseFlow(activity, userId, productId)
     }
 
     private fun handlePurchase(purchase: Purchase) {
         viewModelScope.launch {
             purchaseVerificationMutex.withLock {
+                val userId = authRepository.getCachedUser()?.id ?: run { _isPurchaseLoading.value = false; return@withLock }
+                val account = purchase.accountIdentifiers?.obfuscatedAccountId
+                if (account != null && account != billingAccountId(userId)) {
+                    _isPurchaseLoading.value = false
+                    _uiEvent.emit("Sign in to the Madds account used for this purchase to receive its credits.")
+                    return@withLock
+                }
+                val key = "$userId:${purchase.purchaseToken}"
+                if (key in verifiedPurchases) { _isPurchaseLoading.value = false; return@withLock }
                 _isPurchaseLoading.value = true
+                try {
                 val result = authRepository.verifyPurchase(
                     productId = purchase.products.firstOrNull() ?: "",
                     purchaseToken = purchase.purchaseToken,
-                    purchaseOptionId = "buy-250-credits" // Fixed option ID for this product
+                    purchaseOptionId = BillingManager.optionId(purchase.products.firstOrNull() ?: "")
                 )
-
+                if (authRepository.getCachedUser()?.id != userId) return@withLock
                 result.fold(
-                    onSuccess = {
-                        _uiEvent.emit("Purchase successful! Credits added.")
+                    onSuccess = { response ->
+                        verifiedPurchases.add(key)
+                        _uiEvent.emit(if (response.status == "already_processed") "Purchase restored. Your credits are already in your account." else "Purchase successful! Credits added.")
                         checkSession() // Refresh user profile/balance
                     },
                     onFailure = { error ->
-                        Log.e("AuthViewModel", "Purchase verification failed: ${error.message}")
-                        _uiEvent.emit("Verification failed: ${error.message}. We will retry shortly.")
+                        Log.w("MaddsBilling", "Purchase fulfillment deferred")
+                        _uiEvent.emit("Couldn't confirm your purchase yet. Reopen the app to retry; your purchase won't be charged again.")
                     }
                 )
-                _isPurchaseLoading.value = false
+                } finally { _isPurchaseLoading.value = false }
             }
         }
     }
@@ -323,66 +372,114 @@ class AuthViewModel(
         }
     }
 
-    fun resetPassword(token: String, newPassword: String) {
+    suspend fun resetPassword(token: String, newPassword: String): Result<String> =
+        authRepository.resetPassword(token, newPassword).fold(
+            onSuccess = {
+                _passwordResetEmailState.value = PasswordResetEmailState.Idle
+                _passwordSetupState.value = PasswordSetupState.Idle
+                _authState.value = AuthState.Unauthenticated
+                Result.success(it)
+            },
+            onFailure = { Result.failure(Exception(mapError(it.message))) }
+        )
+
+    fun deleteAccount(password: String) {
+        val user = (_authState.value as? AuthState.Authenticated)?.user ?: return
+        if (!user.hasPassword || password.isBlank() || _isDeletingAccount.value) return
+        _isDeletingAccount.value = true
         viewModelScope.launch {
-            _authState.value = AuthState.Authenticating
-            val result = authRepository.resetPassword(token, newPassword)
-            result.fold(
-                onSuccess = { _authState.value = AuthState.PasswordResetSuccess(it) },
-                onFailure = { error -> _authState.value = AuthState.Error(mapError(error.message)) }
+            try {
+                val result = authRepository.deleteAccount(password)
+                if ((_authState.value as? AuthState.Authenticated)?.user?.id != user.id) return@launch
+                result.fold(
+                    onSuccess = {
+                        _authState.value = AuthState.Unauthenticated
+                        _uiEvent.emit("Account scheduled for deletion on $it. You have 30 days to cancel.")
+                    },
+                    onFailure = { _uiEvent.emit(mapError(it.message)) }
+                )
+            } finally { _isDeletingAccount.value = false }
+        }
+    }
+
+    fun requestSettingsPasswordReset() {
+        if (_passwordResetEmailState.value is PasswordResetEmailState.Sending) return
+        val user = (_authState.value as? AuthState.Authenticated)?.user ?: return
+        if (!user.hasPassword) {
+            _passwordResetEmailState.value = PasswordResetEmailState.PasswordRequired
+            return
+        }
+        _passwordResetEmailState.value = PasswordResetEmailState.Sending
+        viewModelScope.launch {
+            val result = authRepository.forgotPassword(user.email)
+            if ((_authState.value as? AuthState.Authenticated)?.user?.id != user.id) {
+                return@launch
+            }
+            _passwordResetEmailState.value = result.fold(
+                onSuccess = { PasswordResetEmailState.Sent(it) },
+                onFailure = { PasswordResetEmailState.Error(mapError(it.message)) }
             )
         }
     }
 
-    fun deleteAccount(password: String) {
-        viewModelScope.launch {
-            _authState.value = AuthState.Authenticating
-            val result = authRepository.deleteAccount(password)
-            result.fold(
-                onSuccess = {
-                    _authState.value = AuthState.Unauthenticated
-                    _uiEvent.emit("Account scheduled for deletion on $it. You have 30 days to cancel.")
-                },
-                onFailure = {
-                    authRepository.getCachedUser()?.let { _authState.value = AuthState.Authenticated(it) }
-                    _uiEvent.emit(mapError(it.message))
-                }
-            )
+    fun clearSettingsPasswordResetState() {
+        if (_passwordResetEmailState.value !is PasswordResetEmailState.Sending) {
+            _passwordResetEmailState.value = PasswordResetEmailState.Idle
         }
     }
 
     fun requestGooglePasswordSetup(password: String, confirmPassword: String) {
+        val user = (_authState.value as? AuthState.Authenticated)?.user ?: return
+        if (!user.hasGoogleLogin || user.hasPassword || _passwordSetupState.value is PasswordSetupState.Sending ||
+            _passwordSetupState.value is PasswordSetupState.Verifying) return
+        if (!com.itsdhruvbhardwaj.picme.utils.ValidationUtils.isStrongPassword(password) || password != confirmPassword) {
+            _passwordSetupState.value = PasswordSetupState.Error("Use a strong password and make sure both passwords match.")
+            return
+        }
+        _passwordSetupState.value = PasswordSetupState.Sending
         viewModelScope.launch {
-            _passwordSetupState.value = PasswordSetupState.Sending
-            authRepository.requestGooglePasswordSetup(password, confirmPassword).fold(
-                onSuccess = { _passwordSetupState.value = PasswordSetupState.EmailSent(it) },
+            val result = authRepository.requestGooglePasswordSetup(password, confirmPassword)
+            if ((_authState.value as? AuthState.Authenticated)?.user?.id != user.id) return@launch
+            result.fold(
+                onSuccess = { _passwordSetupState.value = PasswordSetupState.EmailSent("Open the verification link sent to ${user.email} to finish creating your password.") },
                 onFailure = { _passwordSetupState.value = PasswordSetupState.Error(mapError(it.message)) }
             )
         }
     }
 
     fun verifyGooglePasswordSetup(token: String) {
+        if (token == verifiedSetupToken) { _passwordSetupState.value = PasswordSetupState.Verified; return }
+        if (token.isBlank() || token == verifyingSetupToken) return
+        verifyingSetupToken = token
+        _passwordSetupState.value = PasswordSetupState.Verifying
         viewModelScope.launch {
-            _passwordSetupState.value = PasswordSetupState.Verifying
-            authRepository.verifyGooglePasswordSetup(token).fold(
-                onSuccess = {
-                    val currentUser = authRepository.getCurrentUser()
-                    currentUser.fold(
-                        onSuccess = { user ->
-                            _authState.value = AuthState.Authenticated(user)
-                            _passwordSetupState.value = PasswordSetupState.Verified
-                        },
-                        onFailure = { _passwordSetupState.value = PasswordSetupState.Error(mapError(it.message)) }
-                    )
-                },
-                onFailure = { _passwordSetupState.value = PasswordSetupState.Error(mapError(it.message)) }
-            )
+            try {
+                authRepository.verifyGooglePasswordSetup(token).fold(
+                    onSuccess = {
+                        verifiedSetupToken = token
+                        val signedInId = (_authState.value as? AuthState.Authenticated)?.user?.id
+                        if (signedInId != null) {
+                            authRepository.getCurrentUser().onSuccess { user ->
+                                if ((_authState.value as? AuthState.Authenticated)?.user?.id == signedInId) {
+                                    _authState.value = AuthState.Authenticated(user)
+                                }
+                            }
+                        }
+                        _passwordSetupState.value = PasswordSetupState.Verified
+                    },
+                    onFailure = { _passwordSetupState.value = PasswordSetupState.Error(mapError(it.message)) }
+                )
+            } finally { verifyingSetupToken = null }
         }
     }
 
     fun refreshGooglePasswordSetupStatus() {
+        val userId = (_authState.value as? AuthState.Authenticated)?.user?.id ?: return
+        if (_passwordSetupState.value is PasswordSetupState.Sending || _passwordSetupState.value is PasswordSetupState.Verifying) return
+        _passwordSetupState.value = PasswordSetupState.Verifying
         viewModelScope.launch {
             val result = authRepository.getCurrentUser()
+            if ((_authState.value as? AuthState.Authenticated)?.user?.id != userId) return@launch
             result.fold(
                 onSuccess = { user ->
                     _authState.value = AuthState.Authenticated(user)
@@ -398,7 +495,9 @@ class AuthViewModel(
     }
 
     fun resetPasswordSetupState() {
-        _passwordSetupState.value = PasswordSetupState.Idle
+        if (_passwordSetupState.value !is PasswordSetupState.Sending && _passwordSetupState.value !is PasswordSetupState.Verifying) {
+            _passwordSetupState.value = PasswordSetupState.Idle
+        }
     }
 
     fun cancelDeletion() {
@@ -441,11 +540,15 @@ class AuthViewModel(
     }
 
     fun logout() {
+        _passwordResetEmailState.value = PasswordResetEmailState.Idle
+        _passwordSetupState.value = PasswordSetupState.Idle
         _authState.value = AuthState.Unauthenticated
         viewModelScope.launch { authRepository.logout() }
     }
 
     fun logoutAll() {
+        _passwordResetEmailState.value = PasswordResetEmailState.Idle
+        _passwordSetupState.value = PasswordSetupState.Idle
         _authState.value = AuthState.Unauthenticated
         viewModelScope.launch { authRepository.logoutAll() }
     }
@@ -495,6 +598,8 @@ class AuthViewModel(
     }
 
     fun resetAuthState() {
+        _passwordResetEmailState.value = PasswordResetEmailState.Idle
+        _passwordSetupState.value = PasswordSetupState.Idle
         _authState.value = AuthState.Unauthenticated
         pendingDeletionEmail = null
         pendingDeletionPassword = null

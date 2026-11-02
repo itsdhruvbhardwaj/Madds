@@ -2,11 +2,16 @@ package com.itsdhruvbhardwaj.picme.ui.auth
 
 import com.android.billingclient.api.Purchase
 import com.itsdhruvbhardwaj.picme.data.model.PurchaseVerificationResponse
+import com.itsdhruvbhardwaj.picme.data.model.User
 import com.itsdhruvbhardwaj.picme.data.repository.AuthRepository
 import com.itsdhruvbhardwaj.picme.utils.BillingManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.*
 import org.junit.After
@@ -39,6 +44,8 @@ class AuthViewModelTest {
         
         `when`(billingManager.billingEvent).thenReturn(billingEvents)
         `when`(billingManager.productDetails).thenReturn(MutableStateFlow(null))
+        `when`(authRepository.getCachedUser()).thenReturn(User("user-a", "Tester", "test@example.com", true))
+        runBlocking { `when`(authRepository.getCurrentUser()).thenReturn(Result.success(User("user-a", "Tester", "test@example.com", true))) }
         
         viewModel = AuthViewModel(authRepository, billingManager)
     }
@@ -60,7 +67,8 @@ class AuthViewModelTest {
         )
         `when`(authRepository.getCurrentUser()).thenReturn(Result.success(mock()))
 
-        // Simulate successful purchase event
+        runCurrent() // Start the billing collector before emitting callbacks.
+        val event = async(start = CoroutineStart.UNDISPATCHED) { viewModel.uiEvent.first() }
         billingEvents.emit(BillingManager.BillingEvent.PurchaseSuccess(mockPurchase))
         advanceUntilIdle()
 
@@ -72,8 +80,7 @@ class AuthViewModelTest {
         // verify(authRepository).getCurrentUser() is called inside checkSession()
         verify(authRepository, atLeastOnce()).getCurrentUser()
         
-        val event = viewModel.uiEvent.first()
-        assertEquals("Purchase successful! Credits added.", event)
+        assertEquals("Purchase successful! Credits added.", event.await())
     }
 
     @Test
@@ -87,10 +94,23 @@ class AuthViewModelTest {
             Result.failure(Exception("Network error"))
         )
 
+        runCurrent()
+        val event = async(start = CoroutineStart.UNDISPATCHED) { viewModel.uiEvent.first() }
         billingEvents.emit(BillingManager.BillingEvent.PurchaseSuccess(mockPurchase))
         advanceUntilIdle()
 
-        val event = viewModel.uiEvent.first()
-        assert(event.contains("Verification failed: Network error"))
+        assert(event.await().contains("Reopen the app to retry"))
+    }
+
+    @Test fun `purchase belonging to another app account is not submitted for credits`() = runTest {
+        val identifiers = mock<com.android.billingclient.api.AccountIdentifiers> {
+            on { obfuscatedAccountId } doReturn com.itsdhruvbhardwaj.picme.utils.billingAccountId("other-user")
+        }
+        val purchase = mock<Purchase> { on { accountIdentifiers } doReturn identifiers }
+        runCurrent()
+        val event = async(start = CoroutineStart.UNDISPATCHED) { viewModel.uiEvent.first() }
+        billingEvents.emit(BillingManager.BillingEvent.PurchaseSuccess(purchase)); advanceUntilIdle()
+        assert(event.await().contains("account used for this purchase"))
+        verify(authRepository, never()).verifyPurchase(any(), any(), any())
     }
 }

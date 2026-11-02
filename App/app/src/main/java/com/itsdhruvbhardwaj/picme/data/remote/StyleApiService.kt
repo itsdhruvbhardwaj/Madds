@@ -11,6 +11,16 @@ import retrofit2.Response
 import retrofit2.http.*
 
 interface StyleApiService {
+    @GET("api/generations")
+    suspend fun generationOperations(@Header("Authorization") auth: String): Response<com.itsdhruvbhardwaj.picme.data.model.GenerationOperationsResponse>
+    @GET("api/generations/by-key/{key}")
+    suspend fun generationByKey(@Header("Authorization") auth: String, @Path("key") key: String): Response<com.itsdhruvbhardwaj.picme.data.model.RecoverableGeneration>
+    @GET("api/generations/{id}/result")
+    suspend fun generationResult(@Header("Authorization") auth: String, @Path("id") id: String): Response<GenerationResponse>
+    @POST("api/generations/{id}/viewed")
+    suspend fun generationViewed(@Header("Authorization") auth: String, @Path("id") id: String): Response<Unit>
+    @GET("api/styles/{styleId}")
+    suspend fun getStyle(@Header("Authorization") authorization: String? = null, @Path("styleId") styleId: String): Response<StyleDetailsResponse>
     @GET("api/styles")
     suspend fun getStyles(
         @Header("Authorization") authorization: String? = null,
@@ -22,12 +32,13 @@ interface StyleApiService {
     ): Response<StyleResponse>
 
     @GET("api/home/config")
-    suspend fun getHomeConfig(): Response<HomeConfigResponse>
+    suspend fun getHomeConfig(@Query("includeStyles") includeStyles: Boolean = true): Response<HomeConfigResponse>
 
     @GET("api/collections")
     suspend fun getCollections(): Response<CollectionsResponse>
 
     @Multipart
+    @Headers("X-Generation-Recovery: 1")
     @POST("api/generate")
     suspend fun generateImage(
         @Header("Authorization") authorization: String,
@@ -37,11 +48,12 @@ interface StyleApiService {
     ): Response<GenerationResponse>
 
     @Multipart
+    @Headers("X-Generation-Recovery: 1")
     @POST("api/generate")
     suspend fun generateCustomImage(
         @Header("Authorization") authorization: String,
         @Header("Idempotency-Key") idempotencyKey: String,
-        @Part("prompt") prompt: RequestBody,
+        @Part("customPrompt") prompt: RequestBody,
         @Part images: List<MultipartBody.Part>
     ): Response<GenerationResponse>
 

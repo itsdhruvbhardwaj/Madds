@@ -94,7 +94,7 @@ fun PicMeBottomNavigationBar(
                             Box(
                                 Modifier
                                     .align(Alignment.BottomCenter)
-                                    .padding(bottom = 3.dp)
+                                    .padding(bottom = 8.dp)
                                     .width(18.dp)
                                     .height(2.dp)
                                     .clip(CircleShape)

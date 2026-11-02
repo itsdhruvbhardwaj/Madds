@@ -1,4 +1,5 @@
 plugins {
+    id("com.google.gms.google-services")
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
@@ -11,8 +12,8 @@ android {
         applicationId = "com.itsdhruvbhardwaj.picme"
         minSdk = 24
         targetSdk = 37
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 6
+        versionName = "1.1.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -47,9 +48,16 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions {
+        // Android logging is incidental to the JVM networking/state tests.
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
+    implementation("androidx.browser:browser:1.9.0")
+    implementation(platform("com.google.firebase:firebase-bom:35.1.0"))
+    implementation("com.google.firebase:firebase-messaging")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)

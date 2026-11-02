@@ -49,6 +49,8 @@ fun ResultScreen(
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+    var imageReady by remember(imageBase64) { mutableStateOf(false) }
+    var imageFailed by remember(imageBase64) { mutableStateOf(false) }
     var showFullscreenPreview by remember { mutableStateOf(false) }
     var previewScale by remember { mutableFloatStateOf(1f) }
     var previewOffset by remember { mutableStateOf(Offset.Zero) }
@@ -129,10 +131,10 @@ fun ResultScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onSaveClick, enabled = !isActionLoading && imageBytes != null) {
+                    IconButton(onClick = onSaveClick, enabled = !isActionLoading && imageReady) {
                         Icon(Icons.Default.Download, contentDescription = "Save")
                     }
-                    IconButton(onClick = onShareClick, enabled = !isActionLoading && imageBytes != null) {
+                    IconButton(onClick = onShareClick, enabled = !isActionLoading && imageReady) {
                         Icon(Icons.Default.Share, contentDescription = "Share")
                     }
                 },
@@ -153,10 +155,11 @@ fun ResultScreen(
                     .fillMaxWidth()
                     .aspectRatio(1f)
                     .clip(MaterialTheme.shapes.extraLarge)
-                    .clickable(enabled = imageBytes != null) { showFullscreenPreview = true },
+                    .clickable(enabled = imageReady) { showFullscreenPreview = true },
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFF3F4F6))
             ) {
+              Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 if (imageBytes != null) {
                     AsyncImage(
                         model = ImageRequest.Builder(context)
@@ -164,6 +167,8 @@ fun ResultScreen(
                             .crossfade(true)
                             .build(),
                         contentDescription = "Generated AI Photo",
+                        onSuccess = { imageReady = true; imageFailed = false; viewModel.markFocusedViewed() },
+                        onError = { imageFailed = true },
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
@@ -179,12 +184,15 @@ fun ResultScreen(
                         )
                     }
                 }
+                if (!imageReady && !imageFailed) CircularProgressIndicator()
+                if (imageFailed) Text("Couldn't load this photo. Return and reopen it from the shortcut.", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error)
+              }
             }
             
             Spacer(modifier = Modifier.height(32.dp))
             
             Text(
-                text = "Your masterpiece is ready!",
+                text = if (imageReady) "Your masterpiece is ready!" else if (imageFailed) "Couldn't display your photo" else "Loading your photo...",
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onBackground
             )
@@ -214,14 +222,14 @@ fun ResultScreen(
                     onClick = onSaveClick,
                     isLoading = isActionLoading,
                     modifier = Modifier.weight(1f),
-                    enabled = imageBytes != null
+                    enabled = imageReady
                 )
                 PicMeButton(
                     text = "Share",
                     onClick = onShareClick,
                     isLoading = false, // Shared via intent, loading not needed here usually
                     modifier = Modifier.weight(1f),
-                    enabled = imageBytes != null
+                    enabled = imageReady
                 )
             }
             

@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -25,23 +26,23 @@ class CollectionsViewModel(
     private val _uiState = MutableStateFlow<CollectionsUiState>(CollectionsUiState.Loading)
     val uiState: StateFlow<CollectionsUiState> = _uiState.asStateFlow()
 
-    fun loadCollections() {
+    fun loadCollections(force: Boolean = false): Job =
         viewModelScope.launch {
-            if (_uiState.value is CollectionsUiState.Success || loadMutex.isLocked) return@launch
+            if (!force && (_uiState.value is CollectionsUiState.Success || loadMutex.isLocked)) return@launch
             loadMutex.withLock {
-                if (_uiState.value is CollectionsUiState.Success) return@withLock
-                _uiState.value = CollectionsUiState.Loading
+                if (!force && _uiState.value is CollectionsUiState.Success) return@withLock
+                val previous = _uiState.value
+                if (previous !is CollectionsUiState.Success) _uiState.value = CollectionsUiState.Loading
                 styleRepository.getCollections().fold(
                     onSuccess = { collections ->
                         _uiState.value = CollectionsUiState.Success(collections.filter { it.styleCount > 0 })
                     },
                     onFailure = { error ->
-                        _uiState.value = CollectionsUiState.Error(
+                        _uiState.value = if (previous is CollectionsUiState.Success) previous else CollectionsUiState.Error(
                             error.message ?: "Please check your connection and try again."
                         )
                     }
                 )
             }
         }
-    }
 }

@@ -19,6 +19,9 @@ class AuthAuthenticator(
 ) : Authenticator {
 
     override fun authenticate(route: Route?, response: Response): Request? {
+        val failedToken = response.request.header("Authorization")
+            ?.takeIf { it.startsWith("Bearer ") }?.removePrefix("Bearer ")
+            ?: return null
         // If the request has already been retried once, don't try again to avoid infinite loops
         if (response.responseCount >= 2) {
             Log.w("MaddsAuth", "authenticated request still returned 401 after refresh retry; stopping retry")
@@ -28,7 +31,7 @@ class AuthAuthenticator(
         Log.i("MaddsAuth", "authenticated request returned 401; attempting session refresh")
         // We use runBlocking here because Authenticator is called from OkHttp's background thread
         val result = runBlocking {
-            authRepositoryProvider().refreshSession()
+            authRepositoryProvider().refreshSession(failedToken)
         }
 
         return if (result.isSuccess) {

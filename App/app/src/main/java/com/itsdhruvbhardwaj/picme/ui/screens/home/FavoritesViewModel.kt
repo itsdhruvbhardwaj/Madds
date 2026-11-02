@@ -6,6 +6,7 @@ import com.itsdhruvbhardwaj.picme.data.model.Style
 import com.itsdhruvbhardwaj.picme.data.repository.StyleRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 sealed interface FavoritesUiState {
     data object Loading : FavoritesUiState
@@ -26,7 +27,7 @@ class FavoritesViewModel(
         observeCacheAndIds()
     }
 
-    fun loadFavorites() {
+    fun loadFavorites(): Job =
         viewModelScope.launch {
             // Only show loading if we don't have any data yet
             if (_favoriteIds.value == null) {
@@ -46,7 +47,6 @@ class FavoritesViewModel(
                 }
             )
         }
-    }
 
     private fun observeCacheAndIds() {
         combine(_favoriteIds, styleRepository.cachedStyles) { ids, cache ->

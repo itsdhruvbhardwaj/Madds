@@ -32,6 +32,15 @@ class GenerationRepository(
     private val tokenStorage: AuthTokenStorage,
     private val preparePhoto: (ContentResolver, Uri, String) -> okhttp3.MultipartBody.Part = GenerationPhotoProcessor::multipart
 ) {
+    fun accountId(): String? = tokenStorage.getUser()?.id
+    fun pendingKeys(owner: String): Set<String> = tokenStorage.pendingGenerationKeys(owner)
+    fun rememberPending(owner: String, key: String): Boolean = tokenStorage.savePendingGenerationKeys(owner, pendingKeys(owner) + key)
+    fun forgetPending(owner: String, key: String) { tokenStorage.savePendingGenerationKeys(owner, pendingKeys(owner) - key) }
+    private fun authorization() = "Bearer ${tokenStorage.getAccessToken() ?: throw IOException("Signed out") }"
+    suspend fun operations() = apiService.generationOperations(authorization())
+    suspend fun operationByKey(key: String) = apiService.generationByKey(authorization(), key)
+    suspend fun result(id: String) = apiService.generationResult(authorization(), id)
+    suspend fun viewed(id: String) = apiService.generationViewed(authorization(), id)
 
     /**
      * Sends a request to the backend to generate an image using the selected style and photos.
@@ -93,12 +102,16 @@ class GenerationRepository(
                         if (details != null) Result.failure(InsufficientCreditsException(details.requiredCredits, details.availableCredits, details.error))
                         else Result.failure(Exception("Insufficient credits"))
                     }
-                    409 -> Result.failure(DuplicateOperationException("Duplicate request"))
+                    409 -> {
+                        val details = runCatching { Gson().fromJson(errorBodyString, GenerationResponse::class.java) }.getOrNull()
+                        if (details?.generationId != null) Result.success(GenerationResponse(true, generationId = details.generationId, status = details.status ?: "processing"))
+                        else Result.failure(DuplicateOperationException("Duplicate request"))
+                    }
                     400 -> {
                         if (errorBodyString.contains("TOO_MANY_IMAGES")) Result.failure(Exception("Please select at most 2 images for custom generation."))
                         else Result.failure(Exception("Invalid request: $errorBodyString"))
                     }
-                    else -> Result.failure(Exception("Error $errorCode"))
+                    else -> Result.failure(AmbiguousOutcomeException("The request status needs to be checked. No new generation will be started."))
                 }
             }
         } catch (e: SocketTimeoutException) {

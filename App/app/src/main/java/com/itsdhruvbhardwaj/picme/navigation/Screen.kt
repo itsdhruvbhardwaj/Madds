@@ -12,7 +12,16 @@ sealed class Screen(val route: String) {
     data object Create : Screen("create")
     data object History : Screen("history")
     data object Profile : Screen("profile")
+    data object Purchases : Screen("purchases")
+    data object CreditHistory : Screen("credit_history")
+    data object EditAvatar : Screen("edit_avatar")
     data object Settings : Screen("settings")
+    data object Feedback : Screen("feedback")
+    data object NotificationSettings : Screen("notification_settings")
+    data object NotificationCollection : Screen("notification_collection/{collectionId}") {
+        fun createRoute(id: String) = "notification_collection/$id"
+    }
+    data object CreatePassword : Screen("create_password")
     data object DeleteAccount : Screen("delete_account")
     data object VerifyGooglePasswordSetup : Screen("verify_google_password_setup?token={token}") {
         fun createRoute(token: String? = null) = if (token != null) "verify_google_password_setup?token=$token" else "verify_google_password_setup"

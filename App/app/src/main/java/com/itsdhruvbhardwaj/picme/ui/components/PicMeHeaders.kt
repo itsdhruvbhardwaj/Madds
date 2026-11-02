@@ -45,91 +45,54 @@ fun PicMeMainHeader(
         shadowElevation = 4.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .height(68.dp)
+        // Measure both edges before the center. This also reserves space for
+        // optional actions, whose width changes with accessibility font settings.
+        val headerHeight = with(androidx.compose.ui.platform.LocalDensity.current) {
+            (24.sp.toDp() + 24.dp).coerceAtLeast(68.dp)
+        }
+        androidx.compose.ui.layout.Layout(
+            modifier = Modifier.fillMaxWidth().statusBarsPadding().height(headerHeight)
                 .padding(horizontal = 16.dp)
                 .drawBehind {
                     val lineWidth = 1.dp.toPx()
-                    drawLine(
-                        color = dividerColor,
-                        start = androidx.compose.ui.geometry.Offset(0f, size.height - lineWidth / 2),
-                        end = androidx.compose.ui.geometry.Offset(size.width, size.height - lineWidth / 2),
-                        strokeWidth = lineWidth
-                    )
-                }
-        ) {
-            // Left: Branded Logo
-            androidx.compose.foundation.Image(
-                painter = androidx.compose.ui.res.painterResource(R.drawable.headername),
-                contentDescription = "Madds",
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .width(82.dp)
-                    .height(30.dp),
-                contentScale = ContentScale.Fit
-            )
-
-            // Center: Globally centered title with safe margins to prevent overlap
-            Text(
-                text = title,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(horizontal = 88.dp),
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    brush = com.itsdhruvbhardwaj.picme.ui.theme.MaddsPalette.goldShine,
-                    letterSpacing = 0.25.sp,
-                    fontSize = 17.sp
-                ),
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            // Right: Account/Credits + Actions + Profile Avatar
-            Row(
-                modifier = Modifier.align(Alignment.CenterEnd),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val user = (authState as? AuthState.Authenticated)?.user
-                if (user != null) {
-                    CreditBadge(credits = user.credits)
-                    Spacer(modifier = Modifier.width(10.dp))
-                }
-
-                actions()
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                // Genuine photo check: Use avatar.png as default unless a non-placeholder HTTP URL is present.
-                val profileImageSource = user?.profileImage?.takeIf {
-                    it.isNotBlank() &&
-                    it.startsWith("http") &&
-                    !it.contains("default", ignoreCase = true) &&
-                    !it.contains("placeholder", ignoreCase = true)
-                } ?: R.drawable.avatar
-
-                Surface(
-                    modifier = Modifier.size(38.dp),
-                    shape = CircleShape,
-                    onClick = onProfileClick,
-                    color = Color.White.copy(alpha = 0.2f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data(profileImageSource)
-                                .build(),
-                            contentDescription = "Profile",
-                            modifier = Modifier.fillMaxSize().clip(CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
+                    drawLine(dividerColor,
+                        androidx.compose.ui.geometry.Offset(0f, size.height - lineWidth / 2),
+                        androidx.compose.ui.geometry.Offset(size.width, size.height - lineWidth / 2), lineWidth)
+                },
+            content = {
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(R.drawable.headername),
+                    contentDescription = "Madds", modifier = Modifier.width(82.dp).height(30.dp),
+                    contentScale = ContentScale.Fit
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val user = (authState as? AuthState.Authenticated)?.user
+                    Row(Modifier.weight(1f, fill = false), verticalAlignment = Alignment.CenterVertically) {
+                        actions()
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    Surface(modifier = Modifier.size(38.dp), shape = CircleShape,
+                        onClick = onProfileClick, color = Color.White.copy(alpha = .2f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = .3f))) {
+                        Box(contentAlignment = Alignment.Center) {
+                            ProfileAvatar(user, Modifier.fillMaxSize())
+                        }
                     }
                 }
+                GenerationHeaderStatus(title, Modifier.fillMaxWidth())
+            }
+        ) { children, constraints ->
+            val gap = 8.dp.roundToPx()
+            val sideConstraints = constraints.copy(minWidth = 0, minHeight = 0,
+                maxWidth = (constraints.maxWidth / 2 - gap).coerceAtLeast(0))
+            val logo = children[0].measure(sideConstraints)
+            val profile = children[1].measure(sideConstraints)
+            val centerWidth = (constraints.maxWidth - 2 * (maxOf(logo.width, profile.width) + gap)).coerceAtLeast(0)
+            val center = children[2].measure(constraints.copy(minWidth = centerWidth, maxWidth = centerWidth, minHeight = 0))
+            layout(constraints.maxWidth, constraints.maxHeight) {
+                logo.placeRelative(0, (constraints.maxHeight - logo.height) / 2)
+                profile.placeRelative(constraints.maxWidth - profile.width, (constraints.maxHeight - profile.height) / 2)
+                center.placeRelative((constraints.maxWidth - center.width) / 2, (constraints.maxHeight - center.height) / 2)
             }
         }
     }

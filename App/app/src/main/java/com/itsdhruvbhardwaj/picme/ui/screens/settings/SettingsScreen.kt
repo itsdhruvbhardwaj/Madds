@@ -19,12 +19,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.LockReset
+import androidx.compose.material.icons.filled.Password
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -32,6 +39,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -49,19 +60,29 @@ import com.itsdhruvbhardwaj.picme.BuildConfig
 import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
+import com.itsdhruvbhardwaj.picme.ui.auth.PasswordResetEmailState
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeCompactHeader
 import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 import com.itsdhruvbhardwaj.picme.ui.theme.TextSecondary
+import com.itsdhruvbhardwaj.picme.utils.SupportLinks
+import androidx.compose.material.icons.filled.PrivacyTip
+import androidx.compose.material.icons.filled.Description
 
 @Composable
 fun SettingsScreen(
     authViewModel: AuthViewModel,
     onBackClick: () -> Unit,
-    onDeleteAccountClick: () -> Unit
+    onDeleteAccountClick: () -> Unit,
+    onCreatePasswordClick: () -> Unit,
+    onNotificationsClick: () -> Unit = {}
 ) {
     val authState by authViewModel.authState.collectAsState()
     val user = (authState as? AuthState.Authenticated)?.user
     val context = LocalContext.current
+    val resetState by authViewModel.passwordResetEmailState.collectAsState()
+    var passwordRequiredFor by remember { mutableStateOf<String?>(null) }
+    var confirmReset by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { authViewModel.checkSession() }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
 
@@ -78,6 +99,7 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp, vertical = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
@@ -100,12 +122,7 @@ fun SettingsScreen(
                             icon = Icons.Default.Notifications,
                             title = "Notifications",
                             subtitle = "Manage madds notifications",
-                            onClick = {
-                                val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                                }
-                                context.startActivity(intent)
-                            }
+                            onClick = onNotificationsClick
                         )
                     }
                 }
@@ -113,29 +130,87 @@ fun SettingsScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionTitle("Security")
                     GlassCard {
+                      Column {
+                        if (user?.hasGoogleLogin == true && !user.hasPassword) {
+                            SettingsRow(
+                                icon = Icons.Default.Password,
+                                title = "Create password",
+                                subtitle = "Add a password to your Google-linked account",
+                                onClick = onCreatePasswordClick
+                            )
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                        }
+                        SettingsRow(
+                            icon = Icons.Default.LockReset,
+                            title = "Reset password",
+                            subtitle = if (resetState is PasswordResetEmailState.Sending) "Sending reset email…" else "Send a reset link to your email",
+                            onClick = if (user == null || resetState is PasswordResetEmailState.Sending) null else {
+                                { if (user.hasPassword) confirmReset = true else passwordRequiredFor = "reset your password" }
+                            }
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
                         SettingsRow(
                             icon = Icons.Default.DeleteForever,
                             title = "Delete Account",
                             subtitle = "Permanently remove your data",
-                            onClick = onDeleteAccountClick,
+                            onClick = if (user == null) null else {
+                                { if (user.hasPassword) onDeleteAccountClick() else passwordRequiredFor = "delete your account" }
+                            },
                             iconColor = Color(0xFFDC2626)
                         )
+                      }
                     }
                 }
 
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SectionTitle("About")
                     GlassCard {
-                        SettingsRow(
-                            icon = Icons.Default.Info,
-                            title = "madds",
-                            subtitle = "Version ${BuildConfig.VERSION_NAME}",
-                            onClick = null
-                        )
+                      Column {
+                        SettingsRow(Icons.Default.Info, "About Madds", "Our story and creative vision", { SupportLinks.website(context, "about") })
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                        SettingsRow(Icons.Default.PrivacyTip, "Privacy Policy", "How your information is handled", { SupportLinks.website(context, "privacy") })
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                        SettingsRow(Icons.Default.Description, "Terms of Service", "Using Madds and its services", { SupportLinks.website(context, "terms") })
+                      }
                     }
+                    Text("Madds · Version ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", style = MaterialTheme.typography.bodySmall, color = TextSecondary, modifier = Modifier.padding(12.dp))
                 }
             }
         }
+    }
+
+    val requiredAction = passwordRequiredFor ?: if (resetState is PasswordResetEmailState.PasswordRequired) "reset your password" else null
+    if (requiredAction != null) {
+        AlertDialog(
+            onDismissRequest = { passwordRequiredFor = null; authViewModel.clearSettingsPasswordResetState() },
+            title = { Text("Create a password first") },
+            text = { Text("To $requiredAction, first create and verify a password in Settings.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    passwordRequiredFor = null
+                    authViewModel.clearSettingsPasswordResetState()
+                    if (user?.hasGoogleLogin == true) onCreatePasswordClick()
+                }) { Text(if (user?.hasGoogleLogin == true) "Create password" else "OK") }
+            },
+            dismissButton = { TextButton(onClick = { passwordRequiredFor = null; authViewModel.clearSettingsPasswordResetState() }) { Text("Cancel") } }
+        )
+    }
+    if (confirmReset) {
+        AlertDialog(onDismissRequest = { confirmReset = false },
+            title = { Text("Reset password?") },
+            text = { Text("Send a password reset link to ${user?.email.orEmpty()}? After changing your password, you'll need to sign in again.") },
+            confirmButton = { TextButton(onClick = { confirmReset = false; authViewModel.requestSettingsPasswordReset() }) { Text("Send reset link") } },
+            dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } })
+    }
+    if (resetState is PasswordResetEmailState.Sent || resetState is PasswordResetEmailState.Error) {
+        AlertDialog(onDismissRequest = { authViewModel.clearSettingsPasswordResetState() },
+            title = { Text(if (resetState is PasswordResetEmailState.Sent) "Check your email" else "Couldn't send reset email") },
+            text = { Text(when (val state = resetState) {
+                is PasswordResetEmailState.Sent -> state.message
+                is PasswordResetEmailState.Error -> state.message
+                else -> ""
+            }) },
+            confirmButton = { TextButton(onClick = { authViewModel.clearSettingsPasswordResetState() }) { Text("OK") } })
     }
 }
 

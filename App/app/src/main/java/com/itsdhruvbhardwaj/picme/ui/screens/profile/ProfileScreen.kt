@@ -43,8 +43,10 @@ import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
 import com.itsdhruvbhardwaj.picme.ui.components.CreditsOptionsBottomSheet
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeButton
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeMainHeader
+import com.itsdhruvbhardwaj.picme.ui.components.ProfileAvatar
 import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 import com.itsdhruvbhardwaj.picme.ui.theme.TextSecondary
+import com.itsdhruvbhardwaj.picme.utils.SupportLinks
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,7 +55,11 @@ fun ProfileScreen(
     onLogoutClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onNavigateToMyGenerations: () -> Unit,
-    onProfileClick: () -> Unit
+    onNavigateToPurchases: () -> Unit,
+    onNavigateToCreditHistory: () -> Unit,
+    onProfileClick: () -> Unit,
+    onEditAvatar: () -> Unit,
+    onSendFeedback: () -> Unit = {}
 ) {
     val authState by authViewModel.authState.collectAsState()
 
@@ -67,6 +73,7 @@ fun ProfileScreen(
     }
 
     val user = (authState as? AuthState.Authenticated)?.user ?: cachedUser
+    val context = LocalContext.current
     var showCreditsOptions by remember { mutableStateOf(false) }
     var showLogoutConfirm by remember { mutableStateOf(false) }
 
@@ -99,32 +106,17 @@ fun ProfileScreen(
                 Box(
                     modifier = Modifier
                         .size(100.dp)
+                        .clickable(onClick = onEditAvatar)
                         .shadow(8.dp, CircleShape)
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.6f))
-                        .border(2.dp, Color.White.copy(alpha = 0.8f), CircleShape),
+                        .background(MaterialTheme.colorScheme.surface)
+                        .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    // Use avatar.png as default. Only use profileImage if it's a non-placeholder URL.
-                    val profileData = user?.profileImage?.takeIf {
-                        it.isNotBlank() &&
-                        !it.contains("default", ignoreCase = true) &&
-                        !it.contains("placeholder", ignoreCase = true) &&
-                        it.startsWith("http")
-                    } ?: R.drawable.avatar
-
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(profileData)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize().clip(CircleShape),
-                        contentScale = ContentScale.Crop
-                    )
+                    ProfileAvatar(user, Modifier.fillMaxSize(), "Edit profile avatar")
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                TextButton(onClick = onEditAvatar) { Text("Edit avatar") }
 
                 Text(
                     text = user?.name ?: "User",
@@ -211,7 +203,17 @@ fun ProfileScreen(
                         MenuItem(
                             icon = Icons.Default.ShoppingBag,
                             title = "My Purchases",
-                            onClick = {}
+                            onClick = onNavigateToPurchases
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 24.dp),
+                            thickness = 0.5.dp,
+                            color = Color.White.copy(alpha = 0.2f)
+                        )
+                        MenuItem(
+                            icon = Icons.Default.History,
+                            title = "Credit History",
+                            onClick = onNavigateToCreditHistory
                         )
                         HorizontalDivider(
                             modifier = Modifier.padding(horizontal = 24.dp),
@@ -231,8 +233,14 @@ fun ProfileScreen(
                         MenuItem(
                             icon = Icons.Default.Help,
                             title = "Help & Support",
-                            onClick = {}
+                            onClick = { SupportLinks.website(context, "help") }
                         )
+                        HorizontalDivider(Modifier.padding(horizontal = 24.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
+                        MenuItem(icon = Icons.Default.Feedback, title = "Send Feedback", onClick = onSendFeedback)
+                        HorizontalDivider(Modifier.padding(horizontal = 24.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
+                        MenuItem(icon = Icons.Default.StarOutline, title = "Rate Madds", onClick = { SupportLinks.rate(context) })
+                        HorizontalDivider(Modifier.padding(horizontal = 24.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
+                        MenuItem(icon = Icons.Default.Share, title = "Share app", onClick = { SupportLinks.shareApp(context) })
                     }
                 }
 

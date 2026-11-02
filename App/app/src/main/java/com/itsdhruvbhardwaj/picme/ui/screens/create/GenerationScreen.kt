@@ -73,7 +73,7 @@ fun GenerationScreen(
                     title = {},
                     navigationIcon = {
                         IconButton(onClick = onCancelClick) {
-                            Icon(Icons.Default.Close, contentDescription = "Cancel", tint = MaterialTheme.colorScheme.onSurface)
+                            Icon(Icons.Default.Close, contentDescription = "Continue browsing", tint = MaterialTheme.colorScheme.onSurface)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -119,7 +119,8 @@ fun GenerationScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     if (state is GenerationUiState.Error) {
-                        GenerationErrorView(state.message, onRetryClick)
+                        GenerationErrorView(state.message, if (state.isAmbiguous) onRetryClick else onCancelClick,
+                            if (state.isAmbiguous) "Check status" else "Back")
                     } else {
                         // 1. Display selected photos
                         PhotoComposition(selectedPhotos = selectedPhotos)
@@ -188,7 +189,7 @@ fun GenerationScreen(
                         ) {}
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
-                            text = "Our AI is creating your image. This can take up to a couple of minutes.",
+                            text = "Your photo is being created. You can keep browsing and return using the generation shortcut.",
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontWeight = FontWeight.Medium,
                                 color = Color(0xFF4B5563)
@@ -314,7 +315,7 @@ fun GenerationDots() {
 }
 
 @Composable
-fun GenerationErrorView(message: String, onRetry: () -> Unit) {
+fun GenerationErrorView(message: String, onRetry: () -> Unit, actionLabel: String = "Check status") {
     Column(
         modifier = Modifier.padding(32.dp).fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -356,7 +357,7 @@ fun GenerationErrorView(message: String, onRetry: () -> Unit) {
             shape = RoundedCornerShape(28.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Primary)
         ) {
-            Text("Try Again", fontWeight = FontWeight.Bold)
+            Text(actionLabel, fontWeight = FontWeight.Bold)
         }
     }
 }

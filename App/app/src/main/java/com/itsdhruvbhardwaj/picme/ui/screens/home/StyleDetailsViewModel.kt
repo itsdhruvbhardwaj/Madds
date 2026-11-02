@@ -46,16 +46,18 @@ class StyleDetailsViewModel(
         }
     }
 
-    private fun loadStyleDetails() {
+    fun loadStyleDetails() {
         viewModelScope.launch {
             // If not in cache, we fetch it (though usually it will be cached from Home/Grid)
-            if (styleRepository.getStyleById(styleId) == null) {
+            val cached = styleRepository.getStyleById(styleId)
+            if (cached == null) {
                 _uiState.value = StyleDetailsUiState.Loading
-                val result = styleRepository.getStyles(page = 1, limit = 50)
-                if (result.isFailure) {
-                    _uiState.value = StyleDetailsUiState.Error(result.exceptionOrNull()?.message ?: "Failed to load style details")
-                }
             }
+            val result = styleRepository.loadStyleById(styleId)
+            result.fold(onSuccess = { _uiState.value = StyleDetailsUiState.Success(it) }, onFailure = {
+                if (cached == null || it.message == "This style is no longer available.") _uiState.value = StyleDetailsUiState.Error(
+                    if (it.message in listOf("network_error", "server_overloaded", "timeout")) "Couldn't load this style. Check your connection and try again." else it.message ?: "Couldn't load this style.")
+            })
         }
     }
 

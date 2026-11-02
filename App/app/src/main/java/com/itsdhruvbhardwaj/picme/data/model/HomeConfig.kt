@@ -16,7 +16,9 @@ data class HomeSection(
     val type: String,
     val slug: String? = null,
     val visible: Boolean = true,
-    val order: Int = 0
+    val order: Int = 0,
+    // Null identifies an older backend that only returns section configuration.
+    val styles: List<Style>? = null
 )
 
 /**

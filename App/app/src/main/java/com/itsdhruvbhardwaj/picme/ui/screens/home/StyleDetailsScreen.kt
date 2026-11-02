@@ -2,7 +2,6 @@ package com.itsdhruvbhardwaj.picme.ui.screens.home
 
 import androidx.compose.material3.MaterialTheme
 
-import android.app.Activity
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -53,7 +52,6 @@ import com.itsdhruvbhardwaj.picme.ui.components.PicMeButton
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeCompactHeader
 import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 import com.itsdhruvbhardwaj.picme.ui.theme.TextSecondary
-import com.itsdhruvbhardwaj.picme.utils.AdManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,12 +89,7 @@ fun StyleDetailsScreen(
                         onGenerate = {
                             val currentCredits = user?.credits ?: 0
                             if (currentCredits >= style.tokensRequired) {
-                                val activity = context as? Activity
-                                if (activity != null) {
-                                    AdManager.showInterstitial(activity) { onTryStyleClick(style.id) }
-                                } else {
-                                    onTryStyleClick(style.id)
-                                }
+                                onTryStyleClick(style.id)
                             } else {
                                 showInsufficientCreditsSheet = true
                             }
@@ -124,8 +117,9 @@ fun StyleDetailsScreen(
                             }
                         }
                         is StyleDetailsUiState.Error -> {
-                            Box(modifier = Modifier.fillMaxWidth().height(400.dp), contentAlignment = Alignment.Center) {
+                            Column(modifier = Modifier.fillMaxWidth().height(400.dp).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                                 Text(text = state.message, color = MaterialTheme.colorScheme.error)
+                                TextButton(onClick = { viewModel.loadStyleDetails() }) { Text("Try again") }
                             }
                         }
                         is StyleDetailsUiState.Success -> {

@@ -1,6 +1,7 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.auth
 
 import androidx.compose.foundation.layout.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -21,7 +22,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
+import kotlinx.coroutines.launch
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeButton
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeTextField
 import com.itsdhruvbhardwaj.picme.ui.theme.TextSecondary
@@ -31,8 +32,7 @@ import com.itsdhruvbhardwaj.picme.utils.ValidationUtils
 @Composable
 fun ResetPasswordScreen(
     token: String,
-    authState: AuthState,
-    onSubmitClick: (String, String) -> Unit,
+    onSubmitClick: suspend (String, String) -> Result<String>,
     onBackClick: () -> Unit,
     onSuccess: () -> Unit
 ) {
@@ -41,15 +41,17 @@ fun ResetPasswordScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
 
-    val isLoading = authState is AuthState.Authenticating
-    val isSuccess = authState is AuthState.PasswordResetSuccess
-    val errorMessage = (authState as? AuthState.Error)?.message
+    val scope = rememberCoroutineScope()
+    var isLoading by remember { mutableStateOf(false) }
+    var isSuccess by remember { mutableStateOf(false) }
+    var errorMessage by remember(token) { mutableStateOf<String?>(if (token.isBlank()) "This reset link is incomplete. Request a new password reset email." else null) }
+    BackHandler { if (!isLoading) onBackClick() }
 
     val passwordRequirements = remember(newPassword) { ValidationUtils.checkPasswordRequirements(newPassword) }
     val isPasswordStrong = remember(newPassword) { ValidationUtils.isStrongPassword(newPassword) }
     val passwordsMatch = remember(newPassword, confirmPassword) { newPassword == confirmPassword }
 
-    val isFormValid = isPasswordStrong && confirmPassword.isNotEmpty() && passwordsMatch && !isLoading
+    val isFormValid = token.isNotBlank() && isPasswordStrong && confirmPassword.isNotEmpty() && passwordsMatch && !isLoading
 
     LaunchedEffect(isSuccess) {
         if (isSuccess) {
@@ -153,9 +155,9 @@ fun ResetPasswordScreen(
                 )
             }
 
-            if (errorMessage != null) {
+            errorMessage?.let { message ->
                 Text(
-                    text = errorMessage,
+                    text = message,
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(top = 16.dp),
@@ -167,7 +169,18 @@ fun ResetPasswordScreen(
 
             PicMeButton(
                 text = "Reset Password",
-                onClick = { onSubmitClick(token, newPassword) },
+                onClick = {
+                    isLoading = true
+                    errorMessage = null
+                    scope.launch {
+                        try {
+                            onSubmitClick(token, newPassword).fold(
+                                onSuccess = { isSuccess = true },
+                                onFailure = { errorMessage = it.message ?: "Couldn't reset your password. Please try again." }
+                            )
+                        } finally { isLoading = false }
+                    }
+                },
                 isLoading = isLoading,
                 enabled = isFormValid,
                 modifier = Modifier.fillMaxWidth()

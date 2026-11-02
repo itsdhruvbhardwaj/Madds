@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,13 +24,16 @@ import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
 import com.itsdhruvbhardwaj.picme.ui.components.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     authViewModel: AuthViewModel,
     viewModel: HomeViewModel,
     onStyleClick: (String) -> Unit,
     onSeeAllClick: (String?) -> Unit,
-    onProfileClick: () -> Unit
+    onProfileClick: () -> Unit,
+    isRefreshing: Boolean = false,
+    onRefresh: () -> Unit = { viewModel.loadHomeData() }
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val authState by authViewModel.authState.collectAsState()
@@ -46,22 +50,32 @@ fun HomeScreen(
                 )
             }
         ) { innerPadding ->
-            Box(
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = onRefresh,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = innerPadding.calculateTopPadding())
             ) {
-                when (val state = uiState) {
-                    HomeUiState.Loading -> HomeSkeleton()
-                    is HomeUiState.Error -> HomeErrorState(
-                        message = state.message,
-                        onRetry = { viewModel.loadHomeData() }
-                    )
-                    is HomeUiState.Success -> {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(bottom = 100.dp)
-                        ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 100.dp)
+                ) {
+                    when (val state = uiState) {
+                        HomeUiState.Loading -> items(3) { SectionSkeleton() }
+                        is HomeUiState.Error -> item {
+                            Box(Modifier.fillParentMaxSize()) {
+                                HomeErrorState(message = state.message, onRetry = onRefresh)
+                            }
+                        }
+                        is HomeUiState.Success -> {
+                            if (state.refreshError != null) item {
+                                Text(state.refreshError, color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.padding(20.dp))
+                            }
+                            if (state.sections.isEmpty()) item {
+                                Text("No styles available yet. Pull down to refresh.", modifier = Modifier.padding(24.dp))
+                            }
                             items(state.sections, key = { it.config.id }) { sectionData ->
                                 if (sectionData.styles == null) {
                                     SectionSkeleton()
@@ -71,6 +85,11 @@ fun HomeScreen(
                                         onStyleClick = onStyleClick,
                                         onSeeAllClick = onSeeAllClick
                                     )
+                                }
+                                if (sectionData.error != null) {
+                                    TextButton(onClick = onRefresh) {
+                                        Text("${sectionData.config.title}: couldn't refresh. Retry")
+                                    }
                                 }
                             }
                         }
@@ -105,8 +124,6 @@ fun HomeSectionRow(
                     width = 148.dp,
                     height = 208.dp,
                     internalPadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp),
-                    actionButtonPadding = 10.dp,
-                    actionButtonSize = 28.dp
                 )
             }
         }

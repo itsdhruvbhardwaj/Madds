@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.PicMe" parent="android:Theme.Material.NoActionBar">
+    <style name="BaseTheme.PicMe" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/madds_background</item>
-        <item name="android:statusBarColor">@color/madds_background</item>
-        <item name="android:navigationBarColor">@color/madds_background</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar">false</item>
     </style>
+    <!-- Used only by Theme.PicMe variants below API 35. -->
+    <style name="LegacyTheme.PicMe" parent="BaseTheme.PicMe">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+    <style name="Theme.PicMe" parent="LegacyTheme.PicMe" />
 </resources>

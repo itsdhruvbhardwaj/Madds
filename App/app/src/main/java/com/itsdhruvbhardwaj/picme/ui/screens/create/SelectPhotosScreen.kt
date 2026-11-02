@@ -16,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -30,6 +31,7 @@ import com.itsdhruvbhardwaj.picme.ui.components.PicMeButton
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeCompactHeader
 import com.itsdhruvbhardwaj.picme.ui.components.SelectedPhotoCard
 import com.itsdhruvbhardwaj.picme.ui.components.TipsCard
+import com.itsdhruvbhardwaj.picme.utils.AdManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,6 +43,9 @@ fun SelectPhotosScreen(
 ) {
     val style = remember(styleId) { styleRepository.getStyleById(styleId) }
     val requiredCount = style?.imageCount ?: 1
+    val context = LocalContext.current
+    var continuing by remember(styleId) { mutableStateOf(false) }
+    LaunchedEffect(styleId) { AdManager.loadInterstitial(context) }
 
     // State for selected photos. Initialize with nulls to represent empty slots.
     var selectedPhotos by remember { mutableStateOf(List<Uri?>(requiredCount) { null }) }
@@ -78,24 +83,18 @@ fun SelectPhotosScreen(
             bottomBar = {
                 Box(modifier = Modifier.padding(24.dp).padding(bottom = 16.dp)) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        if (!isComplete) {
-                            Text(
-                                text = "Please select $requiredCount photo${if (requiredCount > 1) "s" else ""} to continue",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.padding(bottom = 8.dp),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                        }
                         PicMeButton(
                             text = "Continue",
                             onClick = {
+                                if (continuing) return@PicMeButton
                                 val uris = selectedPhotos.filterNotNull()
                                 if (uris.size == requiredCount) {
+                                    // Synchronous latch: queued taps cannot submit or navigate twice.
+                                    continuing = true
                                     onContinueClick(uris)
                                 }
                             },
-                            enabled = isComplete,
+                            enabled = isComplete && !continuing,
                             modifier = Modifier.fillMaxWidth()
                         )
                     }

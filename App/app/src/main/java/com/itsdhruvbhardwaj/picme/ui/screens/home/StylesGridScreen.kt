@@ -100,8 +100,6 @@ fun StylesGridScreen(
                                         width = Dp.Unspecified,
                                         height = 160.dp,
                                         internalPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp),
-                                        actionButtonPadding = 8.dp,
-                                        actionButtonSize = 24.dp
                                     )
                                 }
 

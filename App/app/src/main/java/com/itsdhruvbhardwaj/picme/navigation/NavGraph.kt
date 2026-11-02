@@ -1,6 +1,7 @@
 package com.itsdhruvbhardwaj.picme.navigation
 
 import android.content.Context
+import android.app.Activity
 import android.content.SharedPreferences
 import android.widget.Toast
 import androidx.compose.animation.*
@@ -43,12 +44,35 @@ import com.itsdhruvbhardwaj.picme.ui.screens.create.SelectPhotosScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.home.*
 import com.itsdhruvbhardwaj.picme.ui.screens.onboarding.OnboardingScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.profile.ProfileScreen
+import com.itsdhruvbhardwaj.picme.ui.screens.profile.FeedbackScreen
+import com.itsdhruvbhardwaj.picme.ui.screens.profile.AvatarSelectionScreen
+import com.itsdhruvbhardwaj.picme.ui.screens.profile.MyGenerationsScreen
+import com.itsdhruvbhardwaj.picme.ui.screens.profile.AccountHistoryScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.search.ExploreScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.search.ExploreViewModel
 import com.itsdhruvbhardwaj.picme.ui.screens.settings.DeleteAccountScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.settings.SettingsScreen
+import com.itsdhruvbhardwaj.picme.ui.screens.settings.CreatePasswordScreen
+import com.itsdhruvbhardwaj.picme.ui.screens.settings.NotificationSettingsScreen
+import com.itsdhruvbhardwaj.picme.notifications.*
+import com.itsdhruvbhardwaj.picme.data.local.AuthTokenStorage
+import androidx.activity.compose.BackHandler
 import com.itsdhruvbhardwaj.picme.ui.screens.splash.SplashScreen
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.itsdhruvbhardwaj.picme.ui.components.GenerationHeaderState
+import com.itsdhruvbhardwaj.picme.ui.components.LocalGenerationHeaderState
+import com.itsdhruvbhardwaj.picme.utils.AdManager
+import com.itsdhruvbhardwaj.picme.utils.MainScreenAdTimer
+import android.os.SystemClock
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.supervisorScope
 
 @Composable
 fun NavGraph(
@@ -59,18 +83,64 @@ fun NavGraph(
     generationViewModel: GenerationViewModel,
     favoritesViewModel: FavoritesViewModel,
     exploreViewModel: ExploreViewModel,
-    styleRepository: StyleRepository
+    styleRepository: StyleRepository,
+    notificationPreferencesViewModel: NotificationPreferencesViewModel,
+    pendingNotificationId: String? = null,
+    onNotificationHandled: () -> Unit = {},
+    pendingGeneration: String? = null,
+    onGenerationNotificationHandled: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val prefs = context.getSharedPreferences("picme_prefs", Context.MODE_PRIVATE)
 
     val authState by authViewModel.authState.collectAsState()
     val passwordSetupState by authViewModel.passwordSetupState.collectAsState()
+    val isDeletingAccount by authViewModel.isDeletingAccount.collectAsState()
     val isDeletionCancellationLoading by authViewModel.isDeletionCancellationLoading.collectAsState()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val pushLocalState = remember { PushLocalState(context.applicationContext) }
+    val pushAuth = remember { AuthTokenStorage(context.applicationContext) }
+    LaunchedEffect(pendingNotificationId, authState, currentRoute) {
+        val id = pendingNotificationId ?: return@LaunchedEffect
+        if (authState is AuthState.Unauthenticated) { onNotificationHandled(); return@LaunchedEffect }
+        val signedIn = (authState as? AuthState.Authenticated)?.user ?: return@LaunchedEffect
+        if (currentRoute == null || currentRoute in listOf(Screen.Splash.route, Screen.Login.route, Screen.Signup.route, Screen.Onboarding.route) ||
+            signedIn.profileSetupComplete == false) return@LaunchedEffect
+        val payload = pushLocalState.tap(id, pushAuth)
+        if (payload != null) {
+            val route = when {
+                payload.styleId != null -> Screen.StyleDetails.createRoute(payload.styleId)
+                payload.collectionId != null -> Screen.NotificationCollection.createRoute(payload.collectionId)
+                else -> Screen.Home.route
+            }
+            navController.navigate(route) { launchSingleTop = true }
+            pushLocalState.markOpened(id)
+        }
+        onNotificationHandled()
+    }
 
     val scope = rememberCoroutineScope()
+    var isAppRefreshing by remember { mutableStateOf(false) }
+    var profileSetupOfferedForUser by remember { mutableStateOf<String?>(null) }
+    val refreshApp: () -> Unit = {
+        if (!isAppRefreshing) {
+            isAppRefreshing = true
+            scope.launch {
+                try {
+                    supervisorScope {
+                        launch { homeViewModel.loadHomeData().join() }
+                        launch { authViewModel.checkSession(isInitial = true).join() }
+                        launch { collectionsViewModel.loadCollections(force = true).join() }
+                        launch { favoritesViewModel.loadFavorites().join() }
+                        launch { exploreViewModel.refresh().join() }
+                    }
+                } finally {
+                    isAppRefreshing = false
+                }
+            }
+        }
+    }
     val googleAuthHelper = remember { GoogleAuthHelper(context) }
 
     // Unified UI Event Handling (Toasts for success/failure)
@@ -87,6 +157,30 @@ fun NavGraph(
         }
     }
 
+    val generationOwner = (authState as? AuthState.Authenticated)?.user?.id
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(generationOwner, lifecycleOwner) {
+        generationViewModel.bindAccount(generationOwner)
+        if (generationOwner != null) lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                generationViewModel.refreshOperations()
+                if (generationViewModel.operations.value.isEmpty()) {
+                    withTimeoutOrNull(60_000) { generationViewModel.operations.first { it.isNotEmpty() } }
+                } else delay(12_000)
+            }
+        }
+    }
+    val recoverableGenerations by generationViewModel.operations.collectAsState()
+    LaunchedEffect(pendingGeneration, generationOwner, currentRoute) {
+        val parts = pendingGeneration?.split(":") ?: return@LaunchedEffect
+        if (generationOwner == null || currentRoute == Screen.Splash.route) return@LaunchedEffect
+        if (parts.size == 2 && parts[0] == generationOwner && Regex("[a-fA-F0-9]{24}").matches(parts[1])) {
+            generationViewModel.openOperation(parts[1])
+            navController.navigate(Screen.Generation.createRoute("recovery")) { launchSingleTop = true }
+        }
+        onGenerationNotificationHandled()
+    }
+
     val bottomBarScreens = listOf(
         Screen.Home.route,
         Screen.Favorites.route,
@@ -97,12 +191,38 @@ fun NavGraph(
     fun isBottomBarRoute(route: String?) = route != null && route in bottomBarScreens
 
     val isBottomBarVisible = currentRoute in bottomBarScreens
+    val mainAdTimer = remember(generationOwner) { MainScreenAdTimer() }
+    LaunchedEffect(isBottomBarVisible, generationOwner, lifecycleOwner) {
+        if (isBottomBarVisible && generationOwner != null) {
+            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                mainAdTimer.enter(SystemClock.elapsedRealtime())
+                try {
+                    AdManager.loadInterstitial(context)
+                    awaitCancellation()
+                } finally { mainAdTimer.leave(SystemClock.elapsedRealtime()) }
+            }
+        }
+    }
 
+    val headerState = GenerationHeaderState(
+        items = if (generationOwner != null && isBottomBarVisible) recoverableGenerations else emptyList(),
+        onOpen = { id ->
+            generationViewModel.openOperation(id)
+            navController.navigate(Screen.Generation.createRoute("recovery")) { launchSingleTop = true }
+        }
+    )
+    CompositionLocalProvider(LocalGenerationHeaderState provides headerState) {
     // Global Layout: Banner pushes content up physically.
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .navigationBarsPadding()
+            // Keep controls clear of navigation bars and landscape cutouts.
+            // Screens and headers own the top inset so their backgrounds can
+            // continue behind the transparent status bar.
+            .windowInsetsPadding(
+                WindowInsets.systemBars.union(WindowInsets.displayCutout)
+                    .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+            )
     ) {
         // Content Area: Occupies all available space above the banner.
         Box(modifier = Modifier.weight(1f)) {
@@ -216,9 +336,18 @@ fun NavGraph(
                 }
 
                 composable(Screen.Home.route) {
+                    val profileUser = (authState as? AuthState.Authenticated)?.user
+                    LaunchedEffect(profileUser?.id, profileUser?.profileSetupComplete) {
+                        if (profileUser?.profileSetupComplete == false && profileSetupOfferedForUser != profileUser.id) {
+                            profileSetupOfferedForUser = profileUser.id
+                            navController.navigate(Screen.EditAvatar.route) { launchSingleTop = true }
+                        }
+                    }
                     HomeScreen(
                         authViewModel = authViewModel,
                         viewModel = homeViewModel,
+                        isRefreshing = isAppRefreshing,
+                        onRefresh = refreshApp,
                         onStyleClick = { id -> navController.navigate(Screen.StyleDetails.createRoute(id)) },
                         onSeeAllClick = { collection -> navController.navigate(Screen.StylesGrid.createRoute(collection)) },
                         onProfileClick = {
@@ -283,7 +412,8 @@ fun NavGraph(
                         authViewModel = authViewModel,
                         onGenerateClick = { prompt, uris ->
                             generationViewModel.setSelectedPhotos(uris)
-                            navController.navigate(Screen.Generation.createRoute("custom", prompt))
+                            generationViewModel.generateCustomImage(prompt)
+                            navController.navigate(Screen.Generation.createRoute("custom", prompt)) { launchSingleTop = true }
                         },
                         onProfileClick = {
                             navController.navigate(Screen.Profile.route) {
@@ -298,6 +428,8 @@ fun NavGraph(
                 composable(Screen.Profile.route) {
                     ProfileScreen(
                         authViewModel = authViewModel,
+                        onEditAvatar = { navController.navigate(Screen.EditAvatar.route) },
+                        onSendFeedback = { navController.navigate(Screen.Feedback.route) },
                         onLogoutClick = {
                             // Navigate first to avoid flicker of "User" state on Profile screen
                             navController.navigate(Screen.Login.route) {
@@ -313,7 +445,29 @@ fun NavGraph(
                                 restoreState = true
                             }
                         },
-                        onNavigateToMyGenerations = { navController.navigate(Screen.History.route) }
+                        onNavigateToMyGenerations = { navController.navigate(Screen.History.route) },
+                        onNavigateToPurchases = { navController.navigate(Screen.Purchases.route) },
+                        onNavigateToCreditHistory = { navController.navigate(Screen.CreditHistory.route) }
+                    )
+                }
+
+                composable(Screen.Feedback.route) {
+                    FeedbackScreen(authViewModel, onBack = { navController.popBackStack() })
+                }
+                composable(Screen.Purchases.route) {
+                    AccountHistoryScreen(authViewModel, purchases = true, onBack = { navController.popBackStack() })
+                }
+                composable(Screen.CreditHistory.route) {
+                    AccountHistoryScreen(authViewModel, purchases = false, onBack = { navController.popBackStack() })
+                }
+
+                composable(Screen.EditAvatar.route) {
+                    AvatarSelectionScreen(authViewModel, onBack = { navController.popBackStack() })
+                }
+
+                composable(Screen.History.route) {
+                    MyGenerationsScreen(
+                        onBackClick = { navController.popBackStack() }
                     )
                 }
 
@@ -321,21 +475,64 @@ fun NavGraph(
                     SettingsScreen(
                         authViewModel = authViewModel,
                         onBackClick = { navController.popBackStack() },
-                        onDeleteAccountClick = { navController.navigate(Screen.DeleteAccount.route) }
+                        onDeleteAccountClick = { navController.navigate(Screen.DeleteAccount.route) },
+                        onNotificationsClick = { navController.navigate(Screen.NotificationSettings.route) },
+                        onCreatePasswordClick = {
+                            authViewModel.resetPasswordSetupState()
+                            navController.navigate(Screen.CreatePassword.route) { launchSingleTop = true }
+                        }
                     )
+                }
+
+                composable(Screen.NotificationSettings.route) {
+                    NotificationSettingsScreen((authState as? AuthState.Authenticated)?.user?.id,
+                        notificationPreferencesViewModel, onBack = { navController.popBackStack() })
+                }
+                composable(Screen.NotificationCollection.route, arguments = listOf(navArgument("collectionId") { type = NavType.StringType })) { entry ->
+                    val id = entry.arguments?.getString("collectionId").orEmpty()
+                    var message by remember(id) { mutableStateOf<String?>(null) }
+                    var attempt by remember(id) { mutableIntStateOf(0) }
+                    LaunchedEffect(id, attempt) {
+                        message = null
+                        val result = styleRepository.getCollections()
+                        val collection = result.getOrNull()?.find { it.id == id }
+                        if (collection != null) navController.navigate(Screen.StylesGrid.createRoute(collection.name)) {
+                            popUpTo(Screen.NotificationCollection.route) { inclusive = true }; launchSingleTop = true
+                        } else message = if (result.isFailure) "Couldn't load this collection. Please try again." else "This collection is no longer available."
+                    }
+                    Scaffold(topBar = { com.itsdhruvbhardwaj.picme.ui.components.PicMeCompactHeader(title = "Collection", onBackClick = { navController.popBackStack() }) }) { padding ->
+                        Column(Modifier.fillMaxSize().padding(padding).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center) {
+                            if (message == null) CircularProgressIndicator() else { Text(message.orEmpty()); TextButton(onClick = { attempt++ }) { Text("Try again") } }
+                        }
+                    }
+                }
+                composable(Screen.CreatePassword.route) {
+                    CreatePasswordScreen(
+                        user = (authState as? AuthState.Authenticated)?.user,
+                        state = passwordSetupState,
+                        onBack = { returnToSettings(navController) },
+                        onSend = authViewModel::requestGooglePasswordSetup,
+                        onRefresh = authViewModel::refreshGooglePasswordSetupStatus
+                    )
+                    BackHandler { returnToSettings(navController) }
                 }
 
                 composable(Screen.DeleteAccount.route) {
                     val deletionUser = (authState as? AuthState.Authenticated)?.user
                     DeleteAccountScreen(
-                        authState = authState,
-                        passwordSetupState = passwordSetupState,
                         onBackClick = { navController.popBackStack() },
                         hasPassword = deletionUser?.hasPassword == true,
                         hasGoogleLogin = deletionUser?.hasGoogleLogin == true,
                         onSubmitDelete = { password -> authViewModel.deleteAccount(password) },
-                        onRequestPasswordSetup = { password, confirm -> authViewModel.requestGooglePasswordSetup(password, confirm) },
-                        onRefreshPasswordSetup = { authViewModel.refreshGooglePasswordSetupStatus() }
+                        isDeleting = isDeletingAccount,
+                        onCreatePassword = {
+                            authViewModel.resetPasswordSetupState()
+                            navController.navigate(Screen.CreatePassword.route) {
+                                popUpTo(Screen.DeleteAccount.route) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        }
                     )
 
                     // Exit flow on successful deletion request (Unauthenticated means tokens cleared)
@@ -361,6 +558,14 @@ fun NavGraph(
                     LaunchedEffect(token) {
                         if (!token.isNullOrBlank()) authViewModel.verifyGooglePasswordSetup(token)
                     }
+                    val returnFromVerification = {
+                        if (authState is AuthState.Authenticated) returnToSettings(navController)
+                        else navController.navigate(Screen.Login.route) {
+                            popUpTo(navController.graph.id) { inclusive = false }
+                            launchSingleTop = true
+                        }
+                    }
+                    BackHandler { returnFromVerification() }
                     Column(
                         modifier = androidx.compose.ui.Modifier.fillMaxSize().padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -369,15 +574,15 @@ fun NavGraph(
                         Text(
                             text = when (passwordSetupState) {
                                 PasswordSetupState.Verifying -> "Verifying your email and setting your password…"
-                                PasswordSetupState.Verified -> "Email verified. Your password is set. Return to account deletion and confirm with this password."
+                                PasswordSetupState.Verified -> "Your password has been created. You can now sign in using your email and password."
                                 is PasswordSetupState.Error -> (passwordSetupState as PasswordSetupState.Error).message
                                 else -> "Open madds to finish verifying your password."
                             },
                             style = MaterialTheme.typography.bodyLarge
                         )
                         Spacer(modifier = androidx.compose.ui.Modifier.height(20.dp))
-                        Button(onClick = { navController.navigate(Screen.DeleteAccount.route) }) {
-                            Text("Continue")
+                        Button(onClick = { returnFromVerification() }, enabled = passwordSetupState !is PasswordSetupState.Verifying) {
+                            Text(if (authState is AuthState.Authenticated) "Back to Settings" else "Sign in")
                         }
                     }
                 }
@@ -391,7 +596,7 @@ fun NavGraph(
                         authViewModel = authViewModel,
                         viewModel = viewModel(factory = StyleDetailsViewModel.provideFactory(styleRepository, styleId)),
                         onBackClick = { navController.popBackStack() },
-                        onTryStyleClick = { id -> navController.navigate(Screen.SelectPhotos.createRoute(id)) }
+                        onTryStyleClick = { id -> navController.navigate(Screen.SelectPhotos.createRoute(id)) { launchSingleTop = true } }
                     )
                 }
 
@@ -405,8 +610,29 @@ fun NavGraph(
                         styleRepository = styleRepository,
                         onBackClick = { navController.popBackStack() },
                         onContinueClick = { uris ->
+                          if (navController.currentBackStackEntry?.id == backStackEntry.id) {
                             generationViewModel.setSelectedPhotos(uris)
-                            navController.navigate(Screen.Generation.createRoute(styleId))
+                            generationViewModel.generateImage(styleId)
+                            navController.navigate(Screen.Generation.createRoute(styleId)) { launchSingleTop = true }
+                            val generationEntry = navController.currentBackStackEntry
+                            // Generation is already running; ad availability never gates submission.
+                            scope.launch {
+                                val activity = context as? Activity ?: return@launch
+                                AdManager.loadInterstitial(activity)
+                                withTimeoutOrNull(2_500) {
+                                    while (!AdManager.isInterstitialReady() &&
+                                        navController.currentBackStackEntry?.id == generationEntry?.id) delay(100)
+                                }
+                                if (generationEntry != null && navController.currentBackStackEntry?.id == generationEntry.id &&
+                                    lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
+                                    !activity.isFinishing && !activity.isDestroyed &&
+                                    AdManager.isInterstitialReady() &&
+                                    (generationViewModel.uiState.value is GenerationUiState.Uploading ||
+                                        generationViewModel.uiState.value is GenerationUiState.Processing)) {
+                                    AdManager.showInterstitial(activity) { }
+                                }
+                            }
+                          }
                         }
                     )
                 }
@@ -424,19 +650,18 @@ fun NavGraph(
                     val statusMsg by generationViewModel.statusMessage.collectAsState()
                     val selectedPhotos by generationViewModel.selectedPhotos.collectAsState()
 
-                    LaunchedEffect(Unit) {
-                        if (styleId == "custom" && prompt != null) {
-                            generationViewModel.generateCustomImage(prompt)
-                        } else {
-                            generationViewModel.generateImage(styleId)
-                        }
-                    }
 
+                    BackHandler {
+                        if (genState is GenerationUiState.Error && !(genState as GenerationUiState.Error).isAmbiguous) generationViewModel.markFocusedViewed()
+                        generationViewModel.resetState()
+                        navController.popBackStack()
+                    }
                     GenerationScreen(
                         state = genState,
                         statusMessage = statusMsg,
                         selectedPhotos = selectedPhotos,
                         onCancelClick = {
+                            if (genState is GenerationUiState.Error && !(genState as GenerationUiState.Error).isAmbiguous) generationViewModel.markFocusedViewed()
                             generationViewModel.resetState()
                             navController.popBackStack()
                         },
@@ -448,9 +673,11 @@ fun NavGraph(
                             }
                         },
                         onSuccess = { _ ->
+                          if (navController.currentBackStackEntry?.destination?.route == Screen.Generation.route) {
                             navController.navigate(Screen.Result.route) {
                                 popUpTo(Screen.Generation.route) { inclusive = true }
                             }
+                          }
                         }
                     )
                 }
@@ -468,7 +695,11 @@ fun NavGraph(
                             generationViewModel.resetState()
                             navController.navigate(Screen.Home.route) { popUpTo(Screen.Home.route) { inclusive = true } }
                         },
-                        onSaveClick = { generationViewModel.saveImageToGallery(context) },
+                        onSaveClick = {
+                            if (generationViewModel.saveImageToGallery(context)) {
+                                Toast.makeText(context, "Your image is being saved to gallery", Toast.LENGTH_SHORT).show()
+                            }
+                        },
                         onShareClick = { generationViewModel.shareImage(context) },
                         onGenerateAgainClick = {
                             generationViewModel.resetState()
@@ -543,18 +774,20 @@ fun NavGraph(
                     val token = backStackEntry.arguments?.getString("token") ?: ""
                     ResetPasswordScreen(
                         token = token,
-                        authState = authState,
                         onSubmitClick = { t, p -> authViewModel.resetPassword(t, p) },
                         onBackClick = {
-                            authViewModel.resetAuthState()
-                            navController.popBackStack()
+                            if (authState is AuthState.Authenticated) returnToSettings(navController)
+                            else navController.navigate(Screen.Login.route) {
+                                popUpTo(navController.graph.id) { inclusive = false }
+                                launchSingleTop = true
+                            }
                         },
                         onSuccess = {
                             Toast.makeText(context, "Password reset successfully. Please sign in.", Toast.LENGTH_LONG).show()
                             navController.navigate(Screen.Login.route) {
-                                popUpTo(Screen.Splash.route) { inclusive = true }
+                                popUpTo(navController.graph.id) { inclusive = false }
+                                launchSingleTop = true
                             }
-                            authViewModel.resetAuthState()
                         }
                     )
                 }
@@ -591,10 +824,20 @@ fun NavGraph(
                 PicMeBottomNavigationBar(
                     currentRoute = currentRoute,
                     onNavigate = { route ->
+                        val now = SystemClock.elapsedRealtime()
+                        val showMainAd = route != currentRoute && generationOwner != null &&
+                            mainAdTimer.isDue(now) && AdManager.mainScreenInterstitialAllowed(now) &&
+                            AdManager.isInterstitialReady() &&
+                            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
                         navController.navigate(route) {
                             popUpTo(Screen.Home.route) { saveState = true }
                             launchSingleTop = true
                             restoreState = true
+                        }
+                        val activity = context as? Activity
+                        if (showMainAd && activity != null && !activity.isFinishing && !activity.isDestroyed) {
+                            mainAdTimer.reset(now)
+                            AdManager.showInterstitial(activity) { }
                         }
                     }
                 )
@@ -602,7 +845,18 @@ fun NavGraph(
         }
 
         // Shared Banner Slot: Takes physical space ONLY when visible.
-        BannerAdView(modifier = Modifier.fillMaxWidth())
+        if (!isBottomBarVisible) BannerAdView(modifier = Modifier.fillMaxWidth())
+    }
+    }
+}
+
+private fun returnToSettings(navController: NavHostController) {
+    if (!navController.popBackStack(Screen.Settings.route, false)) {
+        navController.navigate(Screen.Home.route) {
+            popUpTo(navController.graph.id) { inclusive = false }
+            launchSingleTop = true
+        }
+        navController.navigate(Screen.Settings.route) { launchSingleTop = true }
     }
 }
 

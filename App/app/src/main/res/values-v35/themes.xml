@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- System bars are transparent by platform enforcement on API 35+.
+         Do not inherit the legacy system-bar color attributes. -->
+    <style name="Theme.PicMe" parent="BaseTheme.PicMe">
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">always</item>
+    </style>
+</resources>

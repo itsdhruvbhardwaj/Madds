@@ -1,12 +1,15 @@
 package com.itsdhruvbhardwaj.picme.data.repository
 
 import com.itsdhruvbhardwaj.picme.data.local.AuthTokenStorage
+import com.itsdhruvbhardwaj.picme.data.local.HomeFeedCache
 import com.itsdhruvbhardwaj.picme.data.model.HomeConfigResponse
 import com.itsdhruvbhardwaj.picme.data.model.StyleCollection
 import com.itsdhruvbhardwaj.picme.data.model.Style
 import com.itsdhruvbhardwaj.picme.data.model.StyleResponse
 import com.itsdhruvbhardwaj.picme.data.remote.StyleApiService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,10 +21,26 @@ import java.net.SocketTimeoutException
 
 class StyleRepository(
     private val apiService: StyleApiService,
-    private val tokenStorage: AuthTokenStorage
+    private val tokenStorage: AuthTokenStorage,
+    private val homeFeedCache: HomeFeedCache? = null
 ) {
     private val _cachedStyles = MutableStateFlow<Map<String, Style>>(emptyMap())
     val cachedStyles: StateFlow<Map<String, Style>> = _cachedStyles.asStateFlow()
+
+    fun getCachedHome(): HomeConfigResponse? = homeFeedCache?.read()?.also { cacheHomeStyles(it) }
+
+    fun saveHomeCache(feed: HomeConfigResponse) {
+        cacheHomeStyles(feed)
+        homeFeedCache?.write(feed)
+    }
+
+    private fun cacheHomeStyles(feed: HomeConfigResponse) {
+        _cachedStyles.update { existing ->
+            existing + feed.sections.flatMap { it.styles.orEmpty() }.associate { style ->
+                style.id to style.copy(isFavorite = existing[style.id]?.isFavorite ?: false)
+            }
+        }
+    }
 
     suspend fun getStyles(
         page: Int,
@@ -54,6 +73,8 @@ class StyleRepository(
                 Result.failure(Exception("timeout"))
             } catch (e: IOException) {
                 Result.failure(Exception("network_error"))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -75,6 +96,8 @@ class StyleRepository(
             } else {
                 Result.failure(Exception("failed_to_load_favorites"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -102,6 +125,8 @@ class StyleRepository(
             } else {
                 Result.failure(Exception("failed_to_update_favorite"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -112,7 +137,9 @@ class StyleRepository(
             try {
                 val response = apiService.getHomeConfig()
                 if (response.isSuccessful && response.body() != null) {
-                    Result.success(response.body()!!)
+                    val feed = response.body()!!
+                    cacheHomeStyles(feed)
+                    Result.success(feed)
                 } else {
                     Result.failure(Exception("failed_to_load_config"))
                 }
@@ -120,6 +147,8 @@ class StyleRepository(
                 Result.failure(Exception("timeout"))
             } catch (e: IOException) {
                 Result.failure(Exception("network_error"))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -143,6 +172,8 @@ class StyleRepository(
                 Result.failure(Exception("timeout"))
             } catch (e: IOException) {
                 Result.failure(Exception("network_error"))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -185,7 +216,11 @@ class StyleRepository(
         )
     }
 
-    private suspend fun <T> retryIO(
+    private suspend fun <T> retryIO(block: suspend () -> Result<T>): Result<T> =
+        withTimeoutOrNull(35_000) { retryAttempts(block = block) }
+            ?: Result.failure(Exception("timeout"))
+
+    private suspend fun <T> retryAttempts(
         times: Int = 3,
         initialDelay: Long = 1000,
         maxDelay: Long = 5000,
@@ -207,5 +242,29 @@ class StyleRepository(
 
     fun getStyleById(styleId: String): Style? {
         return _cachedStyles.value[styleId]
+    }
+    suspend fun loadStyleById(styleId: String): Result<Style> = withContext(Dispatchers.IO) {
+        retryIO {
+            try {
+                val originalToken = tokenStorage.getAccessToken()
+                val response = apiService.getStyle(originalToken?.let { "Bearer $it" }, styleId)
+                val style = response.body()?.style
+                if (response.isSuccessful && style != null && style.id == styleId) {
+                    val currentToken = tokenStorage.getAccessToken()
+                    val sameSession = com.itsdhruvbhardwaj.picme.notifications.PushSession.fromToken(originalToken) ==
+                        com.itsdhruvbhardwaj.picme.notifications.PushSession.fromToken(currentToken) && (originalToken == null) == (currentToken == null)
+                    val safeStyle = if (sameSession) style else style.copy(isFavorite = false)
+                    _cachedStyles.update { it + (safeStyle.id to safeStyle) }; Result.success(safeStyle)
+                } else {
+                    if (response.code() == 404) _cachedStyles.update { it - styleId }
+                    Result.failure(Exception(when (response.code()) {
+                        404 -> "This style is no longer available."
+                        429, 500, 502, 503, 504 -> "server_overloaded"
+                        else -> "Couldn't load this style. Please try again."
+                    }))
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: IOException) { Result.failure(Exception("network_error")) }
+        }
     }
 }

@@ -40,9 +40,7 @@ fun StyleCard(
     modifier: Modifier = Modifier,
     width: Dp = 168.dp,
     height: Dp = 236.dp,
-    internalPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
-    actionButtonPadding: Dp = 12.dp,
-    actionButtonSize: Dp = 32.dp
+    internalPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 20.dp)
 ) {
     Surface(
         modifier = modifier
@@ -108,26 +106,6 @@ fun StyleCard(
                             color = Color.White.copy(alpha = 0.8f),
                             fontWeight = FontWeight.Medium
                         )
-                    )
-                }
-            }
-
-            // Action button circle overlay
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(actionButtonPadding)
-                    .size(actionButtonSize),
-                shape = CircleShape,
-                color = Color.White.copy(alpha = 0.25f),
-                border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.4f))
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = Color.White
                     )
                 }
             }

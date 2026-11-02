@@ -20,5 +20,10 @@ data class User(
     val profileImage: String? = null,
     val credits: Int = 0,
     val hasPassword: Boolean = false,
-    val hasGoogleLogin: Boolean = false
+    val hasGoogleLogin: Boolean = false,
+    val profileAppearance: String? = null,
+    val avatarId: String? = null,
+    val avatarBackground: String? = null,
+    // Nullable so older API responses/cached profiles never trigger setup.
+    val profileSetupComplete: Boolean? = null
 )

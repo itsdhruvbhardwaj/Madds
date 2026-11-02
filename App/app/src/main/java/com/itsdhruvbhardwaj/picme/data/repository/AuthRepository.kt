@@ -5,12 +5,17 @@ import com.google.gson.Gson
 import com.itsdhruvbhardwaj.picme.data.local.AuthTokenStorage
 import com.itsdhruvbhardwaj.picme.data.model.*
 import com.itsdhruvbhardwaj.picme.data.remote.AuthApiService
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import retrofit2.Response
 import java.io.IOException
 import java.net.SocketTimeoutException
+import okhttp3.MultipartBody
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
  * Repository responsible for managing authenticated sessions for PicMe.
@@ -18,13 +23,37 @@ import java.net.SocketTimeoutException
  */
 class AuthRepository(
     private val apiService: AuthApiService,
-    private val tokenStorage: AuthTokenStorage
+    private val tokenStorage: AuthTokenStorage,
+    private val refreshApiService: AuthApiService = apiService
 ) {
     private companion object {
         const val AUTH_LOG_TAG = "MaddsAuth"
+        // MainActivity and background registration workers must share one refresh lock.
+        val refreshMutex = Mutex()
     }
 
-    private val refreshMutex = Mutex()
+    suspend fun updateProfileAppearance(request: ProfileAppearanceRequest): Result<User> {
+        val token = tokenStorage.getAccessToken() ?: return Result.failure(Exception("session_expired"))
+        return safeApiCall(
+            call = { apiService.updateProfileAppearance("Bearer $token", request) },
+            onSuccess = { response -> cacheUpdatedProfile(response.user) }
+        )
+    }
+
+    suspend fun uploadProfilePhoto(jpeg: ByteArray): Result<User> {
+        val token = tokenStorage.getAccessToken() ?: return Result.failure(Exception("session_expired"))
+        val part = MultipartBody.Part.createFormData("image", "profile.jpg", jpeg.toRequestBody("image/jpeg".toMediaType()))
+        return safeApiCall(
+            call = { apiService.uploadProfilePhoto("Bearer $token", part) },
+            onSuccess = { response -> cacheUpdatedProfile(response.user) }
+        )
+    }
+
+    private fun cacheUpdatedProfile(user: User): Result<User> {
+        if (tokenStorage.getUser()?.id != user.id) return Result.failure(Exception("Account changed. Please try again."))
+        tokenStorage.saveUser(user)
+        return Result.success(user)
+    }
 
     suspend fun login(email: String, password: String): Result<User> {
         return safeApiCall(
@@ -121,7 +150,10 @@ class AuthRepository(
         return safeApiCall(
             call = { apiService.resetPassword(ResetPasswordRequest(token, newPassword)) },
             onSuccess = { response ->
-                Result.success(response.message)
+                if (response.ok) {
+                    tokenStorage.clearTokens()
+                    Result.success(response.message)
+                } else Result.failure(Exception(response.message))
             }
         )
     }
@@ -200,7 +232,7 @@ class AuthRepository(
      * Synchronized refresh operation to prevent concurrent refresh-token rotation conflicts.
      * Uses retry logic to handle Render cold starts.
      */
-    suspend fun refreshSession(): Result<Unit> {
+    suspend fun refreshSession(failedAccessToken: String? = null): Result<Unit> {
         val initialRefreshToken = tokenStorage.getRefreshToken()
             ?: run {
                 Log.w(AUTH_LOG_TAG, "refresh not attempted: no refresh token is stored")
@@ -208,6 +240,14 @@ class AuthRepository(
             }
 
         return refreshMutex.withLock {
+            // A queued 401 may belong to an older access token. Reuse the new
+            // session rather than rotating it again after waiting for the lock.
+            if (failedAccessToken != null) {
+                val latestAccessToken = tokenStorage.getAccessToken()
+                if (!latestAccessToken.isNullOrEmpty() && latestAccessToken != failedAccessToken) {
+                    return@withLock Result.success(Unit)
+                }
+            }
             val currentRefreshToken = tokenStorage.getRefreshToken()
             if (currentRefreshToken != initialRefreshToken && !currentRefreshToken.isNullOrEmpty()) {
                 Log.i(AUTH_LOG_TAG, "refresh skipped: another request already rotated the session")
@@ -216,15 +256,24 @@ class AuthRepository(
 
             retryIO {
                 try {
-                    val response = apiService.refreshToken(RefreshTokenRequest(initialRefreshToken))
+                    val response = refreshApiService.refreshToken(RefreshTokenRequest(initialRefreshToken))
+                    // Logout/account switching must win over an older network response.
+                    if (tokenStorage.getRefreshToken() != initialRefreshToken) {
+                        return@retryIO Result.failure(Exception("session_changed"))
+                    }
                     if (response.isSuccessful && response.body()?.ok == true) {
                         val body = response.body()!!
                         val newAccessToken = body.accessToken
                         val newRefreshToken = body.refreshToken
                         if (newAccessToken != null && newRefreshToken != null) {
-                            tokenStorage.saveTokens(newAccessToken, newRefreshToken)
-                            Log.i(AUTH_LOG_TAG, "refresh succeeded; rotated tokens stored")
-                            Result.success(Unit)
+                            val stored = synchronized(com.itsdhruvbhardwaj.picme.notifications.PushLocalState.lock) {
+                                if (tokenStorage.getRefreshToken() != initialRefreshToken) false
+                                else { tokenStorage.saveRefreshedTokens(newAccessToken, newRefreshToken); true }
+                            }
+                            if (stored) {
+                                Log.i(AUTH_LOG_TAG, "refresh succeeded; rotated tokens stored")
+                                Result.success(Unit)
+                            } else Result.failure(Exception("session_changed"))
                         } else {
                             Log.w(AUTH_LOG_TAG, "refresh failed: successful response did not contain both tokens")
                             Result.failure(Exception("refresh_failed"))
@@ -233,7 +282,9 @@ class AuthRepository(
                         val code = response.code()
                         if (code == 401 || code == 403) {
                             Log.w(AUTH_LOG_TAG, "refresh rejected with HTTP $code; clearing local session")
-                            tokenStorage.clearTokens()
+                            synchronized(com.itsdhruvbhardwaj.picme.notifications.PushLocalState.lock) {
+                                if (tokenStorage.getRefreshToken() == initialRefreshToken) tokenStorage.clearTokens()
+                            }
                             Result.failure(Exception("session_expired"))
                         } else {
                             Log.w(AUTH_LOG_TAG, "refresh failed with HTTP $code; local session retained")
@@ -246,6 +297,8 @@ class AuthRepository(
                 } catch (e: IOException) {
                     Log.w(AUTH_LOG_TAG, "refresh failed: network I/O error")
                     Result.failure(Exception("network_failure"))
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Log.w(AUTH_LOG_TAG, "refresh failed: unexpected ${e.javaClass.simpleName}")
                     Result.failure(e)
@@ -262,8 +315,14 @@ class AuthRepository(
             safeApiCall(
                 call = { apiService.getCurrentUser("Bearer $accessToken") },
                 onSuccess = { response ->
-                    tokenStorage.saveUser(response.user)
-                    Result.success(response.user)
+                    // A response started before a successful password reset
+                    // must not restore the profile cache after tokens are cleared.
+                    if (tokenStorage.getAccessToken().isNullOrBlank()) {
+                        Result.failure(Exception("session_expired"))
+                    } else {
+                        tokenStorage.saveUser(response.user)
+                        Result.success(response.user)
+                    }
                 }
             )
         }
@@ -291,6 +350,8 @@ class AuthRepository(
             try {
                 // We don't wait for this to succeed or fail to consider logout successful locally
                 apiService.logout("Bearer $accessToken")
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // Ignore network errors during logout
             }
@@ -308,6 +369,8 @@ class AuthRepository(
         if (accessToken != null) {
             try {
                 apiService.logoutAll("Bearer $accessToken")
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // Ignore
             }
@@ -340,22 +403,70 @@ class AuthRepository(
      * Verifies a Google Play purchase with the backend.
      */
     suspend fun verifyPurchase(productId: String, purchaseToken: String, purchaseOptionId: String): Result<PurchaseVerificationResponse> {
-        val accessToken = tokenStorage.getAccessToken()
+        var accessToken = tokenStorage.getAccessToken()
             ?: return Result.failure(Exception("No access token available"))
+        val userId = tokenStorage.getUser()?.id ?: return Result.failure(Exception("Sign in before verifying a purchase."))
 
         return safeApiCall(
             call = { 
-                apiService.verifyPurchase(
-                    "Bearer $accessToken", 
-                    GooglePlayPurchaseRequest(productId, purchaseToken, purchaseOptionId)
-                ) 
+                check(tokenStorage.getUser()?.id == userId) { "Account changed." }
+                val body = GooglePlayPurchaseRequest(productId, purchaseToken, purchaseOptionId)
+                // Raw client: a delayed request must never be retried as another account.
+                var response = refreshApiService.verifyPurchase("Bearer $accessToken", body)
+                if (response.code() == 401 && tokenStorage.getUser()?.id == userId && refreshSession(accessToken).isSuccess && tokenStorage.getUser()?.id == userId) {
+                    accessToken = tokenStorage.getAccessToken() ?: error("Session expired.")
+                    response = refreshApiService.verifyPurchase("Bearer $accessToken", body)
+                }
+                response
             },
             onSuccess = { response ->
-                if (response.ok) {
+                if (tokenStorage.getUser()?.id != userId) {
+                    Result.failure(Exception("Account changed. Reopen the app to restore this purchase."))
+                } else if (response.ok) {
                     Result.success(response)
                 } else {
                     Result.failure(Exception(response.message))
                 }
+            }
+        )
+    }
+
+    suspend fun sendFeedback(request: com.itsdhruvbhardwaj.picme.data.model.FeedbackRequest): Result<Boolean> = authenticatedHistoryCall(
+        call = { authorization -> apiService.sendFeedback(authorization, request) }, extract = { it.ok })
+
+    suspend fun getPurchases(page: Int = 1): Result<PurchaseHistoryResponse> {
+        return authenticatedHistoryCall(
+            call = { authorization: String -> apiService.getPurchases(authorization, page, 20) },
+            extract = { response: PurchaseHistoryResponse -> response }
+        )
+    }
+
+    suspend fun getCreditHistory(page: Int = 1): Result<CreditHistoryResponse> {
+        return authenticatedHistoryCall(
+            call = { authorization: String -> apiService.getCreditHistory(authorization, page, 20) },
+            extract = { response: CreditHistoryResponse -> response }
+        )
+    }
+
+    private suspend fun <T, R> authenticatedHistoryCall(
+        call: suspend (String) -> Response<T>,
+        extract: (T) -> R
+    ): Result<R> {
+        val userId = tokenStorage.getUser()?.id ?: return Result.failure(Exception("session_expired"))
+        var token = tokenStorage.getAccessToken() ?: return Result.failure(Exception("session_expired"))
+        return safeApiCall(
+            call = {
+                check(tokenStorage.getUser()?.id == userId) { "Account changed." }
+                var response = call("Bearer $token")
+                if (response.code() == 401 && tokenStorage.getUser()?.id == userId && refreshSession(token).isSuccess && tokenStorage.getUser()?.id == userId) {
+                    token = tokenStorage.getAccessToken() ?: error("Session expired.")
+                    response = call("Bearer $token")
+                }
+                response
+            },
+            onSuccess = { body ->
+                if (tokenStorage.getUser()?.id != userId) Result.failure(Exception("Account changed."))
+                else Result.success(extract(body))
             }
         )
     }
@@ -383,6 +494,8 @@ class AuthRepository(
                 
                 val errorResponse = try {
                     Gson().fromJson(errorBodyString, ErrorResponse::class.java)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     null
                 }
@@ -411,12 +524,18 @@ class AuthRepository(
             Result.failure(Exception("timeout"))
         } catch (e: IOException) {
             Result.failure(Exception("network_failure"))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    private suspend fun <T> retryIO(
+    private suspend fun <T> retryIO(block: suspend () -> Result<T>): Result<T> =
+        withTimeoutOrNull(35_000) { retryAttempts(block = block) }
+            ?: Result.failure(Exception("timeout"))
+
+    private suspend fun <T> retryAttempts(
         times: Int = 3,
         initialDelay: Long = 1000,
         maxDelay: Long = 5000,

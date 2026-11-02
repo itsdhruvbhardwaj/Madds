@@ -65,7 +65,7 @@ class AuthRepositoryTest {
             val result = repository.refreshSession()
 
             assertTrue(result.isSuccess)
-            verify(tokenStorage).saveTokens(newAccessToken, newRefreshToken)
+            verify(tokenStorage).saveRefreshedTokens(newAccessToken, newRefreshToken)
         }
     }
 
@@ -123,7 +123,7 @@ class AuthRepositoryTest {
             var storageToken = initialToken
             
             `when`(tokenStorage.getRefreshToken()).thenAnswer { storageToken }
-            `when`(tokenStorage.saveTokens(any(), any())).thenAnswer { invocation ->
+            `when`(tokenStorage.saveRefreshedTokens(any(), any())).thenAnswer { invocation ->
                 storageToken = invocation.arguments[1] as String
             }
             `when`(apiService.refreshToken(any())).thenAnswer {
@@ -150,7 +150,7 @@ class AuthRepositoryTest {
         val mockResponse = RewardAttemptResponse(
             ok = true,
             customData = "test_custom_data",
-            expiresAt = 123456789L,
+            expiresAt = "2026-10-30T12:00:00Z",
             message = null,
             error = null
         )
@@ -164,6 +164,7 @@ class AuthRepositoryTest {
 
     @Test
     fun `verifyPurchase sends correct request and returns success`() = runBlocking {
+        `when`(tokenStorage.getUser()).thenReturn(User("user-a", "Tester", "test@example.com", true))
         `when`(tokenStorage.getAccessToken()).thenReturn("test_access_token")
         val mockResponse = PurchaseVerificationResponse(
             ok = true,
@@ -180,10 +181,12 @@ class AuthRepositoryTest {
             authorization = "Bearer test_access_token",
             request = GooglePlayPurchaseRequest("product_id", "token", "option_id")
         )
+        Unit
     }
 
     @Test
     fun `verifyPurchase with error response returns failure`() = runBlocking {
+        `when`(tokenStorage.getUser()).thenReturn(User("user-a", "Tester", "test@example.com", true))
         `when`(tokenStorage.getAccessToken()).thenReturn("test_access_token")
         val errorJson = "{\"ok\":false, \"message\":\"Invalid token\"}"
         val errorResponseBody = errorJson.toResponseBody("application/json".toMediaTypeOrNull())
@@ -192,6 +195,17 @@ class AuthRepositoryTest {
         val result = repository.verifyPurchase("product_id", "token", "option_id")
 
         assertTrue(result.isFailure)
-        assertEquals("Invalid token (400)", result.exceptionOrNull()?.message)
+        assertEquals("invalid_token", result.exceptionOrNull()?.message)
+    }
+
+    @Test
+    fun `late purchase response cannot become success for a different signed in account`() = runBlocking {
+        `when`(tokenStorage.getAccessToken()).thenReturn("access-a")
+        `when`(tokenStorage.getUser()).thenReturn(User("user-a", "A", "a@example.com", true))
+        `when`(apiService.verifyPurchase(any(), any())).thenAnswer {
+            `when`(tokenStorage.getUser()).thenReturn(User("user-b", "B", "b@example.com", true))
+            Response.success(PurchaseVerificationResponse(ok=true, status="credited", creditsGranted=250))
+        }
+        assertTrue(repository.verifyPurchase("product", "token", "option").isFailure)
     }
 }

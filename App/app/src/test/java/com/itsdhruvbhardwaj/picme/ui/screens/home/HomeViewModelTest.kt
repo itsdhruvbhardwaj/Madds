@@ -1,108 +1,97 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.home
 
-import com.itsdhruvbhardwaj.picme.data.model.HomeConfigResponse
-import com.itsdhruvbhardwaj.picme.data.model.HomeSection
-import com.itsdhruvbhardwaj.picme.data.model.StyleResponse
+import com.itsdhruvbhardwaj.picme.data.model.*
 import com.itsdhruvbhardwaj.picme.data.repository.StyleRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.*
 import org.junit.After
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
-import org.mockito.Mock
-import org.mockito.Mockito.`when`
-import org.mockito.MockitoAnnotations
-import org.mockito.kotlin.any
-import org.mockito.kotlin.anyOrNull
-import org.mockito.kotlin.eq
-import org.mockito.kotlin.mock
+import org.mockito.kotlin.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModelTest {
+    private val dispatcher = StandardTestDispatcher()
+    private val repository = mock<StyleRepository>()
+    private val style = Style(id = "one", name = "Portrait")
+    private fun feed(styles: List<Style> = listOf(style)) = HomeConfigResponse(listOf(
+        HomeSection("portraits", "Portraits", "collection", "Portraits", styles = styles)
+    ))
 
-    @Mock
-    private lateinit var styleRepository: StyleRepository
+    @Before fun setup() { Dispatchers.setMain(dispatcher) }
+    @After fun cleanup() { Dispatchers.resetMain() }
 
-    private lateinit var viewModel: HomeViewModel
-    private val testDispatcher = StandardTestDispatcher()
-
-    @Before
-    fun setup() {
-        MockitoAnnotations.openMocks(this)
-        Dispatchers.setMain(testDispatcher)
+    @Test fun `combined feed renders without individual section requests`() = runTest(dispatcher) {
+        whenever(repository.getHomeConfig()).thenReturn(Result.success(feed()))
+        val model = HomeViewModel(repository)
+        advanceUntilIdle()
+        val state = model.uiState.value as HomeUiState.Success
+        assertEquals(listOf(style), state.sections.single().styles)
+        verify(repository, never()).getStyles(any(), any(), anyOrNull(), anyOrNull(), any())
     }
 
-    @After
-    fun tearDown() {
-        Dispatchers.resetMain()
+    @Test fun `cached content stays visible when refresh fails`() = runTest(dispatcher) {
+        whenever(repository.getCachedHome()).thenReturn(feed())
+        whenever(repository.getHomeConfig()).thenReturn(Result.failure(Exception("network_error")))
+        val model = HomeViewModel(repository)
+        assertTrue(model.uiState.value is HomeUiState.Success)
+        advanceUntilIdle()
+        val state = model.uiState.value as HomeUiState.Success
+        assertEquals(listOf(style), state.sections.single().styles)
+        assertNotNull(state.refreshError)
     }
 
-    @Test
-    fun `initial loadHomeData updates state to Success with sections`() = runTest {
-        // Arrange
+    @Test fun `hung request exits skeleton state and can be retried`() = runTest(dispatcher) {
+        whenever(repository.getHomeConfig()).doSuspendableAnswer { awaitCancellation() }
+        val model = HomeViewModel(repository)
+        advanceUntilIdle()
+        assertTrue(model.uiState.value is HomeUiState.Error)
+        doReturn(Result.success(feed())).whenever(repository).getHomeConfig()
+        model.loadHomeData()
+        advanceUntilIdle()
+        assertTrue(model.uiState.value is HomeUiState.Success)
+    }
+
+    @Test fun `empty successful sections leave no loading skeletons`() = runTest(dispatcher) {
+        whenever(repository.getHomeConfig()).thenReturn(Result.success(feed(emptyList())))
+        val model = HomeViewModel(repository)
+        advanceUntilIdle()
+        assertTrue((model.uiState.value as HomeUiState.Success).sections.isEmpty())
+    }
+
+    @Test fun `legacy backend loads section previews and preserves order`() = runTest(dispatcher) {
         val sections = listOf(
-            HomeSection(id = "1", title = "Section 1", type = "collection", slug = "slug1", order = 1),
-            HomeSection(id = "2", title = "Section 2", type = "popular", order = 2)
+            HomeSection("second", "Second", "collection", "Two", order = 2),
+            HomeSection("first", "First", "collection", "One", order = 1)
         )
-        `when`(styleRepository.getHomeConfig()).thenReturn(Result.success(HomeConfigResponse(sections)))
-        
-        // Ensure all possible filter combinations are stubbed to avoid Mockito null defaults
-        `when`(styleRepository.getStyles(any(), any(), anyOrNull(), anyOrNull())).thenReturn(
-            Result.success(StyleResponse(styles = listOf(mock())))
-        )
-
-        // Act
-        viewModel = HomeViewModel(styleRepository)
+        whenever(repository.getHomeConfig()).thenReturn(Result.success(HomeConfigResponse(sections)))
+        whenever(repository.getStyles(any(), any(), anyOrNull(), anyOrNull(), any()))
+            .thenReturn(Result.success(StyleResponse(styles = listOf(style))))
+        val model = HomeViewModel(repository)
         advanceUntilIdle()
-
-        // Assert
-        val state = viewModel.uiState.value
-        assertTrue("Expected Success state but was $state", state is HomeUiState.Success)
-        val successState = state as HomeUiState.Success
-        
-        // Filter empty sections logic might apply, but here we mocked data for all
-        assertEquals(2, successState.sections.size)
-        assertEquals("Section 1", successState.sections[0].config.title)
+        val state = model.uiState.value as HomeUiState.Success
+        assertEquals(listOf("first", "second"), state.sections.map { it.config.id })
+        assertTrue(state.sections.all { it.styles == listOf(style) })
     }
 
-    @Test
-    fun `loadHomeData with config failure updates state to Error`() = runTest {
-        // Arrange
-        `when`(styleRepository.getHomeConfig()).thenReturn(Result.failure(Exception("timeout")))
-
-        // Act
-        viewModel = HomeViewModel(styleRepository)
+    @Test fun `configuration timeout shows actionable error`() = runTest(dispatcher) {
+        whenever(repository.getHomeConfig()).thenReturn(Result.failure(Exception("timeout")))
+        val model = HomeViewModel(repository)
         advanceUntilIdle()
-
-        // Assert
-        val state = viewModel.uiState.value
-        assertTrue(state is HomeUiState.Error)
-        assertTrue((state as HomeUiState.Error).message.contains("timed out"))
+        assertTrue((model.uiState.value as HomeUiState.Error).message.contains("timed out"))
     }
 
-    @Test
-    fun `loadHomeData hides empty sections`() = runTest {
-        // Arrange
-        val sections = listOf(
-            HomeSection(id = "1", title = "Empty Section", type = "collection", slug = "empty", order = 1)
-        )
-        `when`(styleRepository.getHomeConfig()).thenReturn(Result.success(HomeConfigResponse(sections)))
-        `when`(styleRepository.getStyles(any(), any(), anyOrNull(), eq("empty"))).thenReturn(
-            Result.success(StyleResponse(styles = emptyList()))
-        )
-
-        // Act
-        viewModel = HomeViewModel(styleRepository)
+    @Test fun `legacy backend empty sections are hidden`() = runTest(dispatcher) {
+        whenever(repository.getHomeConfig()).thenReturn(Result.success(HomeConfigResponse(listOf(
+            HomeSection("empty", "Empty", "collection", "Empty")
+        ))))
+        whenever(repository.getStyles(any(), any(), anyOrNull(), anyOrNull(), any()))
+            .thenReturn(Result.success(StyleResponse(styles = emptyList())))
+        val model = HomeViewModel(repository)
         advanceUntilIdle()
-
-        // Assert
-        val state = viewModel.uiState.value
-        assertTrue(state is HomeUiState.Success)
-        val successState = state as HomeUiState.Success
-        // The section should be removed because it has no styles
-        assertEquals(0, successState.sections.size)
+        assertTrue((model.uiState.value as HomeUiState.Success).sections.isEmpty())
     }
 }

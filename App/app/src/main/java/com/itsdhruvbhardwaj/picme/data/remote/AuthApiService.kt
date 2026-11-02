@@ -7,8 +7,27 @@ import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.Query
+import retrofit2.http.PATCH
+import retrofit2.http.Multipart
+import retrofit2.http.Part
+import okhttp3.MultipartBody
 
 interface AuthApiService {
+    @POST("api/feedback")
+    suspend fun sendFeedback(@Header("Authorization") authorization: String, @Body request: FeedbackRequest): Response<FeedbackResponse>
+
+    @PATCH("api/profile/appearance")
+    suspend fun updateProfileAppearance(
+        @Header("Authorization") authorization: String,
+        @Body request: ProfileAppearanceRequest
+    ): Response<UserResponse>
+
+    @Multipart
+    @POST("api/profile/photo")
+    suspend fun uploadProfilePhoto(
+        @Header("Authorization") authorization: String,
+        @Part image: MultipartBody.Part
+    ): Response<UserResponse>
 
     @POST("api/auth/register")
     suspend fun register(
@@ -104,4 +123,10 @@ interface AuthApiService {
         @Header("Authorization") authorization: String,
         @Body request: GooglePlayPurchaseRequest
     ): Response<PurchaseVerificationResponse>
+
+    @GET("api/me/purchases")
+    suspend fun getPurchases(@Header("Authorization") authorization: String, @Query("page") page: Int = 1, @Query("limit") limit: Int = 20): Response<PurchaseHistoryResponse>
+
+    @GET("api/me/credit-history")
+    suspend fun getCreditHistory(@Header("Authorization") authorization: String, @Query("page") page: Int = 1, @Query("limit") limit: Int = 20): Response<CreditHistoryResponse>
 }

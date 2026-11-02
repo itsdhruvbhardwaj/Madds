@@ -88,3 +88,12 @@ sealed interface PasswordSetupState {
     data object Verified : PasswordSetupState
     data class Error(val message: String) : PasswordSetupState
 }
+
+/** Settings actions must not replace the signed-in account's auth state. */
+sealed interface PasswordResetEmailState {
+    data object Idle : PasswordResetEmailState
+    data object Sending : PasswordResetEmailState
+    data object PasswordRequired : PasswordResetEmailState
+    data class Sent(val message: String) : PasswordResetEmailState
+    data class Error(val message: String) : PasswordResetEmailState
+}

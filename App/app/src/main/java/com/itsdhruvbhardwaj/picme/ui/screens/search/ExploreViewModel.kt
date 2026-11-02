@@ -68,12 +68,17 @@ class ExploreViewModel(
         loadFirstPage(currentQuery, debounce = false)
     }
 
-    private fun loadFirstPage(query: String, debounce: Boolean) {
+    fun refresh(): Job = viewModelScope.launch {
+        launch { styleRepository.getCollections().onSuccess { _collections.value = it } }
+        loadFirstPage(currentQuery, debounce = false).join()
+    }
+
+    private fun loadFirstPage(query: String, debounce: Boolean): Job {
         searchJob?.cancel()
         val requestGeneration = ++generation
         currentPage = 0
         isLoadingMore = false
-        searchJob = viewModelScope.launch {
+        val job = viewModelScope.launch {
             if (debounce) delay(SEARCH_DEBOUNCE_MS)
             _uiState.value = ExploreUiState.Loading
             val result = styleRepository.getStyles(
@@ -97,6 +102,8 @@ class ExploreViewModel(
                 }
             )
         }
+        searchJob = job
+        return job
     }
 
     fun loadNextPage() {
