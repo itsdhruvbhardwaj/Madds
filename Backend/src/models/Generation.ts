@@ -47,11 +47,16 @@ const GenerationSchema = new Schema(
     viewedAt: Date,
     appReceivedAt: Date,
     resultFetchedAt: Date,
+    serviceNotificationStatus: String,
+    // Only newly created operations opt into service delivery. Do not send
+    // surprise notifications for historical generations during deployment.
+    serviceNotificationsEnabled: { type: Boolean, default: true },
   },
   { timestamps: true },
 );
 
 GenerationSchema.index({ userId: 1, createdAt: -1 });
+GenerationSchema.index({ status: 1, createdAt: 1 });
 GenerationSchema.index(
   { userId: 1, idempotencyKeyHash: 1 },
   { unique: true, partialFilterExpression: { idempotencyKeyHash: { $type: "string" } } },

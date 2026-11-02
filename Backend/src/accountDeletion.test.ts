@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("./models/GenerationNotification.js", () => ({ GenerationNotification: { deleteMany: vi.fn().mockResolvedValue({ deletedCount: 0 }) } }));
 vi.mock("./models/GenerationResult.js", () => ({ GenerationResult: { deleteMany: vi.fn().mockResolvedValue({ deletedCount: 0 }) } }));
 vi.mock("./models/Feedback.js", () => ({ Feedback: { deleteMany: vi.fn().mockResolvedValue({ deletedCount: 0 }) } }));
 

@@ -44,3 +44,28 @@ account: submit, leave the screen, disconnect/reconnect, restart the app, open
 the ready shortcut, and confirm exactly one generation debit. Also verify
 intentional Generate Again, confirmed failure/refund, account switching, and
 expiry. No test should invoke the paid provider without explicit authorization.
+
+## Service notifications
+
+New operations opt into account-bound result delivery through a durable,
+per-generation/per-device outbox. The existing web notification processor (or
+optional worker) drains it while awake. It retries FCM delivery only, never paid
+image generation. These service messages do not use promotional category opt-ins
+or cooldowns. They still require device permission, current device binding,
+an active session, and an active verified account. Old generation records are
+not opted into delivery retrospectively. Viewed or expired results are skipped.
+Account deletion also removes queued service notifications.
+
+Android uses quiet channels for generation progress and result download/gallery
+saving, and a high-importance channel for results. Ready alerts and Studio
+messages are eligible for heads-up display, subject to device settings and Do
+Not Disturb. Existing Studio channels retain their original Android settings;
+the Notifications settings page links directly to their pop-up settings.
+No existing channel IDs are replaced to bypass user choices.
+
+Result alert taps resolve only within the signed-in owning account and retrieve
+the existing recovery copy without spending credits. Per-operation display
+markers prevent FCM retries or foreground status refreshes from re-alerting a
+finished operation. Account changes remove old service notifications. Progress
+uses an indeterminate indicator because the image provider supplies no reliable
+percentage. Download notifications expire if the app is interrupted mid-transfer.

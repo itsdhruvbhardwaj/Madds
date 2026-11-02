@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ firebase: vi.fn(), tick: vi.fn() }));
+const mocks = vi.hoisted(() => ({ firebase: vi.fn(), tick: vi.fn(), generation: vi.fn() }));
 vi.mock("../../config/firebase.js", () => ({ getNotificationFirebaseApp: mocks.firebase }));
 vi.mock("./notification.service.js", () => ({ notificationService: { tick: mocks.tick } }));
+vi.mock("../../services/generationNotifications.js", () => ({ processGenerationNotifications: mocks.generation }));
 import { startWebNotificationProcessor } from "./notification.web.js";
 
 describe("notification processing on free web hosting", () => {
@@ -18,12 +19,20 @@ describe("notification processing on free web hosting", () => {
     vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllEnvs(); vi.restoreAllMocks();
   });
   it.each([
-    ["false", "web"], ["true", "worker"], ["true", ""],
+    ["true", "worker"], ["true", ""],
   ])("leaves jobs untouched with delivery=%s and mode=%s", (enabled, mode) => {
     vi.stubEnv("NOTIFICATION_DELIVERY_ENABLED", enabled);
     vi.stubEnv("NOTIFICATION_PROCESSOR_MODE", mode);
     expect(startWebNotificationProcessor()).toBeUndefined();
     expect(mocks.firebase).not.toHaveBeenCalled(); expect(mocks.tick).not.toHaveBeenCalled();
+  });
+  it("keeps service notifications working while promotional delivery is paused", async () => {
+    vi.stubEnv("NOTIFICATION_DELIVERY_ENABLED", "false");
+    const stop = startWebNotificationProcessor()!;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.tick).not.toHaveBeenCalled();
+    expect(mocks.generation).toHaveBeenCalledOnce();
+    await stop();
   });
   it("validates credentials before claiming any jobs", () => {
     mocks.firebase.mockImplementation(() => { throw new Error("Not configured"); });

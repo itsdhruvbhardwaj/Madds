@@ -23,6 +23,7 @@ import { feedbackRouter } from "./routes/feedback.js";
 import { generationRecoveryRouter } from "./routes/generationRecovery.js";
 import { saveGenerationResult } from "./services/generationRecovery.js";
 import { GenerationResult } from "./models/GenerationResult.js";
+import { GenerationNotification } from "./models/GenerationNotification.js";
 import { adminCatalogRouter } from "./routes/adminCatalog.js";
 import { adminUsersRouter } from "./routes/adminUsers.js";
 import { favoritesRouter } from "./routes/favorites.js";
@@ -564,6 +565,7 @@ if (isDirectExecution) {
         await Promise.all([
           Generation.init(),
           GenerationResult.init(),
+          GenerationNotification.init(),
           CreditTransaction.init(),
           FavoriteStyle.init(),
           RewardedAdAttempt.init(),
