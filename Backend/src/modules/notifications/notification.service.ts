@@ -9,7 +9,8 @@ import { StyleCollection } from "../../models/StyleCollection.js";
 import { hasActiveNotificationSession } from "../../services/notificationEligibility.js";
 import { getCatalogStyle } from "../../services/styles/catalog.js";
 import { NotificationCampaign, NotificationLog, NotificationUserGate, initializeNotificationModels } from "./notification.models.js";
-import { DAY, deliveryEnabled, type CampaignInput } from "./notification.types.js";
+import { DAY, deliveryEnabled, notificationCooldownHours, type CampaignInput } from "./notification.types.js";
+import { personalizeNotification } from "./notification.personalization.js";
 
 const LEASE_MS = 10 * 60_000;
 const BATCH_SIZE = 25;
@@ -58,9 +59,10 @@ export function retryDecision(code: string, attempts: number, firstAttemptAt: Da
     delayMs: Math.min(15 * 60_000, 60_000 * 2 ** Math.max(0, attempts - 1)) + Math.floor(Math.random() * 15_000) };
 }
 
-export function buildPushMessage(campaign: any, log: any, device: any): Message {
+export function buildPushMessage(campaign: any, log: any, device: any, name?: unknown): Message {
+  const personalized = personalizeNotification(campaign.title, campaign.body, name);
   const data: Record<string, string> = {
-    title: campaign.title, body: campaign.body, type: campaign.notificationType, category: campaign.category,
+    title: personalized.title, body: personalized.body, type: campaign.notificationType, category: campaign.category,
     campaignId: String(campaign._id), deliveryId: String(log._id), recipientUserId: String(log.userId),
     bindingVersion: String(log.bindingVersion), deepLink: campaign.deepLink,
   };
@@ -83,7 +85,7 @@ export class NotificationService {
     }
     return { scannedDevices: Math.min(100, devices.length), eligibleDevicesInSample: eligibleDevices,
       hasMoreDevices: devices.length > 100, deliveryEnabled: deliveryEnabled(),
-      note: "Eligibility sample, before cooldown; audience and preferences are rechecked at send time." };
+      note: notificationCooldownHours() > 0 ? "Eligibility sample, before cooldown; audience and preferences are rechecked at send time." : "Testing cooldown is off; audience and preferences are rechecked at send time." };
   }
 
   async stats(campaignId: string) {
@@ -147,6 +149,7 @@ export class NotificationService {
 
       const logs: any[] = [];
       const messages: Message[] = [];
+      const recipientNames = new Map<string, unknown>();
       for (let index = 0; index < BATCH_SIZE; index++) {
         if (!await NotificationCampaign.exists({ ...claim, leaseUntil: { $gt: new Date() } }) || !deliveryEnabled()) break;
         const log = await NotificationLog.findOneAndUpdate({ campaignId: campaign._id,
@@ -162,8 +165,8 @@ export class NotificationService {
         const device = await DeviceToken.findOne({ _id: log.deviceTokenId, userId: log.userId, sessionId: log.sessionId,
           bindingVersion: log.bindingVersion }).select("+fcmToken").lean();
         let skip = !device || !await eligible(campaign, device, campaign.recipientCutoffAt);
-        if (!skip) {
-          const hours = Math.min(168, Math.max(1, Number(process.env.NOTIFICATION_COOLDOWN_HOURS) || 6));
+        const hours = notificationCooldownHours();
+        if (!skip && hours > 0) {
           try {
             await NotificationUserGate.findOneAndUpdate({ userId: log.userId,
               $or: [{ campaignId: campaign._id }, { nextAllowedAt: { $lte: new Date() } }] },
@@ -180,7 +183,16 @@ export class NotificationService {
           }, $unset: { leaseOwner: 1, leaseUntil: 1 } });
           continue;
         }
-        logs.push(log); messages.push(buildPushMessage(campaign, log, device));
+        let name: unknown;
+        if (campaign.title.includes("{firstName}") || campaign.body.includes("{firstName}")) {
+          const userId = String(log.userId);
+          if (!recipientNames.has(userId)) {
+            const recipient = await User.findById(log.userId).select("name").lean();
+            recipientNames.set(userId, recipient?.name);
+          }
+          name = recipientNames.get(userId);
+        }
+        logs.push(log); messages.push(buildPushMessage(campaign, log, device, name));
       }
       if (messages.length && deliveryEnabled() && await NotificationCampaign.exists({ ...claim, leaseUntil: { $gt: new Date() } })) {
         // Narrow the account-switch/cancellation window immediately before the batch.

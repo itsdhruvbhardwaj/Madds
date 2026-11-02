@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   claim: vi.fn(), campaignExists: vi.fn(), campaignUpdate: vi.fn(),
   logClaim: vi.fn(), logUpdate: vi.fn(), aggregate: vi.fn(), logNext: vi.fn(),
-  deviceFind: vi.fn(), devicePage: vi.fn(), deviceUpdate: vi.fn(), gate: vi.fn(), active: vi.fn(), user: vi.fn(), sendEach: vi.fn(), init: vi.fn(),
+  deviceFind: vi.fn(), devicePage: vi.fn(), deviceUpdate: vi.fn(), gate: vi.fn(), active: vi.fn(), user: vi.fn(), name: vi.fn(), sendEach: vi.fn(), init: vi.fn(),
 }));
 vi.mock("./notification.models.js", () => ({ initializeNotificationModels: mocks.init,
   NotificationCampaign: { findOneAndUpdate: mocks.claim, exists: mocks.campaignExists, updateOne: mocks.campaignUpdate },
@@ -14,7 +14,7 @@ vi.mock("../../models/DeviceToken.js", () => ({ DeviceToken: {
   find: () => ({ sort: () => ({ limit: () => ({ lean: mocks.devicePage }) }) }),
   findOne: () => ({ select: () => ({ lean: mocks.deviceFind }), lean: mocks.deviceFind }), updateOne: mocks.deviceUpdate,
 } }));
-vi.mock("../../models/User.js", () => ({ User: { exists: mocks.user } }));
+vi.mock("../../models/User.js", () => ({ User: { exists: mocks.user, findById: (id: unknown) => ({ select: () => ({ lean: () => mocks.name(id) }) }) } }));
 vi.mock("../../services/notificationEligibility.js", () => ({ hasActiveNotificationSession: mocks.active }));
 vi.mock("../../config/firebase.js", () => ({ getNotificationMessaging: () => ({ sendEach: mocks.sendEach }) }));
 import { NotificationService } from "./notification.service.js";
@@ -62,8 +62,22 @@ describe("persistent notification delivery worker", () => {
     expect(mocks.logUpdate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ $set: expect.objectContaining({ status: "SKIPPED" }) }));
   });
   it("respects user-wide cooldown reservations across concurrent campaigns", async () => {
+    vi.stubEnv("NOTIFICATION_COOLDOWN_ENABLED", "true");
     mocks.gate.mockRejectedValue({ code: 11000 }); mocks.aggregate.mockResolvedValue([{ _id: "SKIPPED", count: 1 }]);
     await new NotificationService().tick(); expect(mocks.sendEach).not.toHaveBeenCalled();
+  });
+  it("bypasses existing cooldown gates in testing without bypassing recipient eligibility", async () => {
+    vi.stubEnv("NOTIFICATION_COOLDOWN_ENABLED", "false");
+    mocks.gate.mockRejectedValue({ code: 11000 });
+    await new NotificationService().tick();
+    expect(mocks.gate).not.toHaveBeenCalled(); expect(mocks.sendEach).toHaveBeenCalledOnce();
+  });
+  it("resolves profile names only for the actual recipient at delivery", async () => {
+    mocks.claim.mockResolvedValue({ ...campaign, title: "Hi {firstName}!" });
+    mocks.name.mockResolvedValue({ name: "Mineral Sharma" });
+    await new NotificationService().tick();
+    expect(mocks.name).toHaveBeenCalledWith(log.userId);
+    expect(mocks.sendEach.mock.calls[0][0][0].data.title).toBe("Hi Mineral!");
   });
   it("rechecks account binding immediately before sending", async () => {
     mocks.deviceFind.mockResolvedValueOnce(device).mockResolvedValue(null);

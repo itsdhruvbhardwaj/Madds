@@ -5,7 +5,8 @@ import { requireAuth, type AuthenticatedRequest } from "../../middleware/auth.js
 import { catalogDatabaseReady } from "../../services/styles/catalog.js";
 import { cloudinaryIsConfigured, createNotificationImageUploadSignature } from "../../services/cloudinaryAssets.js";
 import { NotificationCampaign, NotificationLog, initializeNotificationModels } from "./notification.models.js";
-import { deliveryEnabled } from "./notification.types.js";
+import { deliveryEnabled, notificationCooldownHours } from "./notification.types.js";
+import { personalizeNotification } from "./notification.personalization.js";
 import { notificationService, validateDestination } from "./notification.service.js";
 import { validateCampaign, validateSchedule } from "./notification.validation.js";
 
@@ -45,7 +46,7 @@ router.get("/", async (req, res) => {
   const campaigns = await NotificationCampaign.find(cursor ? { _id: { $lt: cursor } } : {})
     .sort({ _id: -1 }).limit(26).lean();
   return res.json({ ok: true, campaigns: campaigns.slice(0, 25),
-    nextCursor: campaigns.length > 25 ? String(campaigns[24]._id) : null, deliveryEnabled: deliveryEnabled() });
+    nextCursor: campaigns.length > 25 ? String(campaigns[24]._id) : null, deliveryEnabled: deliveryEnabled(), cooldownHours: notificationCooldownHours() });
 });
 
 router.get("/:id", async (req, res) => {
@@ -77,7 +78,7 @@ router.post("/:id/preview", async (req, res) => {
   const campaign = await NotificationCampaign.findById(req.params.id).lean();
   if (!campaign) return res.status(404).json({ ok: false, error: "Notification not found." });
   await validateDestination(campaign);
-  return res.json({ ok: true, preview: { title: campaign.title, body: campaign.body,
+  return res.json({ ok: true, preview: { ...personalizeNotification(campaign.title, campaign.body, req.body?.previewName),
     imageUrl: campaign.imageUrl, deepLink: campaign.deepLink }, audience: await notificationService.preview(campaign) });
 });
 

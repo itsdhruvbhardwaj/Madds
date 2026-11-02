@@ -69,3 +69,20 @@ markers prevent FCM retries or foreground status refreshes from re-alerting a
 finished operation. Account changes remove old service notifications. Progress
 uses an indeterminate indicator because the image provider supplies no reliable
 percentage. Download notifications expire if the app is interrupted mid-transfer.
+
+## Studio personalized messages and testing cooldown
+
+Use `{firstName}` in a notification title or body. Studio offers insertion buttons
+and a sample-name preview; delivery resolves the recipient's own profile name.
+The first word is used, capped at 24 characters, with `there` as fallback.
+Expanded titles/messages are limited to Android's existing 120/500-character
+contract. Unsupported placeholders are rejected. Preview names are not saved
+as notification content and never determine another user's greeting.
+
+Promotional notification cooldown is disabled by default for current testing.
+Existing gate reservations are ignored, not deleted. To restore it before
+production, set `NOTIFICATION_COOLDOWN_ENABLED=true` and
+`NOTIFICATION_COOLDOWN_HOURS=6` (or another desired number); zero hours disables
+it. Per-notification/per-device deduplication, audience checks, opt-outs, device
+permission and session checks remain enforced. Create a new notification for
+each repeat test; completed deliveries are not resent automatically.

@@ -13,3 +13,10 @@ export interface CampaignInput {
 }
 export const DAY = 86_400_000;
 export const deliveryEnabled = () => process.env.NOTIFICATION_DELIVERY_ENABLED === "true";
+// Testing default: deliberately ignore existing gate records and HOURS until
+// explicitly re-enabled. This does not disable per-delivery idempotency.
+export function notificationCooldownHours(): number {
+  if (process.env.NOTIFICATION_COOLDOWN_ENABLED !== "true") return 0;
+  const hours = Number(process.env.NOTIFICATION_COOLDOWN_HOURS ?? 6);
+  return Number.isFinite(hours) ? Math.min(168, Math.max(0, hours)) : 6;
+}

@@ -18,9 +18,17 @@
     if (!Number.isFinite(date.getTime()) || roundtrip !== value || date.getTime() <= now || date.getTime() > now + 365 * 86400000) throw new Error("Choose a valid future time within one year.");
     return date.toISOString();
   }
+  const validTemplate = text => !/[{}]/u.test(text.split("{firstName}").join(""));
+  const truncate = (text, limit) => text.slice(0, limit).replace(/[\uD800-\uDBFF]$/u, "");
+  function personalizedPreview(title, body, value) {
+    const clean = String(value ?? "").replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/gu, " ").trim();
+    const name = truncate(clean.split(/\s+/u)[0] || "there", 24);
+    return { title: truncate(title.split("{firstName}").join(name), 120), body: truncate(body.split("{firstName}").join(name), 500) };
+  }
   function buildDraft(values) {
     const title = values.title.trim(), body = values.body.trim();
     if (!title || title.length > 120 || !body || body.length > 500) throw new Error("Enter a title and message within the character limits.");
+    if (!validTemplate(title) || !validTemplate(body)) throw new Error("Use {firstName} for personalization. Other placeholders are not supported.");
     if (!Object.hasOwn(types, values.notificationType) || !Object.hasOwn(labels, values.targetAudience)) throw new Error("Choose a category and audience.");
     const userIds = [...new Set(values.userIds.split(/[\s,]+/).filter(Boolean))];
     if (values.targetAudience === "SPECIFIC_USERS" && (!userIds.length || userIds.length > 1000 || userIds.some((id) => !/^[0-9a-f]{24}$/i.test(id)))) throw new Error("Enter 1 to 1,000 valid user IDs, separated by commas or new lines.");
@@ -78,7 +86,7 @@
     const base = "/api/admin/notifications";
     let campaigns = [], nextCursor = null, selected = null, enabled = false, available = false;
     let busy = false, loading = false, epoch = 0, selection = 0, baseline = "", dirty = false;
-    let stats = null, logs = [], logCursor = null, review = null;
+    let stats = null, logs = [], logCursor = null, review = null, cooldownHours = 0;
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const options = (map, current) => Object.entries(map).map(([value, label]) => `<option value="${escape(value)}" ${current === value ? "selected" : ""}>${escape(label)}</option>`).join("");
     const error = (message = "") => { $("push-error").textContent = message; };
@@ -124,8 +132,9 @@
     function livePreview() {
       if (!$("push-form")) return;
       const form = $("push-form");
-      $("push-preview-title").textContent = form.elements.title.value || "Your notification title";
-      $("push-preview-body").textContent = form.elements.body.value || "Your message will appear here.";
+      const preview = personalizedPreview(form.elements.title.value || "Your notification title", form.elements.body.value || "Your message will appear here.", $("push-preview-name")?.value);
+      $("push-preview-title").textContent = preview.title;
+      $("push-preview-body").textContent = preview.body;
       $("push-title-count").textContent = `${form.elements.title.value.length}/120`;
       $("push-body-count").textContent = `${form.elements.body.value.length}/500`;
     }
@@ -158,11 +167,13 @@
           <div class="push-two-fields"><label>Category<select name="notificationType">${options(types, item.notificationType || "PRODUCT_UPDATE")}</select></label><label>Audience<select name="targetAudience">${options(labels, item.targetAudience || "ALL_USERS")}</select></label></div>
           <label id="push-users-field" hidden>User IDs<textarea name="userIds" rows="3" placeholder="Separate IDs with commas or new lines">${escape((item.targetConditions?.userIds || []).join("\n"))}</textarea><small class="field-hint">Use account IDs, not email addresses. Maximum 1,000.</small></label>
           <label id="push-days-field" hidden>Days without a completed creation<input name="recentDays" type="number" min="1" max="365" value="${escape(item.targetConditions?.recentDays || 7)}"></label>
-          <label>Title <span id="push-title-count" class="field-hint"></span><input name="title" maxlength="120" value="${escape(item.title)}" required></label>
-          <label>Message <span id="push-body-count" class="field-hint"></span><textarea name="body" maxlength="500" rows="3" required>${escape(item.body)}</textarea></label>
+          <label>Title <span id="push-title-count" class="field-hint"></span><input name="title" maxlength="120" value="${escape(item.title)}" required><button type="button" class="button secondary" data-personalize="title">Insert first name</button></label>
+          <label>Message <span id="push-body-count" class="field-hint"></span><textarea name="body" maxlength="500" rows="3" required>${escape(item.body)}</textarea><button type="button" class="button secondary" data-personalize="body">Insert first name</button></label>
           <div class="push-two-fields"><label>Open when tapped<select name="destination">${options({ home: "Home", style: "A published style", collection: "A collection" }, item.relatedStyleId ? "style" : item.collectionId ? "collection" : "home")}</select></label><label id="push-style-field" hidden>Style<select name="styleId"></select></label><label id="push-collection-field" hidden>Collection<select name="collectionId"></select></label></div>
           <label>Notification image <span class="field-hint">Optional · JPG, PNG, or WebP · compressed to 300 KB</span><input name="imageUrl" type="hidden" value="${escape(item.imageUrl)}"><div class="image-upload-row"><input id="push-image-file" type="file" accept="image/jpeg,image/png,image/webp"><button id="push-image-upload" type="button" class="button secondary">Upload image</button><span id="push-image-status" class="field-hint">${item.imageUrl ? "Image uploaded" : "No image selected"}</span></div></label>
         </fieldset>
+        <label>Preview name<input id="push-preview-name" maxlength="80" value="Thrope"><small class="field-hint">Preview only. Recipients use their own profile first name, or "there" if missing. Use {firstName} in your title or message.</small></label>
+        <p id="push-cooldown-state" class="field-hint">${cooldownHours ? `Notification cooldown: ${cooldownHours} hours.` : "Testing mode: notification cooldown is off."}</p>
         <div class="push-phone-preview" aria-label="Notification preview"><span class="push-app-name">madds · now</span><strong id="push-preview-title"></strong><p id="push-preview-body"></p><img id="push-preview-image" alt="Notification image preview" referrerpolicy="no-referrer" hidden><small>Preview · Appearance varies by device</small></div>
         <p class="field-hint">Only users who allow this category and device notifications are eligible. Inactivity audiences exclude unknown activity.</p>
         <div class="push-actions">${draft ? '<button id="push-save" class="button primary" type="submit">Save draft</button><button id="push-clear" class="delete-button" type="button">Clear draft</button>' : ""}<button id="push-preview" class="button secondary" type="button">Check audience</button></div>
@@ -172,6 +183,13 @@
         </form><div id="push-stats"></div><div id="push-logs"></div>`;
       catalogChanged(); conditionalFields(); livePreview();
       baseline = JSON.stringify(values()); dirty = false; updateDirty(); renderDetails();
+      $("push-form").querySelectorAll("[data-personalize]").forEach(button => button.addEventListener("click", () => {
+        const field = $("push-form").elements[button.dataset.personalize];
+        const start = field.selectionStart ?? field.value.length, end = field.selectionEnd ?? start;
+        const next = field.value.slice(0, start) + "{firstName}" + field.value.slice(end);
+        if (next.length > field.maxLength) { error("Make room for the first-name placeholder within the character limit."); return; }
+        field.value = next; field.focus(); field.setSelectionRange(start + 11, start + 11); updateDirty();
+      }));
       $("push-form").addEventListener("input", updateDirty);
       $("push-form").addEventListener("change", () => { conditionalFields(); updateDirty(); });
       function imagePreview() {
@@ -245,7 +263,7 @@
       try {
         const data = await api(`${base}${more && nextCursor ? `?cursor=${encodeURIComponent(nextCursor)}` : ""}`);
         if (session !== epoch) return;
-        available = true; enabled = data.deliveryEnabled === true;
+        available = true; enabled = data.deliveryEnabled === true; cooldownHours = Number(data.cooldownHours) || 0;
         campaigns = more ? [...new Map([...campaigns, ...(data.campaigns || [])].map((item) => [item._id, item])).values()] : data.campaigns || [];
         nextCursor = data.nextCursor; renderHistory();
       } catch (failure) { if (session === epoch) { available = false; enabled = false; error(`Could not load notifications: ${failure.message}`); renderHistory(); } }
@@ -277,10 +295,10 @@
       if (busy || !selected || dirty) return;
       busy = true; updateActions(); error(); const ticket = selection, session = epoch;
       try {
-        const result = await api(`${base}/${selected._id}/preview`, { method: "POST" });
+        const result = await api(`${base}/${selected._id}/preview`, { method: "POST", body: JSON.stringify({ previewName: $("push-preview-name")?.value || "" }) });
         if (ticket !== selection || session !== epoch) return;
         const sample = result.audience;
-        $("push-audience-result").textContent = `${sample.eligibleDevicesInSample} eligible devices among ${sample.scannedDevices} checked${sample.hasMoreDevices ? "; more devices are available" : ""}. This is a sample before cooldown. Eligibility is checked again when sending.`;
+        $("push-audience-result").textContent = `${sample.eligibleDevicesInSample} eligible devices among ${sample.scannedDevices} checked${sample.hasMoreDevices ? "; more devices are available" : ""}. Eligibility and notification preferences are checked again when sending.`;
       } catch (failure) { if (session === epoch) error(failure.message); }
       finally { if (session === epoch) { busy = false; updateActions(); } }
     }
@@ -372,7 +390,7 @@
     window.addEventListener("beforeunload", (event) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } });
     return { refresh, reset, catalogChanged };
   }
-  const exported = { create, buildDraft, localSchedule };
+  const exported = { create, buildDraft, localSchedule, personalizedPreview };
   if (typeof module !== "undefined" && module.exports) module.exports = exported;
   else window.MaddsNotifications = exported;
 })();

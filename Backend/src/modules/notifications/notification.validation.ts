@@ -1,4 +1,5 @@
 import { audiences, notificationTypes, type CampaignInput } from "./notification.types.js";
+import { validNotificationTemplate } from "./notification.personalization.js";
 
 const slug = /^[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$/;
 export function validateCampaign(input: unknown): CampaignInput {
@@ -7,7 +8,7 @@ export function validateCampaign(input: unknown): CampaignInput {
   if (!value || typeof value !== "object" || Array.isArray(value)) return bad();
   const title = typeof value.title === "string" ? value.title.trim() : "";
   const body = typeof value.body === "string" ? value.body.trim() : "";
-  if (!title || title.length > 120 || !body || body.length > 500 ||
+  if (!title || title.length > 120 || !body || body.length > 500 || !validNotificationTemplate(title) || !validNotificationTemplate(body) ||
       !Object.hasOwn(notificationTypes, value.notificationType ?? "") ||
       !audiences.includes(value.targetAudience)) return bad();
   const type = value.notificationType as keyof typeof notificationTypes;
