@@ -2,17 +2,24 @@
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const date = v => v ? new Date(v).toLocaleString() : "â€”";
   function generationDetails(r) {
-    const lines = [`Request: ${r._id || "—"}`];
+    const lines = [`Request: ${r._id || "â€”"}`];
     if (r.failureReason && r.status !== "completed") lines.push(r.failureReason);
     if (r.failureCode) lines.push(`Reason code: ${r.failureCode}`);
     if (r.failureStage) lines.push(`Stage: ${r.failureStage}`);
     if (r.providerName || r.providerModel) lines.push(`Provider: ${[r.providerName, r.providerModel].filter(Boolean).join(" / ")}`);
     if (r.providerHttpStatus) lines.push(`HTTP: ${r.providerHttpStatus}`);
+    if (r.providerErrorMessage) lines.push(`Endpoint explanation: ${r.providerErrorMessage}`);
+    if (r.providerUpstreamMessage) lines.push(`Upstream explanation: ${r.providerUpstreamMessage}`);
+    if (r.providerUpstreamCode) lines.push(`Upstream code: ${r.providerUpstreamCode}`);
+    if (r.providerReportedName) lines.push(`Reported upstream: ${r.providerReportedName}`);
+    if (r.providerErrorParameter) lines.push(`Rejected parameter: ${r.providerErrorParameter}`);
+    if (r.providerRequestSummary) lines.push(`Request settings: ${r.providerRequestSummary}`);
+    if (r.providerHttpStatus && !r.providerErrorMessage && !r.providerUpstreamMessage) lines.push("Detailed explanation was not recorded for this request.");
     if (r.providerErrorCode) lines.push(`Provider code: ${r.providerErrorCode}`);
     if (r.providerRequestId) lines.push(`Provider reference: ${r.providerRequestId}`);
     if (Number.isFinite(r.providerDurationMs)) lines.push(`Provider duration: ${(r.providerDurationMs / 1000).toFixed(1)}s`);
     if (r.failureRecordedAt) lines.push(`Failure recorded: ${date(r.failureRecordedAt)}`);
-    lines.push(r.refundedAt ? `Credits refunded: ${date(r.refundedAt)}` : r.status === "failed" ? "Failed; check credit history for refund confirmation" : r.status === "outcome_unknown" ? "Credits held — provider outcome requires verification" : `${r.creditsCost ?? "—"} credits reserved/charged`);
+    lines.push(r.refundedAt ? `Credits refunded: ${date(r.refundedAt)}` : r.status === "failed" ? "Failed; check credit history for refund confirmation" : r.status === "outcome_unknown" ? "Credits held â€” provider outcome requires verification" : `${r.creditsCost ?? "â€”"} credits reserved/charged`);
     return lines.join("\n");
   }
   function generationRecovery(r) {

@@ -1,5 +1,6 @@
 import { env } from "../../config/env.js";
 import { diagnosticToken } from "../generationDiagnostics.js";
+import { extractProviderError, readProviderError, sanitizeProviderText } from "../providerErrorDiagnostics.js";
 import type { GeneratedImage, GenerationProvider, UploadedImage } from "../../types/generation.js";
 
 type OpenRouterImageResponse = {
@@ -75,12 +76,18 @@ export class OpenRouterImageGenerator implements GenerationProvider {
 
       if (!response.ok) {
         const error = new OpenRouterRequestError(response.status);
-        error.providerRequestId = diagnosticToken(response.headers?.get("x-request-id") || response.headers?.get("request-id"));
-        // Inspect upstream text only to classify; never store the text itself.
-        const body = await response.json().catch(() => null) as any;
-        const upstream = body?.error;
-        error.providerCode = diagnosticToken(typeof upstream?.code === "number" ? String(upstream.code) : upstream?.code);
-        if (/moderation|content.policy|safety.filter/i.test(String(upstream?.message || ""))) error.reasonCategory = "content";
+        const privateTexts = [input.prompt, env.openRouterApiKey, ...input.images.map(image => image.originalname)];
+        const details = extractProviderError(await readProviderError(response), privateTexts);
+        const headerReference = response.headers?.get("x-request-id") || response.headers?.get("request-id") || response.headers?.get("x-openrouter-request-id");
+        Object.assign(error, details, {
+          providerRequestId: extractProviderError({ request_id: headerReference }, privateTexts).providerRequestId || details.providerRequestId,
+          providerRequestSummary: sanitizeProviderText(JSON.stringify({
+            quality: env.openRouterImageModel === "openai/gpt-image-2.5-sunburst" ? env.openRouterImageQuality : undefined,
+            resolution: env.openRouterImageModel !== "openai/gpt-image-2.5-sunburst" ? input.resolution ?? env.openRouterImageResolution : undefined,
+            aspectRatio: input.aspectRatio ?? env.openRouterImageAspectRatio,
+            images: input.images.map(image => ({ mimeType: image.mimetype, bytes: image.buffer?.length || 0 }))
+          }), privateTexts, 1000)
+        });
         throw error;
       }
 

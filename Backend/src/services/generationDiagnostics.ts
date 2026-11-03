@@ -4,8 +4,8 @@ export function diagnosticToken(value: unknown): string | undefined {
   return typeof value === "string" && /^[a-zA-Z0-9_.:-]{1,120}$/.test(value) ? value : undefined;
 }
 
-// Never persist provider messages, prompts, image data, URLs or authorization.
-// Only bounded references and known reason categories leave the provider adapter.
+// Only explicitly sanitized provider explanations may be persisted. Arbitrary
+// Error.message values can contain private request data and remain excluded.
 export function generationFailureDetails(error: unknown, stage = "provider") {
   const e = (error && typeof error === "object" ? error : {}) as Record<string, any>;
   const status = Number.isInteger(e.status) && e.status >= 100 && e.status <= 599 ? e.status as number : undefined;
@@ -26,7 +26,15 @@ export function generationFailureDetails(error: unknown, stage = "provider") {
     providerModel: env.imageGenerationProvider === "openrouter" ? env.openRouterImageModel : env.imageModel,
     providerHttpStatus: status, providerErrorCode: code,
     providerRequestId: diagnosticToken(e.providerRequestId ?? e.request_id),
-    providerErrorType: diagnosticToken(e.name) || "Error" };
+    providerErrorType: diagnosticToken(e.name) || "Error",
+    ...(e.providerErrorSanitized === true ? {
+      providerErrorMessage: typeof e.providerErrorMessage === "string" ? e.providerErrorMessage.slice(0, 600) : undefined,
+      providerUpstreamMessage: typeof e.providerUpstreamMessage === "string" ? e.providerUpstreamMessage.slice(0, 600) : undefined,
+      providerUpstreamCode: diagnosticToken(e.providerUpstreamCode),
+      providerReportedName: typeof e.providerReportedName === "string" ? e.providerReportedName.slice(0, 80) : undefined,
+      providerErrorParameter: typeof e.providerErrorParameter === "string" ? e.providerErrorParameter.slice(0, 120) : undefined,
+      providerRequestSummary: typeof e.providerRequestSummary === "string" ? e.providerRequestSummary.slice(0, 1000) : undefined,
+    } : {}) };
 }
 
 export function processingLimitMs() { return Math.max(5 * 60_000, env.openAiTimeoutMs + 2 * 60_000); }

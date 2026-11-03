@@ -19,15 +19,18 @@ const body = { amount: 20, reason: "Support compensation", requestId: "12345678-
 describe("admin user controls", () => {
   it("exposes generation diagnostics only through administrator history", async () => {
     const row = { _id: "cccccccccccccccccccccccc", styleId: "portrait", status: "failed", failureCode: "PROVIDER_REJECTED",
-      failureReason: "Provider rate limit", providerHttpStatus: 429, providerRequestId: "req-123", providerDurationMs: 2000 };
+      failureReason: "Provider rate limit", providerHttpStatus: 429, providerRequestId: "req-123", providerDurationMs: 2000,
+      providerErrorMessage: "Rate limit for selected model", providerUpstreamMessage: "Capacity exceeded" };
     const select = vi.fn().mockReturnValue({ sort: () => ({ limit: () => ({ lean: async () => [row] }) }) });
     vi.spyOn(Generation, "find").mockReturnValue({ select } as any);
     vi.spyOn(CatalogStyle, "find").mockReturnValue({ select: () => ({ lean: async () => [] }) } as any);
     expect((await request(app).get(`/users/${id}/generations`).set("Authorization", "Bearer user")).status).toBe(403);
     const response = await request(app).get(`/users/${id}/generations`).set("Authorization", "Bearer admin");
     expect(response.status).toBe(200);
-    expect(response.body.rows[0]).toMatchObject({ failureReason: "Provider rate limit", providerHttpStatus: 429, providerRequestId: "req-123" });
+    expect(response.body.rows[0]).toMatchObject({ failureReason: "Provider rate limit", providerHttpStatus: 429, providerRequestId: "req-123",
+      providerErrorMessage: "Rate limit for selected model", providerUpstreamMessage: "Capacity exceeded" });
     expect(select.mock.calls[0][0]).toContain("providerRequestId");
+    expect(select.mock.calls[0][0]).toContain("providerErrorMessage");
     expect(select.mock.calls[0][0]).not.toMatch(/requestFingerprint|idempotencyKeyHash|imageUrl/);
   });
   beforeEach(() => {

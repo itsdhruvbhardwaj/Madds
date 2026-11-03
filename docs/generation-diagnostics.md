@@ -8,8 +8,16 @@ provider completion and expiry. Acknowledging an error is not opening an image.
 
 For older failures, the generic stored failure code is explained; the original
 provider error cannot be reconstructed. Raw prompts, uploaded photos, credentials,
-provider messages and complete provider response bodies are not stored in these
-diagnostics. Restricted administrator access remains required.
+complete provider response bodies are not stored in these diagnostics. Restricted
+administrator access remains required. Failed OpenRouter calls now retain bounded,
+sanitized endpoint and nested upstream explanations, the upstream error code,
+reported provider, rejected parameter and safe request settings (quality, ratio,
+reference MIME types and byte counts). Credentials, URLs, base64 images, filenames,
+and echoed prompt text are removed before truncation. Error responses are read
+with a 64 KiB limit; HTML gateway pages get a generic label. Successful image
+bodies are never copied into diagnostics. Older discarded explanations cannot
+be reconstructed, and a missing upstream reference is not evidence that a model
+executed the request.
 
 Match the generation reference and time with the provider record. A 429 is a
 rate/capacity rejection; 401/403 indicates provider authorization/access; 402 is

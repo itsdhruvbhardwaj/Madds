@@ -1,6 +1,23 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OpenRouterImageGenerator } from "./generation.js";
 describe("OpenRouter image model switching", () => {
+  it("captures actual sanitized HTTP 400 explanation and settings without a paid retry", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-private-key");
+    vi.stubEnv("OPENROUTER_IMAGE_MODEL", "openai/gpt-image-2.5-sunburst");
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: {
+      code: 400, message: "Provider validation failed", metadata: { provider_name: "OpenAI",
+        raw: JSON.stringify({ error: { code: "invalid_parameter", param: "aspect_ratio", message: "Unsupported aspect ratio. private user instruction test-private-key" } }) }
+    } }), { status: 400 }));
+    vi.stubGlobal("fetch", fetcher);
+    let rejected: any;
+    try { await new OpenRouterImageGenerator().generate({ prompt: "private user instruction", images: [], aspectRatio: "2:3" }); }
+    catch (error) { rejected = error; }
+    expect(rejected).toMatchObject({ status: 400, providerErrorMessage: "Provider validation failed",
+      providerErrorParameter: "aspect_ratio", providerUpstreamCode: "invalid_parameter", providerReportedName: "OpenAI" });
+    expect(rejected.providerRequestSummary).toContain('"aspectRatio":"2:3"');
+    expect(JSON.stringify(rejected)).not.toMatch(/private user instruction|test-private-key/);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it("keeps safe rejection diagnostics and never retries the paid request", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "test-key");
     const fetcher = vi.fn().mockResolvedValue({ ok: false, status: 400,
