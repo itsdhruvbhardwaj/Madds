@@ -633,6 +633,7 @@
     byId("before-image-status").textContent = "Optional";
     byId("after-image-status").textContent = "Optional";
     form.elements.tokensRequired.value = "10";
+    form.elements.genderTag.value = "none";
     byId("form-error").textContent = "";
     const style = state.styles.find((item) => item.id === id);
     byId("dialog-title").textContent = style ? "Edit style" : "Add a style";
@@ -641,6 +642,7 @@
       form.elements.description.value = style.description;
       form.elements.prompt.value = style.prompt;
       form.elements.verified.checked = style.verified === true;
+      form.elements.genderTag.value = ["her", "him"].includes(style.genderTag) ? style.genderTag : "none";
       const hasPreviewPair = (style.previewImages || []).length >= 2;
       const beforeUrl = (hasPreviewPair ? style.previewImages[0] : style.exampleBeforeUrl) || "";
       const afterUrl = (hasPreviewPair ? style.previewImages[1] : style.exampleAfterUrl) || "";
@@ -876,6 +878,7 @@
       : String(fields.get("previewImagePublicIds") || "").split(/\r?\n/).map((id) => id.trim()).filter(Boolean);
     const style = {
       id: String(fields.get("name") || "").normalize("NFKD").toLowerCase().trim().replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""), name: fields.get("name"), description: fields.get("description"), prompt: fields.get("prompt"), verified: fields.get("verified") === "on",
+      genderTag: fields.get("genderTag") || "none",
       thumbnail: fields.get("thumbnail"),
       thumbnailPublicId: fields.get("thumbnailPublicId"),
       exampleBeforeUrl: beforeUrl || null,

@@ -160,6 +160,7 @@ function toStyle(record: Record<string, unknown>): Style {
     description: String(record.description),
     prompt: String(record.prompt),
     verified: record.verified === true,
+    genderTag: record.genderTag === "her" || record.genderTag === "him" ? record.genderTag : "none",
     thumbnail: typeof record.thumbnail === "string" ? optimizeCloudinaryThumbnailUrl(record.thumbnail) : null,
     thumbnailPublicId: typeof record.thumbnailPublicId === "string" ? record.thumbnailPublicId : null,
     exampleBeforeUrl: typeof record.exampleBeforeUrl === "string" ? optimizeCloudinaryThumbnailUrl(record.exampleBeforeUrl) : null,

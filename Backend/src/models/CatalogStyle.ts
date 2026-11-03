@@ -7,6 +7,7 @@ const CatalogStyleSchema = new Schema(
     description: { type: String, required: true, trim: true },
     prompt: { type: String, required: true, trim: true },
     verified: { type: Boolean, default: false, index: true },
+    genderTag: { type: String, enum: ["her", "him", "none"], default: "none" },
     thumbnail: { type: String, required: true, trim: true },
     thumbnailPublicId: { type: String, default: null, trim: true },
     previewImagePublicIds: { type: [String], default: [] },

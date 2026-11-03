@@ -344,6 +344,11 @@ function validateStyle(body: unknown, fixedId?: string): { value?: Style; error?
   const description = typeof source.description === "string" ? source.description.trim() : "";
   const prompt = typeof source.prompt === "string" ? source.prompt.trim() : "";
   const verified = source.verified === true;
+  if (source.genderTag !== undefined && !["her", "him", "none"].includes(source.genderTag as string)) {
+    return { error: "Choose For her, For him, or None for the gender tag." };
+  }
+  // Older clients may omit this field while editing: preserve an existing tag.
+  const genderTag = source.genderTag ?? (fixedId ? undefined : "none");
   // Legacy styles used exampleBefore/After as the card image pair. Preserve them
   // when editing an old record, while new styles use thumbnail + previewImages.
   const thumbnailSource = typeof source.thumbnail === "string" && source.thumbnail.trim()
@@ -399,6 +404,7 @@ function validateStyle(body: unknown, fixedId?: string): { value?: Style; error?
       description,
       prompt,
       verified,
+      ...(genderTag !== undefined ? { genderTag: genderTag as Style["genderTag"] } : {}),
       thumbnail,
       thumbnailPublicId,
       exampleBeforeUrl,

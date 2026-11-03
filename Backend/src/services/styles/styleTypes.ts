@@ -4,6 +4,7 @@ export interface Style {
   description: string;
   prompt: string;
   verified?: boolean;
+  genderTag?: "her" | "him" | "none";
   thumbnail: string | null;
   thumbnailPublicId?: string | null;
   exampleBeforeUrl?: string | null;
