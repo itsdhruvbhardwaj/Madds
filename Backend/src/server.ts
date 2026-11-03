@@ -1,3 +1,4 @@
+import { generationFailureDetails } from "./services/generationDiagnostics.js";
 import { pathToFileURL } from "node:url";
 
 import cors from "cors";
@@ -157,7 +158,8 @@ app.get("/.well-known/assetlinks.json", (_req: Request, res: Response) => {
 });
 
 app.get("/health", (_req: Request, res: Response) => {
-  res.json({ ok: true, service: "ai-photo-studio-backend" });
+  res.json({ ok: true, service: "ai-photo-studio-backend",
+    revision: /^[a-f0-9]{40}$/i.test(process.env.RENDER_GIT_COMMIT || "") ? process.env.RENDER_GIT_COMMIT!.slice(0, 12) : null });
 });
 
 app.get("/api/home/config", async (req: Request, res: Response) => {
@@ -439,6 +441,13 @@ app.post(
     const reply = res.headersSent
       ? { status: (_status: number) => ({ json: (_body: unknown) => undefined }) }
       : res;
+    const providerStartedAt = new Date();
+    const recordDiagnostics = async (details: Record<string, unknown>) => {
+      try { await Generation.updateOne({ _id: reservation.generationId, userId }, { $set: details }); }
+      catch { console.error("Generation diagnostics could not be saved.", reservation.generationId); }
+    };
+    await recordDiagnostics({ providerStartedAt, providerName: env.imageGenerationProvider,
+      providerModel: env.imageGenerationProvider === "openrouter" ? env.openRouterImageModel : env.imageModel });
     let result;
     try {
       const generator = createImageGenerator();
@@ -449,6 +458,7 @@ app.post(
         images: validatedImages,
       });
     } catch (error) {
+      await recordDiagnostics({ ...generationFailureDetails(error), providerDurationMs: Date.now() - providerStartedAt.getTime() });
       if (isConfirmedProviderFailure(error)) {
         try {
           const refunded = await refundGeneration(reservation.generationId, "PROVIDER_REJECTED");
@@ -499,6 +509,7 @@ app.post(
       });
     }
 
+    await recordDiagnostics({ providerDurationMs: Date.now() - providerStartedAt.getTime(), providerCompletedAt: new Date(), providerRequestId: result.providerRequestId });
     const image = `data:${result.mimeType ?? `image/${env.imageFormat}`};base64,${result.base64}`;
     try {
       await saveGenerationResult(userId, reservation.generationId, image);
@@ -507,6 +518,9 @@ app.post(
         throw new Error("Generation completion state was not updated.");
       }
     } catch (error) {
+      await recordDiagnostics({ ...generationFailureDetails(error, "storage"), failureCode: "GENERATION_FINALIZATION_PENDING" });
+      try { await markGenerationOutcomeUnknown(reservation.generationId, "GENERATION_FINALIZATION_PENDING"); }
+      catch { console.error("Unable to record finalization failure.", reservation.generationId); }
       console.error(
         "Generated image could not be finalized.",
         reservation.generationId,

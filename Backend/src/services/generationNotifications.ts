@@ -1,9 +1,9 @@
+import { processingLimitMs } from "./generationDiagnostics.js";
 import { DeviceToken } from "../models/DeviceToken.js";
 import { Generation } from "../models/Generation.js";
 import { GenerationNotification } from "../models/GenerationNotification.js";
 import { getNotificationMessaging } from "../config/firebase.js";
 import { hasActiveNotificationSession } from "./notificationEligibility.js";
-import { env } from "../config/env.js";
 
 let running = false;
 /** Transactional service updates deliberately do not use promotional opt-ins or cooldowns. */
@@ -14,7 +14,7 @@ export async function processGenerationNotifications() {
     const messaging = getNotificationMessaging();
     const now = new Date();
     await Generation.updateMany({ status: { $in: ["processing", "outcome_unknown"] }, resultParts: { $gt: 0 } }, { $set: { status: "completed", failureCode: "" } });
-    await Generation.updateMany({ status: "processing", createdAt: { $lt: new Date(now.getTime() - Math.max(15 * 60_000, env.openAiTimeoutMs + 5 * 60_000)) } },
+    await Generation.updateMany({ status: "processing", createdAt: { $lt: new Date(now.getTime() - processingLimitMs()) } },
       { $set: { status: "outcome_unknown", failureCode: "INTERRUPTED_REQUIRES_RECONCILIATION" } });
     const generations = await Generation.find({ serviceNotificationsEnabled: true, status: { $in: ["completed", "failed", "outcome_unknown"] },
       createdAt: { $gt: new Date(now.getTime() - 86_400_000) }, viewedAt: null,

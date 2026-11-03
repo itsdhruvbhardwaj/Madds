@@ -1,6 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OpenRouterImageGenerator } from "./generation.js";
 describe("OpenRouter image model switching", () => {
+  it("keeps safe rejection diagnostics and never retries the paid request", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    const fetcher = vi.fn().mockResolvedValue({ ok: false, status: 400,
+      headers: new Headers({ "x-request-id": "req-123" }),
+      json: async () => ({ error: { code: "CONTENT_REJECTED", message: "Content policy blocked private prompt" } }) });
+    vi.stubGlobal("fetch", fetcher);
+    await expect(new OpenRouterImageGenerator().generate({ prompt: "private prompt", images: [] }))
+      .rejects.toMatchObject({ status: 400, providerCode: "CONTENT_REJECTED", providerRequestId: "req-123", reasonCategory: "content" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
   it("sends Sunburst quality and reference images without unsupported resolution", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "test-key"); vi.stubEnv("OPENROUTER_IMAGE_MODEL", "openai/gpt-image-2.5-sunburst");

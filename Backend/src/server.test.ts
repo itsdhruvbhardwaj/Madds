@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 
 vi.mock("./services/generationRecovery.js", () => ({ saveGenerationResult: vi.fn().mockResolvedValue(undefined), readGenerationResult: vi.fn() }));
+vi.mock("./models/Generation.js", () => ({ Generation: { updateOne: vi.fn().mockResolvedValue({ modifiedCount: 1 }), exists: vi.fn().mockResolvedValue(true) } }));
 
 process.env.OPENAI_API_KEY = "test-api-key";
 

@@ -13,6 +13,7 @@ export interface GenerationUsage {
 
 export interface GeneratedImage {
   base64: string;
+  providerRequestId?: string;
   mimeType?: string;
   usage?: GenerationUsage;
 }

@@ -422,7 +422,7 @@ export async function refundGeneration(
     const refunded = await session.withTransaction(async () => {
       const generation = await Generation.findOneAndUpdate(
         { _id: generationId, status: "processing" },
-        { $set: { status: "failed", failureCode } },
+        { $set: { status: "failed", failureCode, refundedAt: new Date() } },
         { new: true, session },
       );
 

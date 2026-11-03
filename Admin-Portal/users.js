@@ -1,6 +1,28 @@
 (() => {
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const date = v => v ? new Date(v).toLocaleString() : "â€”";
+  function generationDetails(r) {
+    const lines = [`Request: ${r._id || "—"}`];
+    if (r.failureReason && r.status !== "completed") lines.push(r.failureReason);
+    if (r.failureCode) lines.push(`Reason code: ${r.failureCode}`);
+    if (r.failureStage) lines.push(`Stage: ${r.failureStage}`);
+    if (r.providerName || r.providerModel) lines.push(`Provider: ${[r.providerName, r.providerModel].filter(Boolean).join(" / ")}`);
+    if (r.providerHttpStatus) lines.push(`HTTP: ${r.providerHttpStatus}`);
+    if (r.providerErrorCode) lines.push(`Provider code: ${r.providerErrorCode}`);
+    if (r.providerRequestId) lines.push(`Provider reference: ${r.providerRequestId}`);
+    if (Number.isFinite(r.providerDurationMs)) lines.push(`Provider duration: ${(r.providerDurationMs / 1000).toFixed(1)}s`);
+    if (r.failureRecordedAt) lines.push(`Failure recorded: ${date(r.failureRecordedAt)}`);
+    lines.push(r.refundedAt ? `Credits refunded: ${date(r.refundedAt)}` : r.status === "failed" ? "Failed; check credit history for refund confirmation" : r.status === "outcome_unknown" ? "Credits held — provider outcome requires verification" : `${r.creditsCost ?? "—"} credits reserved/charged`);
+    return lines.join("\n");
+  }
+  function generationRecovery(r) {
+    const lines = [];
+    if (r.resultFetchedAt) lines.push(`Result retrieved: ${date(r.resultFetchedAt)}`);
+    if (r.appReceivedAt) lines.push(`${r.status === "completed" ? "Acknowledged in app" : "Error acknowledged"}: ${date(r.appReceivedAt)}`);
+    if (r.providerCompletedAt) lines.push(`Provider finished: ${date(r.providerCompletedAt)}`);
+    if (r.resultExpiresAt) lines.push(`Recovery until: ${date(r.resultExpiresAt)}`);
+    return lines.join(" | ") || (r.status === "processing" ? "Awaiting provider result" : "No result available");
+  }
   function create({ api, notify }) {
     const $ = id => document.getElementById(id), base = "/api/admin/users";
     let page = 1, epoch = 0, historyTicket = 0, activeHistory = null, selected = null, selectedBalance = 0, busy = false, pending = null, query = "", status = "";
@@ -74,8 +96,8 @@
         $("user-details").querySelectorAll("[data-history]").forEach(b => { b.classList.toggle("is-active", b.dataset.history === kind); b.setAttribute("aria-expanded", String(b.dataset.history === kind)); b.setAttribute("aria-controls", "user-history"); });
         const result = await api(`${base}/${id}/${kind}?cursor=${cursor}`); if (id !== selected || ticket !== epoch || request !== historyTicket) return;
         const rows = [...previous, ...result.rows];
-        const heads = kind === "generations" ? ["Style", "Started", "Status", "Recovery"] : kind === "credits" ? ["Time", "Type", "Change", "Balance", "Reason"] : ["Time", "Administrator", "Action", "Reason"];
-        $("user-history").innerHTML = `<h3>${kind === "generations" ? "Generation history" : kind === "credits" ? "Credit history" : "Admin activity"}</h3><div class="logs-table-wrap"><table class="logs-table"><thead><tr>${heads.map(h => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr>${(kind === "generations" ? [r.styleName, date(r.createdAt), ({ completed: "Completed", failed: "Failed", processing: "Processing", outcome_unknown: "Outcome unknown" })[r.status] || r.status, r.appReceivedAt ? `Opened in app: ${date(r.appReceivedAt)}` : r.providerCompletedAt ? `Ready: ${date(r.providerCompletedAt)} | Recovery until ${date(r.resultExpiresAt)}` : r.status === "failed" ? "Credits refunded" : r.status === "outcome_unknown" ? "Credits held | needs reconciliation" : "Awaiting result"] : kind === "credits" ? [date(r.createdAt), r.type, r.amount > 0 ? `+${r.amount}` : r.amount, r.balanceAfter, r.description] : [date(r.createdAt), r.actorEmail, r.action, r.reason]).map(v => `<td>${esc(v)}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="5">No records yet.</td></tr>`}</tbody></table></div>${result.nextCursor ? '<button id="user-more-history" class="button secondary">Load more</button>' : ""}`;
+        const heads = kind === "generations" ? ["Style", "Started", "Status", "Recovery", "Diagnostics"] : kind === "credits" ? ["Time", "Type", "Change", "Balance", "Reason"] : ["Time", "Administrator", "Action", "Reason"];
+        $("user-history").innerHTML = `<h3>${kind === "generations" ? "Generation history" : kind === "credits" ? "Credit history" : "Admin activity"}</h3><div class="logs-table-wrap"><table class="logs-table"><thead><tr>${heads.map(h => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr>${(kind === "generations" ? [r.styleName, date(r.createdAt), ({ completed: "Completed", failed: "Failed", processing: "Processing", outcome_unknown: "Outcome unknown" })[r.status] || r.status, generationRecovery(r), generationDetails(r)] : kind === "credits" ? [date(r.createdAt), r.type, r.amount > 0 ? `+${r.amount}` : r.amount, r.balanceAfter, r.description] : [date(r.createdAt), r.actorEmail, r.action, r.reason]).map((v, index) => `<td${kind === "generations" && index === 4 ? ' class="generation-diagnostics"' : ""}>${esc(v)}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${heads.length}">No records yet.</td></tr>`}</tbody></table></div>${result.nextCursor ? '<button id="user-more-history" class="button secondary">Load more</button>' : ""}`;
         if (result.nextCursor) $("user-more-history").onclick = () => history(kind, result.nextCursor, rows);
       } catch (e) { if (id === selected && ticket === epoch && request === historyTicket) $("user-history").textContent = e.message; }
     }
@@ -99,5 +121,5 @@
     $("users-list").onclick = e => { const b = e.target.closest("[data-user]"); if (b) void open(b.dataset.user); };
     return { refresh, reset() { closeDetails(); pending = null; $("users-list").textContent = ""; } };
   }
-  window.MaddsUsers = { create };
+  window.MaddsUsers = { create, generationDetails, generationRecovery };
 })();

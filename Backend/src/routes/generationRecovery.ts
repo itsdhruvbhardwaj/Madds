@@ -1,10 +1,10 @@
+import { processingLimitMs, failureExplanation } from "../services/generationDiagnostics.js";
 import { Router } from "express";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth.js";
 import { Generation } from "../models/Generation.js";
 import { CatalogStyle } from "../models/CatalogStyle.js";
 import { hashIdempotencyKey } from "../services/credits/creditService.js";
 import { readGenerationResult } from "../services/generationRecovery.js";
-import { env } from "../config/env.js";
 import rateLimit from "express-rate-limit";
 
 const router = Router();
@@ -13,6 +13,8 @@ router.use(requireAuth, (_req, res, next) => { res.set("Cache-Control", "no-stor
 const validId = (id: unknown) => typeof id === "string" && /^[a-f0-9]{24}$/i.test(id);
 function summary(g: any) {
   return { id: String(g._id), styleId: g.styleId, styleName: g.styleId === "custom-prompt" ? "Custom creation" : g.styleId || "Your photo", status: g.status, failureCode: g.failureCode,
+    failureReason: g.failureReason || (g.failureCode ? failureExplanation(g.failureCode) : undefined),
+    processingExpiresAt: new Date(new Date(g.createdAt).getTime() + processingLimitMs()),
     createdAt: g.createdAt, resultExpiresAt: g.resultExpiresAt,
     resultAvailable: Boolean(g.resultParts && new Date(g.resultExpiresAt).getTime() > Date.now()),
     viewedAt: g.viewedAt, creditsCost: g.creditsCost };
@@ -22,7 +24,7 @@ function summary(g: any) {
 router.use(async (req: AuthenticatedRequest, _res, next) => {
   await Generation.updateMany({ userId: req.user!.id, status: { $in: ["processing", "outcome_unknown"] }, resultParts: { $gt: 0 } },
     { $set: { status: "completed", failureCode: "" } });
-  await Generation.updateMany({ userId: req.user!.id, status: "processing", createdAt: { $lt: new Date(Date.now() - Math.max(15 * 60_000, env.openAiTimeoutMs + 5 * 60_000)) } },
+  await Generation.updateMany({ userId: req.user!.id, status: "processing", createdAt: { $lt: new Date(Date.now() - processingLimitMs()) } },
     { $set: { status: "outcome_unknown", failureCode: "INTERRUPTED_REQUIRES_RECONCILIATION" } });
   next();
 });
