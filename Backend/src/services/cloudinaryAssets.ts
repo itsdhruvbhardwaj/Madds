@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { styles as bundledStyles } from "./styles/index.js";
 import { env } from "../config/env.js";
 
 export type CloudinaryUploadSignature = {
@@ -120,9 +121,33 @@ export async function resolveLegacyStyleImagePublicIds(publicIds: string[]): Pro
   return resolved;
 }
 
+function rootStyleImageId(source: unknown): string | undefined {
+  try {
+    if (typeof source !== "string") return;
+    const url = new URL(source);
+    if (url.hostname !== "res.cloudinary.com" || url.pathname.split("/")[1] !== env.cloudinaryCloudName) return;
+    const match = decodeURIComponent(url.pathname).match(/\/image\/upload\/(?:[^/]+\/)*v[0-9]+\/([^/]+)\.(?:png|jpe?g|webp|avif)$/i);
+    return match?.[1];
+  } catch { return; }
+}
+
+// Only exact assets from the original bundled catalogue may be removed from
+// the Cloudinary root. Other folders and arbitrary root files remain excluded.
+function legacyStyleIds() {
+  return new Set(bundledStyles.flatMap(style => [style.thumbnail, style.exampleBeforeUrl, style.exampleAfterUrl, ...style.previewImages])
+    .map(rootStyleImageId).filter((id): id is string => Boolean(id)));
+}
+export function legacyStyleImagePublicId(source: unknown): string | undefined {
+  const id = rootStyleImageId(source);
+  return id && legacyStyleIds().has(id) ? id : undefined;
+}
+export function isManagedStyleImageId(id: string): boolean {
+  return !id.includes("..") && (id.startsWith("picmee/styles/") || legacyStyleIds().has(id));
+}
+
 export async function destroyManagedStyleImage(publicId: string): Promise<void> {
-  if (!publicId.startsWith("picmee/styles/") || publicId.includes("..")) {
-    throw new Error("Refusing to delete an image outside the PicMee styles folders.");
+  if (!isManagedStyleImageId(publicId)) {
+    throw new Error("Refusing to delete an image outside the managed style catalogue.");
   }
   if (!cloudinaryIsConfigured()) throw new Error("Cloudinary credentials are not configured.");
 

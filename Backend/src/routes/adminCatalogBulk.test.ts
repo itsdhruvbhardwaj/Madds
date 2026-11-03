@@ -36,7 +36,7 @@ describe("bulk catalogue verification", () => {
   it("updates only changed styles and writes an audit record in the same transaction", async () => {
     const r = await request(app).patch("/admin/catalog/styles/verification").set("Authorization", "Bearer admin").send({ ids: ["style-one", "style-two", "style-one"], verified: true });
     expect(r.body).toMatchObject({ ok: true, selected: 2, changed: 1 });
-    expect(CatalogStyle.updateMany).toHaveBeenCalledWith({ id: { $in: ["style-one"] } }, { $set: { verified: true } }, expect.objectContaining({ session: expect.anything() }));
+    expect(CatalogStyle.updateMany).toHaveBeenCalledWith({ id: { $in: ["style-one"] } }, { $set: expect.objectContaining({ verified: true }) }, expect.objectContaining({ session: expect.anything() }));
     expect(CatalogAuditLog.create).toHaveBeenCalledWith([expect.objectContaining({ actorEmail: "admin@example.com", itemId: "style-one", action: "STYLE_UPDATED" })], expect.objectContaining({ session: expect.anything() }));
   });
   it("rejects empty selections and nonboolean statuses", async () => {

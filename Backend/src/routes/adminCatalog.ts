@@ -14,7 +14,8 @@ import { StyleCollection } from "../models/StyleCollection.js";
 import { catalogDatabaseReady, listCatalogCollections, listCatalogStyles, optimizeCloudinaryThumbnailUrl, slugify } from "../services/styles/catalog.js";
 import type { Style } from "../services/styles/styleTypes.js";
 import { ensureHomeSection, renameHomeSectionCollection } from "../services/home/homeCatalog.js";
-import { cloudinaryIsConfigured, createStyleImageUploadSignature, destroyManagedStyleImage, resolveLegacyStyleImagePublicIds } from "../services/cloudinaryAssets.js";
+import { cloudinaryIsConfigured, createStyleImageUploadSignature } from "../services/cloudinaryAssets.js";
+import { getStyleImageIds, queueStyleImages, activateStyleImageCleanup, retryPendingCloudinaryCleanup } from "../services/styleImageCleanup.js";
 import { OpenRouterImageGenerator } from "../services/openrouter/generation.js";
 
 const router = Router();
@@ -79,23 +80,30 @@ router.post("/catalog/test-generation", promptTestUpload.single("image"), async 
   }
 });
 
-router.get("/catalog", async (_req: Request, res: Response) => {
+router.get("/catalog", async (req: AuthenticatedRequest, res: Response) => {
   void retryPendingCloudinaryCleanup(3).catch((error: unknown) => {
     console.warn("Background Cloudinary cleanup retry failed.", error instanceof Error ? error.message : "UNKNOWN");
   });
-  const [styles, collections, sections, styleTimestamps, collectionTimestamps] = await Promise.all([
+  const [styles, collections, sections, styleTimestamps, collectionTimestamps, lastEditors] = await Promise.all([
     listCatalogStyles(true),
     listCatalogCollections(),
     HomeSectionConfig.find().sort({ order: 1, title: 1 }).lean(),
-    CatalogStyle.find().select("id createdAt updatedAt").lean(),
+    CatalogStyle.find().select("id createdAt updatedAt lastEditedByName").lean(),
     StyleCollection.find().select("id createdAt updatedAt").lean(),
+    CatalogAuditLog.aggregate([
+      { $match: { action: { $in: ["STYLE_CREATED", "STYLE_UPDATED", "STYLE_DELETED"] } } },
+      { $sort: { createdAt: -1, _id: -1 } },
+      { $group: { _id: "$itemId", name: { $first: "$actorName" }, action: { $first: "$action" } } },
+    ]),
   ]);
-  const pendingCloudinaryCleanup = await CloudinaryCleanup.countDocuments({ cleanupAfter: { $lte: new Date() } });
-  const styleTimes = new Map(styleTimestamps.map((item) => [String(item.id), { createdAt: item.createdAt, updatedAt: item.updatedAt }]));
+  const pendingCloudinaryCleanup = await CloudinaryCleanup.countDocuments({ $or: [{ styleId: { $ne: "pending-upload" } }, { attempts: { $gt: 0 } }, { cleanupAfter: { $lte: new Date() } }] });
+  const styleTimes = new Map(styleTimestamps.map((item) => [String(item.id), { createdAt: item.createdAt, updatedAt: item.updatedAt, lastEditedByName: item.lastEditedByName }]));
   const collectionTimes = new Map(collectionTimestamps.map((item) => [String(item.id), { createdAt: item.createdAt, updatedAt: item.updatedAt }]));
   res.json({
     ok: true,
-    styles: styles.map((style) => ({ ...style, ...(styleTimes.get(style.id) ?? {}) })),
+    currentUser: { name: req.user?.name?.trim() || "Team member" },
+    styles: styles.map((style) => ({ ...style, ...(styleTimes.get(style.id) ?? {}),
+      lastEditedByName: styleTimes.get(style.id)?.lastEditedByName || lastEditors.find(item => item._id === style.id && item.action !== "STYLE_DELETED")?.name || null })),
     collections: collections.map((collection) => ({ ...collection, ...(collectionTimes.get(collection.id) ?? {}) })),
     sections,
     pendingCloudinaryCleanup,
@@ -130,13 +138,23 @@ router.post("/catalog/cloudinary/signature", async (req: Request, res: Response)
 });
 
 router.post("/catalog/cloudinary/retry-cleanup", async (_req: Request, res: Response) => {
+  await CloudinaryCleanup.updateMany({ $or: [{ styleId: { $ne: "pending-upload" } }, { attempts: { $gt: 0 } }] }, { $set: { cleanupAfter: new Date() } });
   await retryPendingCloudinaryCleanup(100);
-  const dueFilter = { cleanupAfter: { $lte: new Date() } };
+  const dueFilter = { $or: [{ styleId: { $ne: "pending-upload" } }, { attempts: { $gt: 0 } }, { cleanupAfter: { $lte: new Date() } }] };
   const [pending, failures] = await Promise.all([
     CloudinaryCleanup.countDocuments(dueFilter),
     CloudinaryCleanup.find(dueFilter).select("styleName lastError attempts -_id").sort({ createdAt: 1 }).limit(5).lean(),
   ]);
   return res.json({ ok: true, pending, failures });
+});
+
+router.post("/catalog/cloudinary/discard-upload", async (req: Request, res: Response) => {
+  const id = req.body?.publicId;
+  if (typeof id !== "string" || !/^picmee\/styles\/[a-z0-9-]+\/img-[0-9a-f-]{36}$/i.test(id)) return res.status(400).json({ ok: false, error: "Invalid uploaded image." });
+  if (!await CloudinaryCleanup.exists({ publicId: id, styleId: "pending-upload" })) return res.json({ ok: true, pending: false });
+  await CloudinaryCleanup.updateOne({ publicId: id, styleId: "pending-upload" }, { $set: { styleId: "discarded-upload", styleName: "Discarded style upload" } });
+  const pending = await activateStyleImageCleanup([id]);
+  return res.json({ ok: true, pending });
 });
 
 router.get("/catalog/logs", async (req: Request, res: Response) => {
@@ -192,7 +210,7 @@ router.patch("/catalog/styles/verification", async (req: AuthenticatedRequest, r
       if (styles.length !== selectedIds.length) throw new Error("Selection changed. Refresh styles and try again.");
       const updates = styles.filter(style => (style.verified === true) !== verified);
       if (!updates.length) return 0;
-      await CatalogStyle.updateMany({ id: { $in: updates.map(style => style.id) } }, { $set: { verified } }, { session, runValidators: true });
+      await CatalogStyle.updateMany({ id: { $in: updates.map(style => style.id) } }, { $set: { verified, lastEditedByName: req.user!.name?.trim().slice(0, 160) || null } }, { session, runValidators: true });
       await CatalogAuditLog.create(updates.map(style => ({ actorEmail: req.user!.email, actorName: req.user!.name || "", action: "STYLE_UPDATED", itemId: style.id, itemName: `${style.name} — ${verified ? "Verified" : "Unverified"}` })), { session, ordered: true });
       return updates.length;
     });
@@ -210,10 +228,22 @@ router.post("/catalog/styles", async (req: AuthenticatedRequest, res: Response) 
   if (exists) return res.status(409).json({ ok: false, error: "That style ID is already in use." });
 
   await ensureCollections(style.collections);
-  await CatalogStyle.create(style);
+  await CatalogStyle.create({ ...style, lastEditedByName: req.user?.name?.trim().slice(0, 160) || null });
   await removeCloudinaryCleanupForStyleImages(style);
   await logChange(req, "STYLE_CREATED", style.id, style.name);
-  return res.status(201).json({ ok: true, style });
+  return res.status(201).json({ ok: true, style: { ...style, lastEditedByName: req.user?.name || null } });
+});
+
+router.get("/catalog/styles/:id", async (req: Request, res: Response) => {
+  const style = await CatalogStyle.findOne({ id: req.params.id }).lean();
+  if (!style) return res.status(404).json({ ok: false, error: "Style not found." });
+  let name = style.lastEditedByName;
+  if (!name) {
+    const audit = await CatalogAuditLog.findOne({ itemId: style.id, action: { $in: ["STYLE_CREATED", "STYLE_UPDATED", "STYLE_DELETED"] } }).sort({ createdAt: -1, _id: -1 }).lean();
+    name = audit?.action !== "STYLE_DELETED" ? audit?.actorName : null;
+  }
+  res.set("Cache-Control", "no-store");
+  return res.json({ ok: true, style: { ...style, lastEditedByName: name || null } });
 });
 
 router.put("/catalog/styles/:id", async (req: AuthenticatedRequest, res: Response) => {
@@ -223,27 +253,35 @@ router.put("/catalog/styles/:id", async (req: AuthenticatedRequest, res: Respons
   if (validation.error) return res.status(400).json({ ok: false, error: validation.error });
   const style = validation.value!;
   const previous = await CatalogStyle.findOne({ id })
-    .select("thumbnailPublicId exampleBeforePublicId exampleAfterPublicId previewImagePublicIds name").lean();
+    .select("thumbnail thumbnailPublicId exampleBeforeUrl exampleBeforePublicId exampleAfterUrl exampleAfterPublicId previewImages previewImagePublicIds name updatedAt").lean();
   if (!previous) return res.status(404).json({ ok: false, error: "Style not found." });
+  if (req.body.expectedUpdatedAt && (!previous.updatedAt || new Date(req.body.expectedUpdatedAt).getTime() !== new Date(previous.updatedAt).getTime())) {
+    return res.status(409).json({ ok: false, error: "Another team member changed this style. Reopen it before saving." });
+  }
   await ensureCollections(style.collections);
-  const updated = await CatalogStyle.findOneAndUpdate({ id }, style, { new: true, runValidators: true }).lean();
-  if (!updated) return res.status(404).json({ ok: false, error: "Style not found." });
-  await removeCloudinaryCleanupForStyleImages(style);
-  await logChange(req, "STYLE_UPDATED", id, style.name);
   const nextImageIds = new Set(getStyleImageIds(style));
-  const replacedImageIds = getStyleImageIds(previous).filter((publicId) => !nextImageIds.has(publicId));
-  const cloudinaryCleanupPending = await deleteImagesIfUnused(replacedImageIds, id, previous.name);
-  return res.json({ ok: true, style, cloudinaryCleanupPending });
+  const replacedImageIds = getStyleImageIds(previous).filter(publicId => !nextImageIds.has(publicId));
+  await queueStyleImages(replacedImageIds, id, previous.name);
+  const updated = await CatalogStyle.findOneAndUpdate({ id, ...(previous.updatedAt ? { updatedAt: previous.updatedAt } : {}) }, { ...style, lastEditedByName: req.user?.name?.trim().slice(0, 160) || null }, { new: true, runValidators: true }).lean();
+  if (!updated) return res.status(409).json({ ok: false, error: "This style changed while saving. Reopen it before trying again." });
+  await removeCloudinaryCleanupForStyleImages(style);
+  const cloudinaryCleanupPending = await activateStyleImageCleanup(replacedImageIds);
+  await logChange(req, "STYLE_UPDATED", id, style.name);
+  return res.json({ ok: true, style: { ...style, lastEditedByName: req.user?.name || null }, cloudinaryCleanupPending });
 });
 
 router.delete("/catalog/styles/:id", async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
   if (typeof id !== "string") return res.status(400).json({ ok: false, error: "Invalid style ID." });
-  const style = await CatalogStyle.findOneAndDelete({ id }).lean();
+  const style = await CatalogStyle.findOne({ id }).lean();
   if (!style) return res.status(404).json({ ok: false, error: "Style not found." });
+  const imageIds = getStyleImageIds(style);
+  await queueStyleImages(imageIds, id, String(style.name));
+  const deleted = await CatalogStyle.deleteOne({ id, ...(style.updatedAt ? { updatedAt: style.updatedAt } : {}) });
+  if (deleted.deletedCount === 0) return res.status(409).json({ ok: false, error: "This style changed while deleting. Refresh before trying again." });
+  const cloudinaryCleanupPending = await activateStyleImageCleanup(imageIds);
   await FavoriteStyle.deleteMany({ styleId: id });
   await logChange(req, "STYLE_DELETED", id, String(style.name));
-  const cloudinaryCleanupPending = await deleteImagesIfUnused(getStyleImageIds(style), id, String(style.name));
   return res.json({ ok: true, id, cloudinaryCleanupPending });
 });
 
@@ -431,113 +469,9 @@ async function logChange(req: AuthenticatedRequest, action: typeof auditActions[
   await CatalogAuditLog.create({ actorEmail: req.user?.email, actorName: req.user?.name ?? "", action, itemId, itemName });
 }
 
-function getStyleImageIds(style: {
-  thumbnailPublicId?: unknown;
-  exampleBeforePublicId?: unknown;
-  exampleAfterPublicId?: unknown;
-  previewImagePublicIds?: unknown;
-}): string[] {
-  return [...new Set([
-    style.thumbnailPublicId,
-    style.exampleBeforePublicId,
-    style.exampleAfterPublicId,
-    ...(Array.isArray(style.previewImagePublicIds) ? style.previewImagePublicIds : []),
-  ].filter((value): value is string => typeof value === "string" && Boolean(value)))];
-}
-
 async function removeCloudinaryCleanupForStyleImages(style: Style): Promise<void> {
   const publicIds = getStyleImageIds(style);
   if (publicIds.length) await CloudinaryCleanup.deleteMany({ publicId: { $in: publicIds } });
-}
-
-async function deleteImagesIfUnused(publicIds: string[], styleId: string, styleName: string): Promise<boolean> {
-  const outcomes = await Promise.all(publicIds.map((publicId) => deleteImageIfUnused(publicId, styleId, styleName)));
-  return outcomes.some(Boolean);
-}
-
-async function deleteImageIfUnused(publicId: string, styleId: string, styleName: string): Promise<boolean> {
-  if (await CatalogStyle.exists({
-    $or: [
-      { thumbnailPublicId: publicId },
-      { exampleBeforePublicId: publicId },
-      { exampleAfterPublicId: publicId },
-      { previewImagePublicIds: publicId },
-    ],
-  })) return false;
-  try {
-    await destroyManagedStyleImage(publicId);
-    await CloudinaryCleanup.deleteOne({ publicId });
-    return false;
-  } catch (error) {
-    const message = error instanceof Error ? error.message.slice(0, 500) : "Unknown Cloudinary deletion error.";
-    await CloudinaryCleanup.updateOne(
-      { publicId },
-      { $setOnInsert: { publicId, styleId, styleName }, $set: { lastError: message, cleanupAfter: new Date() }, $inc: { attempts: 1 } },
-      { upsert: true },
-    );
-    console.error("Cloudinary style image cleanup is pending.", { styleId, publicId, message });
-    return true;
-  }
-}
-
-async function retryPendingCloudinaryCleanup(limit: number): Promise<void> {
-  const pending = await CloudinaryCleanup.find({ cleanupAfter: { $lte: new Date() } }).sort({ createdAt: 1 }).limit(limit).lean();
-  const legacyUploadIds = pending
-    .filter((item) => item.styleId === "pending-upload" && /^img-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.publicId))
-    .map((item) => item.publicId);
-  let legacyPublicIds = new Map<string, string>();
-  let legacyLookupError: string | null = null;
-  if (legacyUploadIds.length) {
-    try {
-      legacyPublicIds = await resolveLegacyStyleImagePublicIds(legacyUploadIds);
-    } catch (error) {
-      legacyLookupError = error instanceof Error ? error.message.slice(0, 500) : "Cloudinary could not look up the legacy upload.";
-    }
-  }
-
-  let nextPendingIndex = 0;
-  const workers = Array.from({ length: Math.min(5, pending.length) }, async () => {
-    while (true) {
-      const index = nextPendingIndex++;
-      if (index >= pending.length) return;
-      const item = pending[index];
-      try {
-        let publicId = item.publicId;
-        if (!publicId.startsWith("picmee/styles/")) {
-          if (item.styleId !== "pending-upload" || !/^img-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(publicId)) {
-            throw new Error("Cleanup record has an invalid Cloudinary public ID.");
-          }
-          if (legacyLookupError) throw new Error(legacyLookupError);
-          const resolved = legacyPublicIds.get(publicId);
-          if (!resolved) {
-            // A completed search confirms the old signed upload never reached Cloudinary.
-            await CloudinaryCleanup.deleteOne({ _id: item._id });
-            continue;
-          }
-          publicId = resolved;
-        }
-
-        if (await CatalogStyle.exists({
-          $or: [
-            { thumbnailPublicId: publicId },
-            { exampleBeforePublicId: publicId },
-            { exampleAfterPublicId: publicId },
-            { previewImagePublicIds: publicId },
-          ],
-        })) {
-          await CloudinaryCleanup.deleteOne({ _id: item._id });
-          continue;
-        }
-
-        await destroyManagedStyleImage(publicId);
-        await CloudinaryCleanup.deleteOne({ _id: item._id });
-      } catch (error) {
-        const message = error instanceof Error ? error.message.slice(0, 500) : "Unknown Cloudinary deletion error.";
-        await CloudinaryCleanup.updateOne({ _id: item._id }, { $set: { lastError: message }, $inc: { attempts: 1 } });
-      }
-    }
-  });
-  await Promise.all(workers);
 }
 
 function escapeRegex(value: string): string {

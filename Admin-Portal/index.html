@@ -9,7 +9,7 @@
   <title>Madds Studio · Style Manager</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="portal-overrides.css?v=20261031-user-container">
-  <link rel="stylesheet" href="studio-modern.css?v=20261103-generation-diagnostics">
+  <link rel="stylesheet" href="studio-modern.css?v=20261104-cleanup-editors">
 </head>
 <body>
   <main id="login-view" class="login-shell">
@@ -159,7 +159,7 @@
         <label class="wide">Gender tag<select name="genderTag"><option value="none">None</option><option value="her">For her</option><option value="him">For him</option></select><small>Shown as guidance on app style cards and details. None displays no badge.</small></label>
         <label class="wide verification-control"><span class="verification-check"><input name="verified" type="checkbox"><b>Verified</b></span><small>Mark verified only after reviewing the cover image, any before/after previews, and testing the prompt in Prompt testing. Verified styles are the only styles shown in the app and on the website.</small></label>
       </div>
-      <footer class="dialog-footer"><span id="form-error" class="form-error"></span><button type="button" class="button secondary" data-close="style-dialog">Cancel</button><button class="button primary" type="submit">Save style</button></footer>
+      <footer class="dialog-footer style-editor-footer"><span id="style-last-editor" class="style-last-editor" hidden></span><span id="form-error" class="form-error"></span><button type="button" class="button secondary" data-close="style-dialog">Cancel</button><button class="button primary" type="submit">Save style</button></footer>
     </form>
   </dialog>
 
@@ -175,6 +175,7 @@
   <script src="users.js?v=20261103-provider-error-details" defer></script>
   <script src="feedback.js?v=20261101" defer></script>
   <script src="style-bulk.js?v=20261031-filtered-selection" defer></script>
-  <script src="app.js?v=20261103-style-gender-tags" defer></script>
+  <script src="style-uploads.js?v=20261104" defer></script>
+  <script src="app.js?v=20261104-cleanup-editors" defer></script>
 </body>
 </html>

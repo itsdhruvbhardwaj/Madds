@@ -37,6 +37,7 @@ import { notificationDevicesRouter } from "./routes/notificationDevices.js";
 import { styleDetailsRouter } from "./routes/styleDetails.js";
 import { adminNotificationsRouter } from "./modules/notifications/notification.routes.js";
 import { startWebNotificationProcessor } from "./modules/notifications/notification.web.js";
+import { startStyleImageCleanup } from "./services/styleImageCleanup.js";
 import { cleanupPendingProfileImages } from "./services/profileImages.js";
 import {
   completeGeneration,
@@ -591,6 +592,9 @@ if (isDirectExecution) {
         const { initializeStyleCatalog } = await import("./services/styles/catalog.js");
         await initializeStyleCatalog();
         await initializeHomeSectionCatalog();
+        const stopStyleCleanup = startStyleImageCleanup();
+        process.once("SIGTERM", stopStyleCleanup);
+        process.once("SIGINT", stopStyleCleanup);
         await cleanupScheduledAccountDeletions();
         await cleanupUnverifiedSignups();
         void cleanupPendingProfileImages().catch(() => console.warn("Profile cleanup deferred."));

@@ -4,6 +4,7 @@ const CatalogStyleSchema = new Schema(
   {
     id: { type: String, required: true, unique: true, trim: true, lowercase: true },
     name: { type: String, required: true, trim: true },
+    lastEditedByName: { type: String, default: null, trim: true, maxlength: 160 },
     description: { type: String, required: true, trim: true },
     prompt: { type: String, required: true, trim: true },
     verified: { type: Boolean, default: false, index: true },

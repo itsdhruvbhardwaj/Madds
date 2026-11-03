@@ -3,7 +3,20 @@
   const tokenKey = "picmee_admin_access";
   const refreshKey = "picmee_admin_refresh";
   const state = { styles: [], collections: [], sections: [], logs: [], logMembers: [], logPage: 1, logPagination: null, pendingCloudinaryCleanup: 0, activePanel: "styles-panel", editingId: null, renamingId: null, styleEditorBaseline: null, catalogLoaded: false, catalogLoading: false, logsLoading: false, promptTestFile: null, promptTestOriginalUrl: null, promptTestResultUrl: null, promptTestDownloadUrl: null, promptTestGenerating: false };
+  let styleSaving = false;
   const byId = (id) => document.getElementById(id);
+  const styleUploads = window.MaddsStyleUploads.create({ discard: async publicId => {
+    const result = await api("/api/admin/catalog/cloudinary/discard-upload", { method: "POST", body: JSON.stringify({ publicId }) });
+    if (result.pending) notify("Unused image cleanup is queued and will retry automatically.", true);
+  } });
+  function editorImageIds() {
+    const fields = byId("style-form").elements;
+    return [fields.thumbnailPublicId.value, fields.exampleBeforePublicId.value, fields.exampleAfterPublicId.value,
+      ...fields.previewImagePublicIds.value.split(/\r?\n/)].map(id => id.trim()).filter(Boolean);
+  }
+  function releaseEditorUploads(keep = []) {
+    void styleUploads.releaseUnused(keep).catch(() => notify("Unused upload cleanup is saved for a later automatic retry.", true));
+  }
   const notifications = window.MaddsNotifications.create({ api, notify, getCatalog: () => state });
   const users = window.MaddsUsers.create({ api, notify });
   const feedback = window.MaddsFeedback.create({ api, notify });
@@ -48,10 +61,10 @@
     byId("app-view").hidden = true;
     byId("login-message").textContent = message;
   }
-  function showApp(email) {
+  function showApp(name) {
     byId("login-view").hidden = true;
     byId("app-view").hidden = false;
-    byId("account-email").textContent = email || "Team account";
+    byId("account-email").textContent = name || "Team member";
   }
   function notify(message, isError = false) {
     const box = byId("notice");
@@ -80,6 +93,7 @@
     }
     try {
       const data = await api("/api/admin/catalog");
+      byId("account-email").textContent = data.currentUser?.name || "Team member";
       state.styles = data.styles || [];
       state.collections = data.collections || [];
       state.sections = data.sections || [];
@@ -308,6 +322,7 @@
   }
 
   async function uploadStyleExampleImage(kind, fileInput) {
+    if (styleSaving) { notify("Please wait for the style to finish saving."); return; }
     const file = fileInput.files?.[0];
     if (!file) return;
     const cover = kind === "cover";
@@ -344,8 +359,9 @@
       uploadForm.append("signature", signed.signature);
       const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/image/upload`, { method: "POST", body: uploadForm });
       const uploaded = await response.json().catch(() => ({}));
-      if (!response.ok || !uploaded.secure_url || !uploaded.public_id) throw new Error(uploaded.error?.message || "Cloudinary upload failed.");
+      if (!response.ok || !uploaded.secure_url || uploaded.public_id !== signed.expectedPublicId) throw new Error(uploaded.error?.message || "Cloudinary upload failed.");
 
+      styleUploads.track(uploaded.public_id);
       const form = byId("style-form");
       const urlField = cover ? "thumbnail" : (before ? "exampleBeforeUrl" : "exampleAfterUrl");
       const idField = cover ? "thumbnailPublicId" : (before ? "exampleBeforePublicId" : "exampleAfterPublicId");
@@ -360,6 +376,7 @@
           form.elements.previewImagePublicIds.value = previewIds.join("\n");
         }
       }
+      releaseEditorUploads(editorImageIds());
       preview.src = uploaded.secure_url;
       preview.hidden = false;
       status.textContent = `Uploaded compressed image · ${(compressed.file.size / 1000).toFixed(0)} KB · ${compressed.width} × ${compressed.height}. Save the style to keep it.`;
@@ -612,12 +629,21 @@
       renderStyles();
       renderCollections();
       notify(result.cloudinaryCleanupPending
-        ? "Style deleted. Cloudinary cleanup is pending and will be retried from the portal."
+        ? "Style deleted. Cloudinary cleanup is pending and will retry automatically."
         : "Style permanently deleted.", Boolean(result.cloudinaryCleanupPending));
     } catch (error) { notify(error.message, true); if (deleteButton) { deleteButton.disabled = false; deleteButton.textContent = "Delete"; } }
   }
 
-  function openStyleEditor(id = null) {
+  let editorLoad = 0;
+  async function openStyleEditor(id = null) {
+    const ticket = ++editorLoad;
+    if (id) {
+      try {
+        const data = await api(`/api/admin/catalog/styles/${encodeURIComponent(id)}`);
+        if (ticket !== editorLoad) return;
+        state.styles = state.styles.map(item => item.id === id ? data.style : item);
+      } catch (error) { notify(error.message, true); return; }
+    }
     state.editingId = id;
     const form = byId("style-form");
     form.reset();
@@ -637,6 +663,9 @@
     byId("form-error").textContent = "";
     const style = state.styles.find((item) => item.id === id);
     byId("dialog-title").textContent = style ? "Edit style" : "Add a style";
+    const editor = byId("style-last-editor");
+    editor.textContent = style ? `Last edited by ${style.lastEditedByName || "Unknown team member"}` : "";
+    editor.hidden = !style;
     if (style) {
       form.elements.name.value = style.name;
       form.elements.description.value = style.description;
@@ -694,11 +723,16 @@
   }
 
   function requestCloseStyleEditor() {
+    if (styleSaving) { notify("Please wait for the style to finish saving."); return; }
+    if (["upload-cover-image", "upload-before-image", "upload-after-image"].some(id => byId(id)?.disabled)) {
+      notify("Please wait for the image upload to finish."); return;
+    }
     if (state.styleEditorBaseline !== null && styleEditorSnapshot() !== state.styleEditorBaseline) {
       byId("discard-confirm-dialog").showModal();
       return;
     }
     state.styleEditorBaseline = null;
+    releaseEditorUploads();
     byId("style-dialog").close();
   }
 
@@ -720,7 +754,7 @@
       const data = await api("/api/auth/login", { method: "POST", body: JSON.stringify({ email: form.get("email"), password: form.get("password") }) }, false);
       sessionStorage.setItem(tokenKey, data.accessToken);
       sessionStorage.setItem(refreshKey, data.refreshToken);
-      showApp(data.user?.email);
+      showApp(data.user?.name);
       await loadCatalog();
     } catch (error) { showLogin(error.message); }
     finally { submit.disabled = false; submit.textContent = "Sign in"; }
@@ -751,6 +785,7 @@
   byId("discard-style-editing").addEventListener("click", () => {
     byId("discard-confirm-dialog").close();
     state.styleEditorBaseline = null;
+    releaseEditorUploads();
     byId("style-dialog").close();
   });
   function updatePromptCount() {
@@ -856,6 +891,10 @@
   byId("style-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
+    if (styleSaving) return;
+    if (["upload-cover-image", "upload-before-image", "upload-after-image"].some(id => byId(id)?.disabled)) {
+      byId("form-error").textContent = "Please wait for the image upload to finish."; return;
+    }
     if (!updatePromptCount()) { byId("style-prompt").reportValidity(); return; }
     const fields = new FormData(form);
     if (!fields.get("thumbnail") || !fields.get("thumbnailPublicId")) {
@@ -877,6 +916,7 @@
       ? [beforeId, afterId]
       : String(fields.get("previewImagePublicIds") || "").split(/\r?\n/).map((id) => id.trim()).filter(Boolean);
     const style = {
+      ...(state.editingId ? { expectedUpdatedAt: state.styles.find(item => item.id === state.editingId)?.updatedAt } : {}),
       id: String(fields.get("name") || "").normalize("NFKD").toLowerCase().trim().replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""), name: fields.get("name"), description: fields.get("description"), prompt: fields.get("prompt"), verified: fields.get("verified") === "on",
       genderTag: fields.get("genderTag") || "none",
       thumbnail: fields.get("thumbnail"),
@@ -891,10 +931,13 @@
       collections: [...form.querySelectorAll('input[name="collections"]:checked')].map((input) => input.value),
     };
     const save = form.querySelector('button[type="submit"]');
+    styleSaving = true;
     save.disabled = true; save.textContent = "Saving…";
     try {
       const wasEditing = Boolean(state.editingId);
       const result = await api(state.editingId ? `/api/admin/catalog/styles/${encodeURIComponent(state.editingId)}` : "/api/admin/catalog/styles", { method: state.editingId ? "PUT" : "POST", body: JSON.stringify(style) });
+      styleUploads.saved(editorImageIds());
+      releaseEditorUploads();
       const savedAt = new Date().toISOString();
       const savedStyle = { ...result.style, createdAt: wasEditing ? state.styles.find((item) => item.id === result.style.id)?.createdAt : savedAt, updatedAt: savedAt };
       if (wasEditing) state.styles = state.styles.map((item) => item.id === result.style.id ? savedStyle : item);
@@ -908,10 +951,10 @@
       state.styleEditorBaseline = null;
       byId("style-dialog").close();
       notify(result.cloudinaryCleanupPending
-        ? "Style saved. The replaced Cloudinary image cleanup is pending and will be retried from the portal."
+        ? "Style saved. The replaced Cloudinary image cleanup is pending and will retry automatically."
         : state.editingId ? "Style saved. App and site will receive the new catalogue data from the backend." : "Style added to the live catalogue.", Boolean(result.cloudinaryCleanupPending));
     } catch (error) { byId("form-error").textContent = error.message; }
-    finally { save.disabled = false; save.textContent = "Save style"; }
+    finally { styleSaving = false; save.disabled = false; save.textContent = "Save style"; }
   });
 
   byId("collection-form").addEventListener("submit", async (event) => {
