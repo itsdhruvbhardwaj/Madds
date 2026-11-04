@@ -7,6 +7,7 @@ const RewardedAdAttemptSchema = new Schema(
       ref: "User",
       required: true,
     },
+    rewardCredits: { type: Number, min: 1, max: 100_000, default: undefined },
     ticketHash: {
       type: String,
       required: true,

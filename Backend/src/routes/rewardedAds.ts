@@ -88,6 +88,13 @@ const attemptRateLimiter = rateLimit({
   },
 });
 
+// Display-only configuration. Credit grants still require verified AdMob SSV.
+router.get("/rewarded-ads/config", (_req: Request, res: Response) => {
+  const configuration = getRewardedAdsConfiguration();
+  res.set("Cache-Control", "no-store");
+  return res.json({ ok: true, available: Boolean(configuration), credits: configuration?.picMeCreditAmount ?? null });
+});
+
 router.post(
   "/rewarded-ads/attempts",
   requireAuth,
@@ -114,10 +121,11 @@ router.post(
 
     const expiresAt = new Date(Date.now() + configuration.attemptTtlSeconds * 1000);
     try {
-      const attempt = await createRewardedAdAttempt(userId, expiresAt);
+      const attempt = await createRewardedAdAttempt(userId, expiresAt, configuration.picMeCreditAmount);
       return res.status(201).json({
         ok: true,
         customData: attempt.customData,
+        credits: configuration.picMeCreditAmount,
         expiresAt: attempt.expiresAt.toISOString(),
       });
     } catch (error) {

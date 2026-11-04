@@ -299,7 +299,7 @@ describe("credit accounting transactions", () => {
     expect(await refundGeneration("generation-1", "PROVIDER_REJECTED")).toBe(true);
     expect(creditMocks.generationFindOneAndUpdate).toHaveBeenCalledWith(
       { _id: "generation-1", status: "processing" },
-      { $set: { status: "failed", failureCode: "PROVIDER_REJECTED" } },
+      { $set: { status: "failed", failureCode: "PROVIDER_REJECTED", refundedAt: expect.any(Date) } },
       { new: true, session: creditMocks.session },
     );
     expect(creditMocks.userFindByIdAndUpdate).toHaveBeenCalledWith(
@@ -340,6 +340,23 @@ describe("credit accounting transactions", () => {
     );
     expect(creditMocks.userFindByIdAndUpdate).not.toHaveBeenCalled();
     expect(creditMocks.transactionCreate).not.toHaveBeenCalled();
+  });
+
+  it("stores the server reward amount on the attempt before an ad starts", async () => {
+    await createRewardedAdAttempt("user-1", new Date("2026-12-01"), 5);
+    expect(creditMocks.rewardedAdAttemptCreate).toHaveBeenCalledWith(expect.objectContaining({ rewardCredits: 5 }));
+    expect(creditMocks.userFindByIdAndUpdate).not.toHaveBeenCalled();
+  });
+  it("honours the recorded offer even if the current server reward changes", async () => {
+    const now = new Date("2026-10-12T11:00:00Z");
+    const attempt = { _id: "attempt-1", userId: "user-1", ticketHash: "ticket-hash", status: "pending", rewardCredits: 5,
+      expiresAt: new Date(now.getTime() + 60_000) };
+    creditMocks.rewardedAdAttemptFindOne.mockImplementation((filter: { transactionId?: string }) => rewardedAdAttemptQuery(filter.transactionId ? null : attempt));
+    creditMocks.rewardedAdAttemptFindOneAndUpdate.mockReturnValue({ lean: vi.fn().mockResolvedValue(attempt) });
+    creditMocks.userFindByIdAndUpdate.mockResolvedValue({ credits: 15 });
+    expect(await grantRewardedAdCredits({ ticketHash: "ticket-hash", transactionId: "a".repeat(32), credits: 2, now })).toEqual({ status: "granted" });
+    expect(creditMocks.userFindByIdAndUpdate).toHaveBeenCalledWith("user-1", { $inc: { credits: 5 } }, expect.anything());
+    expect(creditMocks.transactionCreate).toHaveBeenCalledWith([expect.objectContaining({ amount: 5 })], expect.anything());
   });
 
   it("credits a verified rewarded ad and redeems its attempt in one transaction", async () => {

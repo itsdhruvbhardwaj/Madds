@@ -89,13 +89,16 @@ function isDuplicateKeyError(error: unknown): boolean {
 export async function createRewardedAdAttempt(
   userId: string,
   expiresAt: Date,
+  rewardCredits?: number,
 ): Promise<{ customData: string; expiresAt: Date }> {
+  if (rewardCredits !== undefined && (!Number.isSafeInteger(rewardCredits) || rewardCredits < 1 || rewardCredits > 100_000)) throw new Error("Invalid rewarded-ad credit amount.");
   const customData = randomBytes(32).toString("base64url");
   const ticketHash = createHash("sha256").update(customData).digest("hex");
 
   await RewardedAdAttempt.create({
     userId,
     ticketHash,
+    ...(rewardCredits !== undefined ? { rewardCredits } : {}),
     status: "pending",
     expiresAt,
   });
@@ -184,9 +187,13 @@ export async function grantRewardedAdCredits(input: {
           return { status: "expired" as const };
         }
 
+        // Honour the server amount agreed before the ad, even if settings
+        // change before its callback arrives. Older tickets keep their behaviour.
+        const credits = attempt.rewardCredits ?? input.credits;
+        if (!Number.isSafeInteger(credits) || credits < 1 || credits > 100_000) throw new Error("Invalid reward amount.");
         const user = await User.findByIdAndUpdate(
           attempt.userId,
-          { $inc: { credits: input.credits } },
+          { $inc: { credits } },
           { new: true, session },
         );
         if (!user) {
@@ -196,7 +203,7 @@ export async function grantRewardedAdCredits(input: {
         await CreditTransaction.create(
           [{
             userId: attempt.userId,
-            amount: input.credits,
+            amount: credits,
             type: "REWARDED_AD",
             balanceAfter: user.credits,
             referenceId: input.transactionId,

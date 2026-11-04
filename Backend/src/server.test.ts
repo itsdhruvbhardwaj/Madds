@@ -975,11 +975,13 @@ describe("rewarded-ad endpoints", () => {
     expect(response.body).toEqual({
       ok: true,
       customData: "A".repeat(43),
+      credits: 1,
       expiresAt: "2026-10-12T12:00:00.000Z",
     });
     expect(generationMocks.createRewardedAdAttempt).toHaveBeenCalledWith(
       "test-user",
       expect.any(Date),
+      1,
     );
     expect(generationMocks.grantRewardedAdCredits).not.toHaveBeenCalled();
   });
