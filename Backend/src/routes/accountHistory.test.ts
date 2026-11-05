@@ -22,7 +22,7 @@ describe("account history", () => {
   it("scopes both histories to the signed-in user and caps page size", async () => {
     for (const path of ["purchases", "credit-history"]) expect((await request(app).get(`/me/${path}?userId=victim&limit=999`).set("Authorization", "Bearer test")).status).toBe(200);
     expect(m.purchase).toHaveBeenCalledWith({ userId: "signed-in-user" });
-    expect(m.credit).toHaveBeenCalledWith({ userId: "signed-in-user" });
+    expect(m.credit).toHaveBeenCalledWith({ userId: "signed-in-user", createdAt: { $gte: expect.any(Date) } });
     expect(m.limit).toHaveBeenCalledWith(21);
   });
   it("returns only the requested page and indicates more records", async () => {

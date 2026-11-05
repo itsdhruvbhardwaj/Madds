@@ -24,3 +24,39 @@ test("local schedules reject impossible dates and past times", () => {
   assert.throws(() => localSchedule("2026-10-30T10:30Z", now));
   assert.ok(localSchedule("2026-10-30T10:30", now).endsWith("Z"));
 });
+
+function historyFixture(confirm = true) {
+  const vm = require("node:vm"), fs = require("node:fs"), path = require("node:path");
+  const nodes = new Map(), calls = [];
+  const element = id => {
+    if (["push-form", "push-clear", "push-review-dialog"].includes(id)) return null;
+    if (!nodes.has(id)) nodes.set(id, { innerHTML: "", textContent: "", hidden: false, disabled: false,
+      events: {}, addEventListener(name, action) { this.events[name] = action; }, classList: { remove() {} } });
+    return nodes.get(id);
+  };
+  const sandbox = { window: { confirm: () => confirm, addEventListener() {} }, document: { getElementById: element } };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../notifications.js"), "utf8"), sandbox);
+  let entries = [{_id: "finished", status: "SENT", title: "Finished"}, {_id: "sending", status: "PROCESSING", title: "Sending"}];
+  const controls = sandbox.window.MaddsNotifications.create({api: async (url, options) => {
+    calls.push({url, options});
+    if (url.endsWith("/history/clear")) { entries = entries.filter(v => v.status !== "SENT"); return {clearedCount: 1}; }
+    return {campaigns: entries, nextCursor: null, deliveryEnabled: true};
+  }, notify() {}, getCatalog: () => ({styles: [], collections: []})});
+  return { controls, calls, element };
+}
+const flush = async () => { await new Promise(resolve => setImmediate(resolve)); await new Promise(resolve => setImmediate(resolve)); };
+test("deleting recent history refreshes the list and preserves sending entries", async () => {
+  const f = historyFixture(); await f.controls.refresh();
+  assert.match(f.element("push-recent").innerHTML, /Delete history/);
+  f.element("push-recent").events.click({ target: {closest: selector => selector === "[data-clear-history]" ? {} : null} });
+  await flush();
+  assert.equal(f.calls.filter(c => c.url.endsWith("/history/clear")).length, 1);
+  assert.equal(f.calls.at(-1).url, "/api/admin/notifications");
+  assert.doesNotMatch(f.element("push-recent").innerHTML, /Finished/);
+  assert.match(f.element("push-recent").innerHTML, /Sending/);
+});
+test("cancelling history deletion sends no delete request", async () => {
+  const f = historyFixture(false); await f.controls.refresh();
+  f.element("push-recent").events.click({ target: {closest: selector => selector === "[data-clear-history]" ? {} : null} });
+  await flush(); assert.equal(f.calls.length, 1);
+});

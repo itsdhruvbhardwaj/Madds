@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { User } from "../models/User.js";
+import { NotificationCampaign } from "../modules/notifications/notification.models.js";
 import { CatalogStyle } from "../models/CatalogStyle.js";
 import { CloudinaryCleanup } from "../models/CloudinaryCleanup.js";
 const cloud = vi.hoisted(() => ({ destroy: vi.fn(), resolve: vi.fn() }));
@@ -13,6 +15,8 @@ describe("style image cleanup", () => {
   beforeEach(() => {
     vi.stubEnv("CLOUDINARY_CLOUD_NAME", "test");
     vi.spyOn(CatalogStyle, "exists").mockResolvedValue(null);
+    vi.spyOn(User, "exists").mockResolvedValue(null);
+    vi.spyOn(NotificationCampaign, "exists").mockResolvedValue(null);
     vi.spyOn(CloudinaryCleanup, "findOneAndUpdate").mockReturnValue({ lean: async () => ({ ...item, attempts: 1 }) } as any);
     vi.spyOn(CloudinaryCleanup, "deleteOne").mockResolvedValue({} as any);
     vi.spyOn(CloudinaryCleanup, "updateOne").mockResolvedValue({} as any);
@@ -43,6 +47,17 @@ describe("style image cleanup", () => {
     expect(cloud.destroy).not.toHaveBeenCalled();
     expect(CloudinaryCleanup.deleteOne).not.toHaveBeenCalled();
     expect(CloudinaryCleanup.updateOne).toHaveBeenCalled();
+  });
+  it("protects style assets used in a notification or profile", async () => {
+    pending([item]); vi.mocked(NotificationCampaign.exists).mockResolvedValue({ _id: "notification" } as any);
+    await retryPendingCloudinaryCleanup(); expect(cloud.destroy).not.toHaveBeenCalled();
+    vi.mocked(NotificationCampaign.exists).mockResolvedValue(null);
+    vi.mocked(User.exists).mockResolvedValue({ _id: "profile" } as any);
+    await retryPendingCloudinaryCleanup(); expect(cloud.destroy).not.toHaveBeenCalled();
+  });
+  it("recognizes original root images when a delivery URL has no version segment", () => {
+    vi.stubEnv("CLOUDINARY_CLOUD_NAME", "xjqlkkta");
+    expect(getStyleImageIds({thumbnail: "https://res.cloudinary.com/xjqlkkta/image/upload/q_auto/Golden-Hour_Riverfront_Embrace.png"})).toEqual(["Golden-Hour_Riverfront_Embrace"]);
   });
   it("deletes confirmed unused files and removes their queue entries", async () => {
     pending([item]); await retryPendingCloudinaryCleanup();

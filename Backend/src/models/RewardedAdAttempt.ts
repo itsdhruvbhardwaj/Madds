@@ -34,6 +34,7 @@ const RewardedAdAttemptSchema = new Schema(
   { timestamps: { createdAt: true, updatedAt: false } },
 );
 
+RewardedAdAttemptSchema.index({ status: 1, expiresAt: 1 });
 RewardedAdAttemptSchema.index({ ticketHash: 1 }, { unique: true });
 RewardedAdAttemptSchema.index(
   { transactionId: 1 },

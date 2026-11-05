@@ -63,6 +63,7 @@ const GenerationSchema = new Schema(
     resultExpiresAt: Date,
     providerCompletedAt: Date,
     viewedAt: Date,
+    retentionCompactedAt: Date,
     appReceivedAt: Date,
     resultFetchedAt: Date,
     serviceNotificationStatus: String,
@@ -74,6 +75,7 @@ const GenerationSchema = new Schema(
 );
 
 GenerationSchema.index({ userId: 1, createdAt: -1 });
+GenerationSchema.index({ retentionCompactedAt: 1, createdAt: 1 });
 GenerationSchema.index({ status: 1, createdAt: 1 });
 GenerationSchema.index(
   { userId: 1, idempotencyKeyHash: 1 },

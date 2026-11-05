@@ -1,0 +1,23 @@
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+const m=vi.hoisted(()=>({styles:vi.fn(),user:vi.fn(),notification:vi.fn(),queue:vi.fn(),activate:vi.fn()}));
+vi.mock("../models/CatalogStyle.js",()=>({CatalogStyle:{find:()=>({select:()=>({limit:()=>({lean:m.styles})})})}}));
+vi.mock("../models/User.js",()=>({User:{exists:m.user}}));
+vi.mock("../modules/notifications/notification.models.js",()=>({NotificationCampaign:{exists:m.notification}}));
+vi.mock("./styleImageCleanup.js", async original=>({...await original<any>(),queueStyleImages:m.queue,activateStyleImageCleanup:m.activate}));
+import { listStudioMedia,removeUnusedStyleAsset, validMediaId } from "./studioMedia.js";
+const id="picmee/styles/test/img-123", asset={public_id:id,secure_url:"https://res.cloudinary.com/test/image/upload/"+id+".jpg",created_at:"2020-01-01T00:00:00Z",bytes:200};
+describe("Studio Cloudinary media",()=>{
+ beforeEach(()=>{vi.resetAllMocks(); vi.stubEnv("CLOUDINARY_CLOUD_NAME","test");vi.stubEnv("CLOUDINARY_API_KEY","key");vi.stubEnv("CLOUDINARY_API_SECRET","secret");
+ m.styles.mockResolvedValue([]);m.user.mockResolvedValue(null);m.notification.mockResolvedValue(null);m.activate.mockResolvedValue(false);
+ vi.stubGlobal("fetch",vi.fn().mockResolvedValue({ok:true,json:async()=>({...asset,resources:[asset],next_cursor:"next"})})); });
+ afterEach(()=>{vi.unstubAllGlobals();vi.unstubAllEnvs();});
+ it("lists bounded pages and marks active assets as protected",async()=>{m.styles.mockResolvedValue([{name:"Active style"}]);const r=await listStudioMedia("styles");
+ expect(r.assets[0].canDelete).toBe(false); expect(r.assets[0].references).toContain("Style: Active style");expect(r.nextCursor).toBe("next");
+ expect(String(vi.mocked(fetch).mock.calls[0][0])).toContain("max_results=30"); });
+ it("rejects arbitrary folders and unmanaged public IDs",async()=>{await expect(listStudioMedia("other")).rejects.toThrow("valid");expect(validMediaId("profile/../secret")).toBe(false); await expect(removeUnusedStyleAsset("profile/user")).rejects.toThrow("Only unused");});
+ it("rechecks references before queuing deletion",async()=>{m.notification.mockResolvedValue({_id:"draft"});await expect(removeUnusedStyleAsset(id)).rejects.toThrow("in use");expect(m.queue).not.toHaveBeenCalled();});
+ it("protects fresh uploads and queues unused old images durably",async()=>{vi.mocked(fetch).mockResolvedValueOnce({ok:true,json:async()=>({...asset,created_at:new Date().toISOString()})} as any);
+ await expect(removeUnusedStyleAsset(id)).rejects.toThrow("24 hours");expect(m.queue).not.toHaveBeenCalled();
+ expect(await removeUnusedStyleAsset(id)).toEqual({pending:false});expect(m.queue).toHaveBeenCalledWith([id],"studio-media","Unused image");});
+ it("returns useful authorization errors without leaking credentials",async()=>{vi.mocked(fetch).mockResolvedValue({ok:false,status:401} as any);await expect(listStudioMedia("styles")).rejects.toThrow("authorization failed");});
+});

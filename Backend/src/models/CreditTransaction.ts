@@ -40,6 +40,7 @@ const CreditTransactionSchema = new Schema(
   { timestamps: { createdAt: true, updatedAt: false } },
 );
 
+CreditTransactionSchema.index({ type: 1, createdAt: 1 });
 CreditTransactionSchema.index({ userId: 1, createdAt: -1 });
 CreditTransactionSchema.index(
   { type: 1, referenceId: 1 },

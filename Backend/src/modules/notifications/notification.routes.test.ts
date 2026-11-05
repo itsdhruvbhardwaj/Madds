@@ -1,7 +1,7 @@
 import express from "express";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ versions: vi.fn(), create: vi.fn(), update: vi.fn(), findById: vi.fn(), init: vi.fn(), ready: vi.fn(), preview: vi.fn(), destination: vi.fn(), cloudinaryConfigured: vi.fn(), signature: vi.fn() }));
+const mocks = vi.hoisted(() => ({ history: vi.fn(), list: vi.fn(), versions: vi.fn(), create: vi.fn(), update: vi.fn(), findById: vi.fn(), init: vi.fn(), ready: vi.fn(), preview: vi.fn(), destination: vi.fn(), cloudinaryConfigured: vi.fn(), signature: vi.fn() }));
 vi.mock("../../middleware/auth.js", () => ({ requireAuth: (req: any, res: any, next: any) => {
   if (!req.headers.authorization) return res.sendStatus(401);
   req.user = { id: "admin-id", emailVerified: req.headers.authorization !== "Bearer unverified", email: req.headers.authorization === "Bearer user" ? "user@example.com" : "admin@example.com" }; next();
@@ -9,7 +9,7 @@ vi.mock("../../middleware/auth.js", () => ({ requireAuth: (req: any, res: any, n
 vi.mock("../../services/styles/catalog.js", () => ({ catalogDatabaseReady: mocks.ready }));
 vi.mock("../../services/cloudinaryAssets.js", () => ({ cloudinaryIsConfigured: mocks.cloudinaryConfigured, createNotificationImageUploadSignature: mocks.signature }));
 vi.mock("./notification.models.js", () => ({ initializeNotificationModels: mocks.init,
-    NotificationCampaign: { create: mocks.create, findOneAndUpdate: mocks.update, findOneAndDelete: mocks.update, findById: () => ({ lean: mocks.findById }) }, NotificationLog: { updateMany: vi.fn() },
+    NotificationCampaign: { updateMany: mocks.history, find: (filter: unknown) => ({ sort: () => ({ limit: () => ({ lean: () => mocks.list(filter) }) }) }), create: mocks.create, findOneAndUpdate: mocks.update, findOneAndDelete: mocks.update, findById: () => ({ lean: mocks.findById }) }, NotificationLog: { updateMany: vi.fn() },
 }));
 vi.mock("./notification.service.js", () => ({ notificationService: { preview: mocks.preview }, validateDestination: mocks.destination }));
 vi.mock("../../models/DeviceToken.js", () => ({ DeviceToken: { aggregate: mocks.versions } }));
@@ -44,6 +44,24 @@ describe("admin notification API", () => {
       { $match: { isActive: true, permissionGranted: true } }, { $limit: 100 },
       { $project: { _id: 0, versionCode: "$_id", versionName: "$name", devices: 1, lastReportedAt: 1 } }
     ]));
+  });
+  it("clears only finished activity behind administrator authentication", async () => {
+    expect((await request(app).post("/admin/push/history/clear")).status).toBe(401);
+    expect((await request(app).post("/admin/push/history/clear").set("Authorization", "Bearer user")).status).toBe(403);
+    expect(mocks.history).not.toHaveBeenCalled();
+    mocks.history.mockResolvedValue({ modifiedCount: 4 });
+    const response = await request(app).post("/admin/push/history/clear").set("Authorization", "Bearer admin");
+    expect(response.body).toEqual({ ok: true, clearedCount: 4 });
+    expect(mocks.history).toHaveBeenCalledWith({ status: { $in: ["SENT", "FAILED", "CANCELLED"] },
+      historyClearedAt: null, updatedAt: { $lte: expect.any(Date) } }, { $set: { historyClearedAt: expect.any(Date) } });
+  });
+  it("excludes cleared history on every page and keeps cursor filtering", async () => {
+    mocks.list.mockResolvedValue([]);
+    for (const suffix of ["", "?cursor=" + id]) {
+      const response = await request(app).get("/admin/push" + suffix).set("Authorization", "Bearer admin");
+      expect(response.status).toBe(200);
+      expect(mocks.list).toHaveBeenLastCalledWith({ historyClearedAt: null, ...(suffix ? { _id: { $lt: id } } : {}) });
+    }
   });
   it("creates an allowlisted draft with the authenticated creator", async () => {
     expect((await request(app).post("/admin/push").set("Authorization", "Bearer admin").send({ ...draft, status: "SENT", createdBy: "victim" })).status).toBe(201);

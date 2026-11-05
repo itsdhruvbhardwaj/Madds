@@ -13,6 +13,7 @@ const campaignSchema = new Schema({
   scheduledAt: Date, nextRunAt: Date, recipientCutoffAt: Date, scanCursor: Schema.Types.ObjectId, expandedAt: Date,
   leaseOwner: String, leaseUntil: Date, sentAt: Date,
   failureReason: String,
+  historyClearedAt: Date,
   totalRecipients: { type: Number, default: 0 }, successfulDeliveries: { type: Number, default: 0 },
   failedDeliveries: { type: Number, default: 0 }, skippedDeliveries: { type: Number, default: 0 },
 }, { timestamps: true });
@@ -29,6 +30,7 @@ const logSchema = new Schema({
 }, { timestamps: true });
 logSchema.index({ campaignId: 1, deviceTokenId: 1 }, { unique: true });
 logSchema.index({ campaignId: 1, status: 1, nextAttemptAt: 1 });
+logSchema.index({ status: 1, updatedAt: 1 });
 logSchema.index({ userId: 1, sentAt: -1 });
 
 // Conservative user-wide cooldown: a reservation also counts when delivery fails.

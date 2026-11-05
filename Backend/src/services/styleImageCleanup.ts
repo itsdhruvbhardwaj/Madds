@@ -1,7 +1,9 @@
+import { User } from "../models/User.js";
+import { NotificationCampaign } from "../modules/notifications/notification.models.js";
 import { CatalogStyle } from "../models/CatalogStyle.js";
 import { CloudinaryCleanup } from "../models/CloudinaryCleanup.js";
 import { env } from "../config/env.js";
-import { destroyManagedStyleImage, resolveLegacyStyleImagePublicIds, legacyStyleImagePublicId, isManagedStyleImageId } from "./cloudinaryAssets.js";
+import { destroyManagedNotificationImage, isManagedNotificationImageId, destroyManagedStyleImage, resolveLegacyStyleImagePublicIds, legacyStyleImagePublicId, isManagedStyleImageId } from "./cloudinaryAssets.js";
 
 export function getStyleImageIds(style: Record<string, any>): string[] {
   const ids = [style.thumbnailPublicId, style.exampleBeforePublicId, style.exampleAfterPublicId,
@@ -63,14 +65,17 @@ export async function retryPendingCloudinaryCleanup(limit = 25, onlyIds?: string
       if (!claimed) continue;
       try {
         let publicId = item.publicId;
-        if (!isManagedStyleImageId(publicId)) {
+        if (!isManagedStyleImageId(publicId) && !isManagedNotificationImageId(publicId)) {
           if (!legacyIds.includes(publicId)) throw new Error("Invalid managed Cloudinary public ID.");
           if (lookupFailed) throw new Error("Cloudinary legacy asset lookup failed.");
           const resolved = legacy.get(publicId);
           if (!resolved) { await CloudinaryCleanup.deleteOne({ _id: item._id }); continue; }
           publicId = resolved;
         }
-        if (await CatalogStyle.exists(styleImageReferenceFilter(publicId))) {
+        const references = styleImageReferenceFilter(publicId);
+        const url = (references.$or[4] as any).thumbnail;
+        if (await CatalogStyle.exists(references) || await User.exists({ $or: [{ profileImagePublicId: publicId }, { profileImage: url }] }) ||
+            await NotificationCampaign.exists({ imageUrl: url })) {
           // Keep the durable fallback: another request may have queued this job
           // just before changing its current reference. Never lose that intent.
           await CloudinaryCleanup.updateOne({ _id: item._id }, { $set: {
@@ -78,7 +83,8 @@ export async function retryPendingCloudinaryCleanup(limit = 25, onlyIds?: string
           }, $unset: { leaseUntil: 1 } });
           continue;
         }
-        await destroyManagedStyleImage(publicId);
+        if (isManagedNotificationImageId(publicId)) await destroyManagedNotificationImage(publicId);
+        else await destroyManagedStyleImage(publicId);
         await CloudinaryCleanup.deleteOne({ _id: item._id });
       } catch (error) {
         const delay = Math.min(60 * 60_000, 60_000 * 2 ** Math.min(Number(claimed.attempts || 1) - 1, 6));

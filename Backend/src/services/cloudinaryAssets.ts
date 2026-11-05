@@ -126,7 +126,7 @@ function rootStyleImageId(source: unknown): string | undefined {
     if (typeof source !== "string") return;
     const url = new URL(source);
     if (url.hostname !== "res.cloudinary.com" || url.pathname.split("/")[1] !== env.cloudinaryCloudName) return;
-    const match = decodeURIComponent(url.pathname).match(/\/image\/upload\/(?:[^/]+\/)*v[0-9]+\/([^/]+)\.(?:png|jpe?g|webp|avif)$/i);
+    const match = decodeURIComponent(url.pathname).match(/\/image\/upload\/(?:(?:[a-z]{1,3}_[^/]+|v[0-9]+)\/)*([^/]+)\.(?:png|jpe?g|webp|avif)$/i);
     return match?.[1];
   } catch { return; }
 }
@@ -145,10 +145,29 @@ export function isManagedStyleImageId(id: string): boolean {
   return !id.includes("..") && (id.startsWith("picmee/styles/") || legacyStyleIds().has(id));
 }
 
+export function isManagedNotificationImageId(id: string): boolean {
+  return /^picmee\/notifications\/[a-zA-Z0-9_-]+$/.test(id);
+}
+export function notificationImageId(source: unknown): string | undefined {
+  try {
+    const url = new URL(String(source));
+    if (url.hostname !== "res.cloudinary.com" || url.pathname.split("/")[1] !== env.cloudinaryCloudName || !url.pathname.includes("/image/upload/")) return;
+    const path = decodeURIComponent(url.pathname), index = path.indexOf("/picmee/notifications/");
+    const id = index >= 0 ? path.slice(index + 1).replace(/\.[^/.]+$/, "") : "";
+    return isManagedNotificationImageId(id) ? id : undefined;
+  } catch { return; }
+}
+export async function destroyManagedNotificationImage(publicId: string): Promise<void> {
+  if (!isManagedNotificationImageId(publicId)) throw new Error("Invalid managed notification image.");
+  return destroyManagedImage(publicId);
+}
 export async function destroyManagedStyleImage(publicId: string): Promise<void> {
   if (!isManagedStyleImageId(publicId)) {
     throw new Error("Refusing to delete an image outside the managed style catalogue.");
   }
+  return destroyManagedImage(publicId);
+}
+async function destroyManagedImage(publicId: string): Promise<void> {
   if (!cloudinaryIsConfigured()) throw new Error("Cloudinary credentials are not configured.");
 
   const timestamp = Math.floor(Date.now() / 1000);

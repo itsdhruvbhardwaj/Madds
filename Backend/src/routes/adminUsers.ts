@@ -58,7 +58,7 @@ router.get("/:id", async (req, res) => {
 router.get("/:id/:history", async (req, res) => {
   const cursor = req.query.cursor;
   if (cursor && (typeof cursor !== "string" || !/^[a-f0-9]{24}$/i.test(cursor))) return res.status(400).json({ error: "Invalid history cursor." });
-  const filter = { userId: req.params.id, ...(cursor ? { _id: { $lt: cursor } } : {}) };
+  const filter = { userId: req.params.id, ...(req.params.history === "generations" ? { $or: [{ createdAt: { $gte: new Date(Date.now() - 15 * 86400000) } }, { status: { $in: ["processing", "outcome_unknown"] } }] } : req.params.history === "credits" ? { createdAt: { $gte: new Date(Date.now() - 15 * 86400000) } } : {}), ...(cursor ? { _id: { $lt: cursor } } : {}) };
   const model = req.params.history === "generations" ? Generation : req.params.history === "credits" ? CreditTransaction : req.params.history === "activity" ? Audit : null;
   if (!model) return res.sendStatus(404);
   const projection = req.params.history === "generations" ? "styleId status createdAt providerCompletedAt resultExpiresAt appReceivedAt viewedAt failureCode failureReason failureStage failureRecordedAt providerName providerModel providerHttpStatus providerErrorCode providerRequestId providerErrorType providerErrorMessage providerUpstreamMessage providerUpstreamCode providerReportedName providerErrorParameter providerRequestSummary providerStartedAt providerDurationMs refundedAt resultFetchedAt creditsCost" : req.params.history === "credits" ? "amount type balanceAfter description referenceId createdAt" : "actorEmail action reason amount balanceAfter createdAt";

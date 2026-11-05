@@ -9,7 +9,7 @@
   <title>Madds Studio · Style Manager</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="portal-overrides.css?v=20261031-user-container">
-  <link rel="stylesheet" href="studio-modern.css?v=20261105-user-sorting">
+  <link rel="stylesheet" href="studio-modern.css?v=20261105-storage">
 </head>
 <body>
   <main id="login-view" class="login-shell">
@@ -37,6 +37,7 @@
       <button class="side-link" data-panel="notifications-panel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg> Notifications</button>
       <button class="side-link" data-panel="feedback-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/><path d="M7 8h10M7 12h6"/></svg> Feedback</button>
       <button class="side-link" data-panel="users-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m2 4a5 5 0 0 1 3 4v2"/></svg> Users</button>
+      <button class="side-link" data-panel="storage-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0"/></svg> Storage &amp; cleanup</button>
       <button class="side-link" data-panel="logs-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg> Change logs</button>
       <div class="sidebar-note"><span class="live-dot"></span> Connected to live catalogue</div>
       <button id="logout-button" class="side-logout">Sign out</button>
@@ -105,6 +106,17 @@
         <p id="users-error" class="form-error" role="alert"></p><div id="users-list"></div><div class="logs-pagination"><span id="users-count" class="muted"></span><div><button id="users-prev" class="button secondary">Previous</button><button id="users-next" class="button secondary">Next</button></div></div>
         <section id="user-details" class="push-editor" hidden></section>
       </section>
+      <section id="storage-panel" class="panel-view" hidden>
+        <div class="page-heading"><div><p class="eyebrow">KEEP MADDS LEAN</p><h1>Storage &amp; cleanup</h1><p class="muted">Review retention, remove eligible history and manage Cloudinary images.</p></div><button id="storage-refresh" class="button secondary" type="button">Refresh</button></div>
+        <p id="storage-error" class="form-error" role="alert"></p><div id="storage-summary" class="storage-summary"></div><p id="storage-note" class="field-hint"></p>
+        <p class="field-hint">15 days for general generation details and credit history. Credit balances, purchase and rewarded-ad proofs, admin adjustments, and unresolved generations are protected. Photos saved on users' devices are unaffected.</p>
+        <div id="storage-policies" class="storage-policies"></div>
+        <section class="storage-media"><div class="page-heading"><div><h2>Cloudinary images</h2><p class="muted">View images here. Delete unused style and notification images; replace active images through the style editor. Recent uploads are protected for 24 hours.</p></div></div>
+          <div class="logs-toolbar"><label>Folder<select id="media-folder"><option value="styles">Style images</option><option value="legacy">Original catalogue images</option><option value="notifications">Notification images</option><option value="profile">Profile images</option></select></label><button id="media-refresh" class="button secondary" type="button">Load images</button></div>
+          <p id="media-error" class="form-error" role="status"></p><div id="media-grid" class="media-grid"></div><button id="media-more" class="button secondary" type="button" hidden>Next page</button>
+        </section>
+        <section class="storage-media"><div class="push-section-heading"><h2>Image cleanup queue</h2><button id="cleanup-retry" class="button secondary" type="button">Retry due jobs</button></div><div id="cleanup-jobs"></div></section>
+      </section>
       <section id="logs-panel" class="panel-view" hidden>
         <div class="page-heading"><div><p class="eyebrow">TEAM ACTIVITY</p><h1>Change logs</h1><p class="muted">Read-only history of catalogue and Home screen changes.</p></div></div>
         <div class="logs-toolbar"><label>Team member<select id="log-member-filter"><option value="">All team members</option></select></label><label>Change type<select id="log-action-filter"><option value="">All changes</option><option value="STYLE_CREATED">Style created</option><option value="STYLE_UPDATED">Style updated</option><option value="STYLE_DELETED">Style deleted</option><option value="COLLECTION_CREATED">Collection created</option><option value="COLLECTION_RENAMED">Collection renamed</option><option value="COLLECTION_DELETED">Collection deleted</option><option value="HOME_SECTION_UPDATED">Home visibility changed</option></select></label><button id="logs-refresh" class="button secondary">Refresh logs</button></div>
@@ -171,11 +183,12 @@
     <form id="rename-form" method="dialog"><header class="dialog-header"><div><p class="eyebrow">COLLECTION</p><h2>Rename collection</h2></div><button type="button" class="icon-button" data-close="rename-dialog">×</button></header><label>Collection name<input name="name" maxlength="60" required></label><footer class="dialog-footer"><button type="button" class="button secondary" data-close="rename-dialog">Cancel</button><button class="button primary" type="submit">Save name</button></footer></form>
   </dialog>
   <script src="config.js"></script>
-  <script src="notifications.js?v=20261105-version-targeting" defer></script>
+  <script src="notifications.js?v=20261105-notification-history" defer></script>
+  <script src="storage.js?v=20261105-storage" defer></script>
   <script src="users.js?v=20261105-user-sorting" defer></script>
   <script src="feedback.js?v=20261101" defer></script>
   <script src="style-bulk.js?v=20261031-filtered-selection" defer></script>
   <script src="style-uploads.js?v=20261104" defer></script>
-  <script src="app.js?v=20261104-cleanup-editors" defer></script>
+  <script src="app.js?v=20261105-storage" defer></script>
 </body>
 </html>

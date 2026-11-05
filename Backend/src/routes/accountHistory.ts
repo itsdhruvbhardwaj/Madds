@@ -32,7 +32,7 @@ router.get("/credit-history", requireAuth, async (req: AuthenticatedRequest, res
   const userId = req.user?.id;
   if (!userId) return res.status(401).json({ ok: false, error: "Authentication required." });
   const { limit, skip } = pageOptions(req);
-  const transactions = await CreditTransaction.find({ userId })
+  const transactions = await CreditTransaction.find({ userId, createdAt: { $gte: new Date(Date.now() - 15 * 86400000) } })
     .select("amount type balanceAfter referenceId description createdAt")
     .sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit + 1).lean();
   const rows = transactions.slice(0, limit);

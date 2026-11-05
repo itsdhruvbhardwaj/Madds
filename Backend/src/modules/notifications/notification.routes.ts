@@ -37,6 +37,14 @@ router.get("/device-versions", async (_req, res) => {
   ]);
   return res.json({ ok: true, versions, note: "Last reported versions, not live install status. Device counts are before account and category eligibility checks." });
 });
+// Clear only finished activity. Keep delivery records for reconciliation and diagnostics.
+router.post("/history/clear", async (_req, res) => {
+  const clearedAt = new Date();
+  const result = await NotificationCampaign.updateMany({
+    status: { $in: ["SENT", "FAILED", "CANCELLED"] }, historyClearedAt: null, updatedAt: { $lte: clearedAt },
+  }, { $set: { historyClearedAt: clearedAt } });
+  return res.json({ ok: true, clearedCount: result.modifiedCount });
+});
 router.param("id", (_req, res, next, id) => {
   if (!idPattern.test(id)) return res.status(400).json({ ok: false, error: "Invalid notification ID." });
   next();
@@ -54,7 +62,7 @@ router.get("/", async (req, res) => {
   if (cursor !== undefined && (typeof cursor !== "string" || !idPattern.test(cursor))) {
     return res.status(400).json({ ok: false, error: "Invalid history cursor." });
   }
-  const campaigns = await NotificationCampaign.find(cursor ? { _id: { $lt: cursor } } : {})
+  const campaigns = await NotificationCampaign.find({ historyClearedAt: null, ...(cursor ? { _id: { $lt: cursor } } : {}) })
     .sort({ _id: -1 }).limit(26).lean();
   return res.json({ ok: true, campaigns: campaigns.slice(0, 25),
     nextCursor: campaigns.length > 25 ? String(campaigns[24]._id) : null, deliveryEnabled: deliveryEnabled(), cooldownHours: notificationCooldownHours() });

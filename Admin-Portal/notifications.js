@@ -127,7 +127,7 @@
       const drafts = campaigns.filter((item) => item.status === "DRAFT");
       const recent = campaigns.filter((item) => item.status !== "DRAFT");
       $("push-campaigns").innerHTML = drafts.map((item) => `<div class="push-draft-card"><button type="button" class="push-campaign ${selected?._id === item._id ? "is-selected" : ""}" data-campaign="${escape(item._id)}" aria-pressed="${selected?._id === item._id}"><span class="push-status">${escape(statusLabel(item.status))}</span><strong>${escape(item.title)}</strong><small>${escape(labels[item.targetAudience] || item.targetAudience)}</small><small>Last edited ${escape(formatDate(item.updatedAt || item.createdAt))}</small></button><button type="button" class="delete-button push-card-clear" data-clear-draft="${escape(item._id)}" aria-label="Clear draft: ${escape(item.title)}" ${busy ? "disabled" : ""}>Clear</button></div>`).join("") || '<p class="muted push-empty">No saved drafts. Start a notification when you are ready.</p>';
-      $("push-recent").innerHTML = recent.length ? `<h3>Recent activity</h3>${recent.map((item) => `<button type="button" class="push-campaign ${selected?._id === item._id ? "is-selected" : ""}" data-campaign="${escape(item._id)}" aria-pressed="${selected?._id === item._id}"><span class="push-status">${escape(statusLabel(item.status))}</span><strong>${escape(item.title)}</strong><small>${escape(formatDate(item.scheduledAt || item.createdAt))}</small></button>`).join("")}` : "";
+      $("push-recent").innerHTML = `<div class="push-recent-heading"><h3>Recent activity</h3><button type="button" class="delete-button" data-clear-history ${busy || loading || !available ? "disabled" : ""}>Delete history</button></div>${recent.length ? recent.map((item) => `<button type="button" class="push-campaign ${selected?._id === item._id ? "is-selected" : ""}" data-campaign="${escape(item._id)}" aria-pressed="${selected?._id === item._id}"><span class="push-status">${escape(statusLabel(item.status))}</span><strong>${escape(item.title)}</strong><small>${escape(formatDate(item.scheduledAt || item.createdAt))}</small></button>`).join("") : '<p class="muted">No recent activity.</p>'}`;
       $("push-more").hidden = !nextCursor;
       $("push-more").disabled = loading || busy;
     }
@@ -207,7 +207,7 @@
         <p class="field-hint">Only users who allow this category and device notifications are eligible. Inactivity audiences exclude unknown activity.</p>
         <div class="push-actions">${draft ? '<button id="push-send" class="button primary" type="button">Send notification</button><button id="push-save" class="button secondary" type="submit">Save draft (optional)</button><button id="push-clear" class="delete-button" type="button">Clear draft</button>' : ""}<button id="push-preview" class="button secondary" type="button">Check audience (optional)</button></div>
         <div id="push-audience-result" class="push-audience-result" role="status"></div>
-        ${draft ? `<details class="push-sending"><summary>Schedule for later (optional)</summary><p class="field-hint">Your changes are saved and the audience is checked automatically before you confirm. Scheduling is optional.</p><label>Schedule in ${escape(zone)}<input id="push-schedule-time" type="datetime-local" step="60" min="${scheduleMinimum()}"></label><button id="push-schedule" type="button" class="button secondary">Schedule notification</button></details>` : `<p class="muted">${escape(item.status === "SCHEDULED" ? `Scheduled: ${formatDate(item.scheduledAt)}` : `Status: ${statusLabel(item.status)}`)}</p>`}
+        ${draft ? `<details class="push-sending"><summary>Schedule for later (optional)</summary><div class="push-schedule-content"><p class="field-hint">Your changes are saved and the audience is checked automatically before you confirm. Scheduling is optional.</p><label>Schedule in ${escape(zone)}<input id="push-schedule-time" type="datetime-local" step="60" min="${scheduleMinimum()}"></label><button id="push-schedule" type="button" class="button secondary">Schedule notification</button></div></details>` : `<p class="muted">${escape(item.status === "SCHEDULED" ? `Scheduled: ${formatDate(item.scheduledAt)}` : `Status: ${statusLabel(item.status)}`)}</p>`}
         ${item._id && ["DRAFT", "SCHEDULED", "PROCESSING"].includes(item.status) ? '<button id="push-cancel" type="button" class="delete-button">Cancel notification</button>' : ""}
         </form><div id="push-stats"></div><div id="push-logs"></div>`;
       catalogChanged(); conditionalFields(); livePreview();
@@ -303,7 +303,7 @@
         campaigns = more ? [...new Map([...campaigns, ...(data.campaigns || [])].map((item) => [item._id, item])).values()] : data.campaigns || [];
         nextCursor = data.nextCursor; renderHistory();
       } catch (failure) { if (session === epoch) { available = false; enabled = false; error(`Could not load notifications: ${failure.message}`); renderHistory(); } }
-      finally { if (session === epoch) { loading = false; $("push-refresh").disabled = false; banner(); updateActions(); } }
+      finally { if (session === epoch) { loading = false; $("push-refresh").disabled = false; banner(); updateActions(); renderHistory(); } }
     }
     async function refresh() {
       if (loading || busy) return;
@@ -385,6 +385,24 @@
       } catch (failure) { if (session === epoch) $("push-review-error").textContent = `${failure.message} Refresh the notification before retrying if the outcome is uncertain.`; }
       finally { if (session === epoch) { busy = false; updateActions(); if ($("push-review-confirm")) { $("push-review-confirm").disabled = false; $("push-review-back").disabled = false; } } }
     }
+    async function clearHistory() {
+      if (busy || loading || !available || !window.confirm("Delete finished notification history from Recent activity? This applies to all pages. Drafts, scheduled and sending notifications will stay. Delivery records remain for troubleshooting.")) return;
+      busy = true; updateActions(); renderHistory(); error(); const session = epoch;
+      try {
+        const result = await api(`${base}/history/clear`, { method: "POST" });
+        if (session !== epoch) return;
+        if (selected && ["SENT", "FAILED", "CANCELLED"].includes(selected.status)) {
+          selected = null; selection++; stats = null; logs = []; logCursor = null; renderEditor();
+        }
+        campaigns = campaigns.filter(item => !["SENT", "FAILED", "CANCELLED"].includes(item.status));
+        renderHistory();
+        const refreshed = await api(base);
+        if (session !== epoch) return;
+        campaigns = refreshed.campaigns || []; nextCursor = refreshed.nextCursor;
+        if (session === epoch) notify(`${result.clearedCount || 0} finished notification${result.clearedCount === 1 ? "" : "s"} cleared from history.`);
+      } catch (failure) { if (session === epoch) error(failure.message); }
+      finally { if (session === epoch) { busy = false; updateActions(); renderHistory(); } }
+    }
     async function clearDraftCard(id) {
       const item = campaigns.find(item => item._id === id);
       if (busy || !item || item.status !== "DRAFT" || !window.confirm(`Clear draft “${item.title}”? Its saved content${selected?._id === id ? " and unsaved edits" : ""} will be discarded.`)) return;
@@ -433,7 +451,7 @@
     $("push-refresh").addEventListener("click", refresh);
     $("push-more").addEventListener("click", () => loadCampaigns(true));
     $("push-campaigns").addEventListener("click", (event) => { const clear = event.target.closest("[data-clear-draft]"); if (clear) { void clearDraftCard(clear.dataset.clearDraft); return; } const button = event.target.closest("[data-campaign]"); if (button) void open(button.dataset.campaign); });
-    $("push-recent").addEventListener("click", (event) => { const button = event.target.closest("[data-campaign]"); if (button) void open(button.dataset.campaign); });
+    $("push-recent").addEventListener("click", (event) => { if (event.target.closest("[data-clear-history]")) { void clearHistory(); return; } const button = event.target.closest("[data-campaign]"); if (button) void open(button.dataset.campaign); });
     window.addEventListener("beforeunload", (event) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } });
     return { refresh, reset, catalogChanged };
   }
