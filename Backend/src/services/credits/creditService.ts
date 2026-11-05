@@ -7,7 +7,8 @@ import { Generation } from "../../models/Generation.js";
 import { RewardedAdAttempt } from "../../models/RewardedAdAttempt.js";
 import { User } from "../../models/User.js";
 
-export const WELCOME_CREDITS = 100;
+import { getWelcomeCredits, DEFAULT_WELCOME_CREDITS } from "../welcomeCredits.js";
+export const WELCOME_CREDITS = DEFAULT_WELCOME_CREDITS;
 
 export function hashIdempotencyKey(key: string): string {
   return createHash("sha256").update(key).digest("hex");
@@ -269,12 +270,14 @@ async function findGenerationByKey(userId: string, idempotencyKeyHash: string) {
 }
 
 export async function createUserWithWelcomeCredits(details: NewUserDetails) {
+  // Snapshot once before transaction retries; balance and ledger always use the same amount.
+  const welcomeCredits = await getWelcomeCredits();
   const session = await mongoose.startSession();
 
   try {
     const createdUser = await session.withTransaction(async () => {
       const [user] = await User.create(
-        [{ ...details, credits: WELCOME_CREDITS, profileSetupComplete: false, notificationDefaultsEligible: true }],
+        [{ ...details, credits: welcomeCredits, profileSetupComplete: false, notificationDefaultsEligible: true }],
         { session },
       );
       if (!user) {
@@ -284,9 +287,9 @@ export async function createUserWithWelcomeCredits(details: NewUserDetails) {
       await CreditTransaction.create(
         [{
           userId: user._id,
-          amount: WELCOME_CREDITS,
+          amount: welcomeCredits,
           type: "INITIAL_GRANT",
-          balanceAfter: WELCOME_CREDITS,
+          balanceAfter: welcomeCredits,
           referenceId: String(user._id),
           description: "New-account welcome credits",
         }],

@@ -67,6 +67,9 @@ vi.mock("./models/RewardedAdAttempt.js", () => ({
   },
 }));
 
+const welcome = vi.hoisted(() => vi.fn());
+vi.mock("./services/welcomeCredits.js", () => ({ getWelcomeCredits: welcome, DEFAULT_WELCOME_CREDITS: 100 }));
+
 import {
   createUserWithWelcomeCredits,
   createRewardedAdAttempt,
@@ -114,6 +117,7 @@ describe("generation request fingerprint", () => {
 describe("credit accounting transactions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    welcome.mockReset().mockResolvedValue(100);
     creditMocks.session.withTransaction.mockImplementation(
       async (operation: (session: unknown) => Promise<unknown>) => operation(creditMocks.session),
     );
@@ -168,6 +172,26 @@ describe("credit accounting transactions", () => {
     expect(creditMocks.session.endSession).toHaveBeenCalledTimes(1);
   });
 
+  it.each([0, 40, 100000])("uses the current configured welcome amount %i for both balance and ledger", async amount => {
+    welcome.mockResolvedValue(amount);
+    await createUserWithWelcomeCredits({name:"New",email:"new@example.com",googleId:"google-new",emailVerified:true,isActive:true});
+    expect(creditMocks.userCreate).toHaveBeenCalledWith([expect.objectContaining({credits:amount})],{session:creditMocks.session});
+    expect(creditMocks.transactionCreate).toHaveBeenCalledWith([expect.objectContaining({amount,balanceAfter:amount,type:"INITIAL_GRANT"})],{session:creditMocks.session});
+    expect(welcome).toHaveBeenCalledTimes(1);
+  });
+  it("does not create an account or grant if the settings read fails", async () => {
+    welcome.mockRejectedValue(new Error("Settings unavailable"));
+    await expect(createUserWithWelcomeCredits({name:"New",email:"new@example.com",emailVerified:false,isActive:true})).rejects.toThrow("unavailable");
+    expect(creditMocks.userCreate).not.toHaveBeenCalled();expect(creditMocks.transactionCreate).not.toHaveBeenCalled();
+  });
+  it("snapshots the welcome amount once across transaction retries", async () => {
+    welcome.mockResolvedValueOnce(30).mockResolvedValueOnce(90);
+    creditMocks.session.withTransaction.mockImplementationOnce(async operation=>{await operation(creditMocks.session);return await operation(creditMocks.session);});
+    await createUserWithWelcomeCredits({name:"New",email:"new@example.com",emailVerified:false,isActive:true});
+    expect(welcome).toHaveBeenCalledTimes(1);
+    expect(creditMocks.userCreate.mock.calls.map(call=>call[0][0].credits)).toEqual([30,30]);
+    expect(creditMocks.transactionCreate.mock.calls.map(call=>call[0][0].amount)).toEqual([30,30]);
+  });
   it("uses a conditional atomic balance update and records the matching debit", async () => {
     const reservation = await reserveGenerationCredits({
       userId: "user-1",
