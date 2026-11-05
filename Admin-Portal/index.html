@@ -7,12 +7,15 @@
   <link rel="icon" type="image/svg+xml" href="assets/madds-favicon.svg?v=2">
   <link rel="alternate icon" type="image/png" sizes="512x512" href="assets/Icon5.png">
   <title>Madds Studio · Style Manager</title>
+  <script src="theme.js?v=20261105-themes"></script>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="portal-overrides.css?v=20261031-user-container">
-  <link rel="stylesheet" href="studio-modern.css?v=20261105-welcome">
+  <link rel="stylesheet" href="studio-modern.css?v=20261105-home-order">
+  <link rel="stylesheet" href="themes.css?v=20261105-themes">
 </head>
 <body>
   <main id="login-view" class="login-shell">
+    <label class="theme-control login-theme-control"><span>Theme</span><select data-studio-theme aria-label="Sign-in theme"><option value="dark">Dark</option><option value="light">Light</option></select></label>
     <section class="login-card">
       <img class="brand-title login-brand-title" src="assets/madds-title.png" alt="Madds">
       <p class="eyebrow">MADDS STUDIO</p>
@@ -45,7 +48,7 @@
     </aside>
 
     <section class="main-area">
-      <header class="topbar"><div><div class="eyebrow">CATALOGUE CONTROL</div><div id="account-email" class="account-email"></div></div><div class="top-actions"><button id="retry-cloudinary-cleanup" class="button secondary cleanup-button" type="button" hidden></button><span class="live-pill"><i></i> Live data</span><button id="refresh-button" class="icon-button" title="Refresh catalogue">↻</button></div></header>
+      <header class="topbar"><div><div class="eyebrow">CATALOGUE CONTROL</div><div id="account-email" class="account-email"></div></div><div class="top-actions"><label class="theme-control"><span>Theme</span><select data-studio-theme aria-label="Studio theme"><option value="dark">Dark</option><option value="light">Light</option></select></label><button id="retry-cloudinary-cleanup" class="button secondary cleanup-button" type="button" hidden></button><span class="live-pill"><i></i> Live data</span><button id="refresh-button" class="icon-button" title="Refresh catalogue">↻</button></div></header>
       <div id="notice" class="notice" role="status" hidden></div>
 
       <section id="styles-panel" class="panel-view">
@@ -84,6 +87,7 @@
 
       <section id="collections-panel" class="panel-view" hidden>
         <div class="page-heading"><div><p class="eyebrow">ORGANIZE YOUR LIBRARY</p><h1>Collections</h1><p class="muted">Create a collection, then assign it to styles in the editor. Deleting one moves styles assigned only to it into Other; multi-collection styles keep their remaining assignments. Styles and images are kept.</p></div></div>
+        <details class="home-order-panel"><summary>Home collection order <span class="field-hint">Arrange the app Home screen</span></summary><p class="muted">Move enabled collections up or down, then save. Hidden collections stay hidden. Empty collections may be skipped by the app.</p><ol id="home-order-list" class="home-order-list"></ol><div class="home-order-footer"><span id="home-order-state" class="field-hint">Saved Home order</span><button id="home-order-reset" class="button secondary" type="button" disabled>Reload layout</button><button id="home-order-save" class="button primary" type="button" disabled>Save order</button></div></details>
         <form id="collection-form" class="collection-create"><label>New collection<input name="name" maxlength="60" placeholder="e.g. Festive Portraits" required></label><button class="button primary" type="submit">Create collection</button></form>
         <div class="collection-toolbar"><label for="collection-sort" class="muted">Sort collections</label><select id="collection-sort" aria-label="Sort collections"><option value="name-asc">Name: A to Z</option><option value="name-desc">Name: Z to A</option><option value="created-desc">Newest added</option><option value="created-asc">Oldest added</option><option value="updated-desc">Recently modified</option><option value="updated-asc">Least recently modified</option></select></div>
         <div class="collection-head"><span>Collection</span><span>Show on app Home</span><span>Styles</span><span>Actions</span></div>
@@ -128,7 +132,7 @@
       </section>
       <section id="logs-panel" class="panel-view" hidden>
         <div class="page-heading"><div><p class="eyebrow">TEAM ACTIVITY</p><h1>Change logs</h1><p class="muted">Read-only history of catalogue and Home screen changes.</p></div></div>
-        <div class="logs-toolbar"><label>Team member<select id="log-member-filter"><option value="">All team members</option></select></label><label>Change type<select id="log-action-filter"><option value="">All changes</option><option value="STYLE_CREATED">Style created</option><option value="STYLE_UPDATED">Style updated</option><option value="STYLE_DELETED">Style deleted</option><option value="COLLECTION_CREATED">Collection created</option><option value="COLLECTION_RENAMED">Collection renamed</option><option value="COLLECTION_DELETED">Collection deleted</option><option value="HOME_SECTION_UPDATED">Home visibility changed</option></select></label><button id="logs-refresh" class="button secondary">Refresh logs</button></div>
+        <div class="logs-toolbar"><label>Team member<select id="log-member-filter"><option value="">All team members</option></select></label><label>Change type<select id="log-action-filter"><option value="">All changes</option><option value="STYLE_CREATED">Style created</option><option value="STYLE_UPDATED">Style updated</option><option value="STYLE_DELETED">Style deleted</option><option value="COLLECTION_CREATED">Collection created</option><option value="COLLECTION_RENAMED">Collection renamed</option><option value="COLLECTION_DELETED">Collection deleted</option><option value="HOME_SECTION_UPDATED">Home visibility changed</option><option value="HOME_ORDER_UPDATED">Home order changed</option></select></label><button id="logs-refresh" class="button secondary">Refresh logs</button></div>
         <div class="logs-table-wrap"><table class="logs-table"><thead><tr><th>Date and time</th><th>Team member</th><th>Change</th><th>Item</th></tr></thead><tbody id="logs-body"></tbody></table></div>
         <div class="logs-pagination"><span id="logs-page-label" class="muted"></span><div><button id="logs-previous" class="button secondary" disabled>Previous</button><button id="logs-next" class="button secondary" disabled>Next</button></div></div>
       </section>
@@ -193,12 +197,13 @@
   </dialog>
   <script src="config.js"></script>
   <script src="notifications.js?v=20261105-notification-history" defer></script>
+  <script src="home-order.js?v=20261105-home-order" defer></script>
   <script src="settings.js?v=20261105-welcome" defer></script>
   <script src="storage.js?v=20261105-storage" defer></script>
   <script src="users.js?v=20261105-user-sorting" defer></script>
   <script src="feedback.js?v=20261101" defer></script>
   <script src="style-bulk.js?v=20261031-filtered-selection" defer></script>
   <script src="style-uploads.js?v=20261104" defer></script>
-  <script src="app.js?v=20261105-welcome" defer></script>
+  <script src="app.js?v=20261105-home-order" defer></script>
 </body>
 </html>

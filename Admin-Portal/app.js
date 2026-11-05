@@ -21,6 +21,7 @@
   const users = window.MaddsUsers.create({ api, notify });
   const storage = window.MaddsStorage.create({ api, notify });
   const settings = window.MaddsSettings.create({ api, notify });
+  const homeOrder = window.MaddsHomeOrder.create({ api, notify, onSaved: sections => { state.sections = sections; renderCollections(); } });
   const feedback = window.MaddsFeedback.create({ api, notify });
   const bulkStyles = window.MaddsStyleBulk.create({ api, notify, getCatalog: () => state, reload: loadCatalog });
 
@@ -54,6 +55,7 @@
     feedback.reset();
     storage.reset();
     settings.reset();
+    homeOrder.reset();
     bulkStyles.reset();
     users.reset();
     notifications.reset();
@@ -169,7 +171,7 @@
     const actions = {
       STYLE_CREATED: "Style created", STYLE_UPDATED: "Style updated", STYLE_DELETED: "Style deleted",
       COLLECTION_CREATED: "Collection created", COLLECTION_RENAMED: "Collection renamed", COLLECTION_DELETED: "Collection deleted",
-      HOME_SECTION_UPDATED: "Home visibility changed",
+      HOME_SECTION_UPDATED: "Home visibility changed", HOME_ORDER_UPDATED: "Home order changed",
     };
     const body = byId("logs-body");
     if (!state.logs.length) {
@@ -550,6 +552,7 @@
   }
 
   function renderCollections() {
+    homeOrder.update(state.sections);
     const root = byId("collections-list");
     if (!state.collections.length) { root.innerHTML = '<div class="empty-state">No collections have been created.</div>'; return; }
     const collections = [...state.collections];
@@ -612,6 +615,7 @@
       const result = await api(`/api/admin/catalog/home-sections/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ visible }) });
       const index = state.sections.findIndex((section) => section.id === id);
       if (index >= 0) state.sections[index] = result.section;
+      homeOrder.update(state.sections);
       notify(visible ? "Collection will appear on the app Home screen." : "Collection hidden from the app Home screen.");
     } catch (error) { notify(error.message, true); await loadCatalog(); }
     finally { if (input?.isConnected) input.disabled = false; }

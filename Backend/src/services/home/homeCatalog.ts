@@ -27,7 +27,8 @@ export async function ensureHomeSection(collectionName: string): Promise<void> {
   if (mongoose.connection.readyState !== 1) return;
   const existing = await HomeSectionConfig.exists({ slug: { $regex: `^${escapeRegex(collectionName)}$`, $options: "i" } });
   if (existing) return;
-  const order = (await HomeSectionConfig.countDocuments()) + 1;
+  const last = await HomeSectionConfig.findOne().sort({order:-1}).select("order").lean();
+  const order = Math.max(0, Number(last?.order) || 0) + 1;
   const baseId = `${slugify(collectionName)}-styles`;
   const collision = await HomeSectionConfig.exists({ id: baseId });
   await HomeSectionConfig.create({

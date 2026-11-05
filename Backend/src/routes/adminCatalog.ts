@@ -13,6 +13,7 @@ import { HomeSectionConfig } from "../models/HomeSectionConfig.js";
 import { StyleCollection } from "../models/StyleCollection.js";
 import { catalogDatabaseReady, listCatalogCollections, listCatalogStyles, optimizeCloudinaryThumbnailUrl, slugify } from "../services/styles/catalog.js";
 import type { Style } from "../services/styles/styleTypes.js";
+import { HomeOrderError, saveHomeOrder } from "../services/home/homeOrder.js";
 import { ensureHomeSection, renameHomeSectionCollection } from "../services/home/homeCatalog.js";
 import { cloudinaryIsConfigured, createStyleImageUploadSignature } from "../services/cloudinaryAssets.js";
 import { getStyleImageIds, queueStyleImages, activateStyleImageCleanup, retryPendingCloudinaryCleanup } from "../services/styleImageCleanup.js";
@@ -24,7 +25,7 @@ const promptTestUpload = multer({
   limits: { fileSize: env.maxUploadBytes, files: 1 },
 });
 const styleIdPattern = /^[a-z0-9](?:[a-z0-9-]{1,78}[a-z0-9])?$/;
-const auditActions = ["STYLE_CREATED", "STYLE_UPDATED", "STYLE_DELETED", "COLLECTION_CREATED", "COLLECTION_RENAMED", "COLLECTION_DELETED", "HOME_SECTION_UPDATED"] as const;
+const auditActions = ["STYLE_CREATED", "STYLE_UPDATED", "STYLE_DELETED", "COLLECTION_CREATED", "COLLECTION_RENAMED", "COLLECTION_DELETED", "HOME_SECTION_UPDATED", "HOME_ORDER_UPDATED"] as const;
 
 router.use(requireAuth, (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   const email = req.user?.email?.toLowerCase();
@@ -283,6 +284,17 @@ router.delete("/catalog/styles/:id", async (req: AuthenticatedRequest, res: Resp
   await FavoriteStyle.deleteMany({ styleId: id });
   await logChange(req, "STYLE_DELETED", id, String(style.name));
   return res.json({ ok: true, id, cloudinaryCleanupPending });
+});
+
+router.get("/catalog/home-sections", async (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  return res.json({ok:true,sections:await HomeSectionConfig.find().sort({order:1,title:1}).lean()});
+});
+
+router.patch("/catalog/home-sections/order", async (req: AuthenticatedRequest, res: Response) => {
+  if (req.user?.emailVerified !== true) return res.status(403).json({ok:false,error:"Verified administrator access required."});
+  try { return res.json({ok:true,sections:await saveHomeOrder(req.body,{email:req.user!.email!,name:req.user?.name})}); }
+  catch(error){if(error instanceof HomeOrderError)return res.status(error.status).json({ok:false,error:error.message});throw error;}
 });
 
 router.patch("/catalog/home-sections/:id", async (req: AuthenticatedRequest, res: Response) => {
