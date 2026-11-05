@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createRequire } from "node:module";
-const { prepareDelivery } = createRequire(import.meta.url)("../../../../Admin-Portal/notifications.js");
+const { prepareDelivery, buildDraft } = createRequire(import.meta.url)("../../../../Admin-Portal/notifications.js");
 const campaign = { _id: "draft", status: "DRAFT", revision: 3, title: "Hi {firstName}" };
 const audience = { eligibleDevicesInSample: 1, scannedDevices: 1 };
 describe("streamlined Studio notification review", () => {
@@ -34,5 +34,22 @@ describe("streamlined Studio notification review", () => {
     const api = vi.fn().mockResolvedValue({ campaign }); const saved = vi.fn();
     expect(await prepareDelivery({ api, base: "/push", dirty: true, onSaved: saved, isCurrent: () => false })).toBeNull();
     expect(saved).not.toHaveBeenCalled(); expect(api).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Studio version targeting", () => {
+  const form = { title: "Update Madds", body: "Get the new version", notificationType: "APP_UPDATE", targetAudience: "OLDER_APP_VERSION",
+    minimumVersionCode: "10", recentDays: "7", userIds: "", imageUrl: "", destination: "update" };
+  it("saves the release threshold numerically without leaking an old style destination", () => {
+    const draft = buildDraft({...form, destination: "style", styleId: "portrait"});
+    expect(draft.targetConditions.minimumVersionCode).toBe(10);
+    expect(draft.relatedStyleId).toBeUndefined();
+  });
+  it("requires a release code for older devices", () => {
+    expect(() => buildDraft({...form, minimumVersionCode: ""})).toThrow("version code");
+  });
+  it("explains why legacy unknown devices need a regular notification", () => {
+    expect(() => buildDraft({...form, targetAudience: "UNKNOWN_APP_VERSION"})).toThrow("Older builds");
+    expect(buildDraft({...form, notificationType: "PRODUCT_UPDATE", targetAudience: "UNKNOWN_APP_VERSION", destination: "home"}).targetConditions.minimumVersionCode).toBeUndefined();
   });
 });

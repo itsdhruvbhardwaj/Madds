@@ -1,5 +1,6 @@
 import { Router, type ErrorRequestHandler } from "express";
 import rateLimit from "express-rate-limit";
+import { DeviceToken } from "../../models/DeviceToken.js";
 import { env } from "../../config/env.js";
 import { requireAuth, type AuthenticatedRequest } from "../../middleware/auth.js";
 import { catalogDatabaseReady } from "../../services/styles/catalog.js";
@@ -25,6 +26,16 @@ router.post("/upload-signature", (_req, res) => {
     return res.status(503).json({ ok: false, error: "Notification image uploads are not configured." });
   }
   return res.json({ ok: true, ...createNotificationImageUploadSignature() });
+});
+router.get("/device-versions", async (_req, res) => {
+  const versions = await DeviceToken.aggregate([
+    { $match: { isActive: true, permissionGranted: true } },
+    { $group: { _id: { $ifNull: ["$appVersionCode", null] }, name: { $max: "$appVersionName" },
+      devices: { $sum: 1 }, lastReportedAt: { $max: "$appVersionReportedAt" } } },
+    { $sort: { _id: -1 } }, { $limit: 100 },
+    { $project: { _id: 0, versionCode: "$_id", versionName: "$name", devices: 1, lastReportedAt: 1 } },
+  ]);
+  return res.json({ ok: true, versions, note: "Last reported versions, not live install status. Device counts are before account and category eligibility checks." });
 });
 router.param("id", (_req, res, next, id) => {
   if (!idPattern.test(id)) return res.status(400).json({ ok: false, error: "Invalid notification ID." });

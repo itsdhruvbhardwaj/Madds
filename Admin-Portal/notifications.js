@@ -5,8 +5,9 @@
     INACTIVE_7_DAYS: "Inactive for 7 days", INACTIVE_14_DAYS: "Inactive for 14 days",
     INACTIVE_30_DAYS: "Inactive for 30 days", SPECIFIC_USERS: "Selected users",
     USERS_WITHOUT_RECENT_GENERATIONS: "Without recent creations",
+    OLDER_APP_VERSION: "Older app version", UNKNOWN_APP_VERSION: "Version unknown",
   };
-  const types = { PRODUCT_UPDATE: "Product updates", NEW_STYLE: "New styles & trends", OFFER: "Offers & rewards", REENGAGEMENT: "Re-engagement" };
+  const types = { APP_UPDATE: "App update · opens Google Play", PRODUCT_UPDATE: "Product updates", NEW_STYLE: "New styles & trends", OFFER: "Offers & rewards", REENGAGEMENT: "Re-engagement" };
   const escape = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
   const formatDate = (value) => value && Number.isFinite(new Date(value).getTime()) ? new Date(value).toLocaleString() : "—";
   const statusLabel = (value) => ({ DRAFT: "Draft", SCHEDULED: "Scheduled", PROCESSING: "Sending", SENT: "Finished", FAILED: "Failed", CANCELLED: "Cancelled" })[value] || value || "Draft";
@@ -32,6 +33,9 @@
     if (!Object.hasOwn(types, values.notificationType) || !Object.hasOwn(labels, values.targetAudience)) throw new Error("Choose a category and audience.");
     const userIds = [...new Set(values.userIds.split(/[\s,]+/).filter(Boolean))];
     if (values.targetAudience === "SPECIFIC_USERS" && (!userIds.length || userIds.length > 1000 || userIds.some((id) => !/^[0-9a-f]{24}$/i.test(id)))) throw new Error("Enter 1 to 1,000 valid user IDs, separated by commas or new lines.");
+    const minimumVersionCode = Number(values.minimumVersionCode);
+    if (values.targetAudience === "OLDER_APP_VERSION" && (!Number.isInteger(minimumVersionCode) || minimumVersionCode < 1 || minimumVersionCode > 2100000000)) throw new Error("Enter the available release's numeric version code from Play Console.");
+    if (values.notificationType === "APP_UPDATE" && values.targetAudience === "UNKNOWN_APP_VERSION") throw new Error("Older builds cannot open the update action. Use Product updates with Home for devices with an unknown version.");
     const recentDays = Number(values.recentDays || 7);
     if (!Number.isInteger(recentDays) || recentDays < 1 || recentDays > 365) throw new Error("Choose a creation window between 1 and 365 days.");
     if (values.imageUrl.trim()) {
@@ -39,12 +43,12 @@
       if (url.protocol !== "https:" || url.username || url.password || url.href.length > 1000) throw new Error("Use a valid HTTPS image URL without credentials.");
     }
     if (values.notificationType === "NEW_STYLE" && values.destination !== "style") throw new Error("A new-style notification must open a published style.");
-    if (values.destination === "style" && !values.styleId) throw new Error("Choose a published style.");
-    if (values.destination === "collection" && !values.collectionId) throw new Error("Choose a collection.");
+    if (values.notificationType !== "APP_UPDATE" && values.destination === "style" && !values.styleId) throw new Error("Choose a published style.");
+    if (values.notificationType !== "APP_UPDATE" && values.destination === "collection" && !values.collectionId) throw new Error("Choose a collection.");
     return { title, body, notificationType: values.notificationType, targetAudience: values.targetAudience,
-      targetConditions: { recentDays, userIds: values.targetAudience === "SPECIFIC_USERS" ? userIds : [] },
-      ...(values.destination === "style" ? { relatedStyleId: values.styleId } : {}),
-      ...(values.destination === "collection" ? { collectionId: values.collectionId } : {}),
+      targetConditions: { recentDays, ...(values.targetAudience === "OLDER_APP_VERSION" ? { minimumVersionCode } : {}), userIds: values.targetAudience === "SPECIFIC_USERS" ? userIds : [] },
+      ...(values.notificationType !== "APP_UPDATE" && values.destination === "style" ? { relatedStyleId: values.styleId } : {}),
+      ...(values.notificationType !== "APP_UPDATE" && values.destination === "collection" ? { collectionId: values.collectionId } : {}),
       ...(values.imageUrl.trim() ? { imageUrl: values.imageUrl.trim() } : {}) };
   }
 
@@ -157,7 +161,13 @@
     function conditionalFields() {
       const form = $("push-form"); if (!form) return;
       if (form.elements.notificationType.value === "NEW_STYLE") form.elements.destination.value = "style";
-      form.elements.destination.disabled = !isDraft() || form.elements.notificationType.value === "NEW_STYLE";
+      if (form.elements.notificationType.value === "APP_UPDATE") form.elements.destination.value = "update";
+      else if (form.elements.destination.value === "update") form.elements.destination.value = "home";
+      form.elements.destination.disabled = !isDraft() || ["NEW_STYLE", "APP_UPDATE"].includes(form.elements.notificationType.value);
+      $("push-version-field").hidden = form.elements.targetAudience.value !== "OLDER_APP_VERSION";
+      form.elements.minimumVersionCode.disabled = !isDraft() || form.elements.targetAudience.value !== "OLDER_APP_VERSION";
+      form.elements.destination.querySelector('option[value="update"]').disabled = form.elements.notificationType.value !== "APP_UPDATE";
+      $("push-unknown-version").hidden = form.elements.targetAudience.value !== "UNKNOWN_APP_VERSION";
       $("push-users-field").hidden = form.elements.targetAudience.value !== "SPECIFIC_USERS";
       $("push-days-field").hidden = form.elements.targetAudience.value !== "USERS_WITHOUT_RECENT_GENERATIONS";
       $("push-style-field").hidden = form.elements.destination.value !== "style";
@@ -183,9 +193,12 @@
           <div class="push-two-fields"><label>Category<select name="notificationType">${options(types, item.notificationType || "PRODUCT_UPDATE")}</select></label><label>Audience<select name="targetAudience">${options(labels, item.targetAudience || "ALL_USERS")}</select></label></div>
           <label id="push-users-field" hidden>User IDs<textarea name="userIds" rows="3" placeholder="Separate IDs with commas or new lines">${escape((item.targetConditions?.userIds || []).join("\n"))}</textarea><small class="field-hint">Use account IDs, not email addresses. Maximum 1,000.</small></label>
           <label id="push-days-field" hidden>Days without a completed creation<input name="recentDays" type="number" min="1" max="365" value="${escape(item.targetConditions?.recentDays || 7)}"></label>
+          <label id="push-version-field" hidden>Available release version code<input name="minimumVersionCode" type="number" min="1" max="2100000000" list="push-version-options" value="${escape(item.targetConditions?.minimumVersionCode || "")}"><datalist id="push-version-options"></datalist><small class="field-hint">Send only to devices with a reported code below this number. Use a release available to the selected testers/users in Google Play. Unknown versions are excluded.</small></label>
+          <p id="push-version-summary" class="field-hint"></p>
+          <p id="push-unknown-version" class="field-hint" hidden>These devices have not reported a version. They are not necessarily outdated. Use Product updates opening Home; legacy builds cannot open the new Google Play action.</p>
           <label>Title <span id="push-title-count" class="field-hint"></span><input name="title" maxlength="120" value="${escape(item.title)}" required><button type="button" class="button secondary" data-personalize="title">Insert first name</button></label>
           <label>Message <span id="push-body-count" class="field-hint"></span><textarea name="body" maxlength="500" rows="3" required>${escape(item.body)}</textarea><button type="button" class="button secondary" data-personalize="body">Insert first name</button></label>
-          <div class="push-two-fields"><label>Open when tapped<select name="destination">${options({ home: "Home", style: "A published style", collection: "A collection" }, item.relatedStyleId ? "style" : item.collectionId ? "collection" : "home")}</select></label><label id="push-style-field" hidden>Style<select name="styleId"></select></label><label id="push-collection-field" hidden>Collection<select name="collectionId"></select></label></div>
+          <div class="push-two-fields"><label>Open when tapped<select name="destination">${options({ update: "Google Play · update app", home: "Home", style: "A published style", collection: "A collection" }, item.notificationType === "APP_UPDATE" ? "update" : item.relatedStyleId ? "style" : item.collectionId ? "collection" : "home")}</select></label><label id="push-style-field" hidden>Style<select name="styleId"></select></label><label id="push-collection-field" hidden>Collection<select name="collectionId"></select></label></div>
           <label>Notification image <span class="field-hint">Optional · JPG, PNG, or WebP · compressed to 300 KB</span><input name="imageUrl" type="hidden" value="${escape(item.imageUrl)}"><div class="image-upload-row"><input id="push-image-file" type="file" accept="image/jpeg,image/png,image/webp"><button id="push-image-upload" type="button" class="button secondary">Upload image</button><span id="push-image-status" class="field-hint">${item.imageUrl ? "Image uploaded" : "No image selected"}</span></div></label>
         </fieldset>
         <label>Preview name<input id="push-preview-name" maxlength="80" value="Thrope"><small class="field-hint">Preview only. Recipients use their own profile first name, or "there" if missing. Use {firstName} in your title or message.</small></label>
@@ -198,6 +211,13 @@
         ${item._id && ["DRAFT", "SCHEDULED", "PROCESSING"].includes(item.status) ? '<button id="push-cancel" type="button" class="delete-button">Cancel notification</button>' : ""}
         </form><div id="push-stats"></div><div id="push-logs"></div>`;
       catalogChanged(); conditionalFields(); livePreview();
+      const versionSummary = $("push-version-summary"), versionOptions = $("push-version-options");
+      api(`${base}/device-versions`).then(result => {
+        if ($("push-version-summary") !== versionSummary) return;
+        const versions = result.versions || [];
+        versionOptions.innerHTML = versions.filter(v => v.versionCode != null).map(v => `<option value="${escape(v.versionCode)}">${escape(v.versionName || "Version")} · ${escape(v.devices)} devices</option>`).join("");
+        versionSummary.textContent = versions.length ? "Last reported: " + versions.map(v => `${v.versionCode == null ? "Unknown" : `${v.versionName || "Version"} (code ${v.versionCode})`}: ${v.devices} devices`).join(" · ") + ". Counts are before account/category eligibility checks. Reports refresh when the app syncs." : "No devices have reported an app version yet.";
+      }).catch(() => { if ($("push-version-summary") === versionSummary) versionSummary.textContent = "Version summary unavailable. You can enter the Play Console version code manually."; });
       baseline = JSON.stringify(values()); dirty = false; updateDirty(); renderDetails();
       $("push-form").querySelectorAll("[data-personalize]").forEach(button => button.addEventListener("click", () => {
         const field = $("push-form").elements[button.dataset.personalize];
@@ -347,7 +367,7 @@
     function showReview(campaign) {
       $("push-review-dialog")?.remove();
       const dialog = document.createElement("dialog"); dialog.id = "push-review-dialog"; dialog.className = "editor-dialog compact-dialog push-review-dialog";
-      dialog.innerHTML = `<div class="push-review-content"><h2>${review.action === "schedule" ? "Confirm schedule" : "Send notification?"}</h2><span class="push-app-name">${escape(types[campaign.notificationType])}</span><h3>${escape(review.preview?.title || campaign.title)}</h3><p class="push-review-body">${escape(review.preview?.body || campaign.body)}</p><p class="field-hint">Changes saved. Personalized text is a preview; recipients use their own name.</p><p>Audience: <b>${escape(labels[campaign.targetAudience])}</b></p><p>${escape(review.audienceMessage)}</p>${campaign.targetAudience === "SPECIFIC_USERS" ? `<p>${campaign.targetConditions.userIds.length} selected account IDs</p>` : ""}<p>Opens: ${escape(campaign.deepLink)}</p>${review.scheduledAt ? `<p>${escape(formatDate(review.scheduledAt))} · ${escape(zone)}<small class="field-hint">UTC: ${escape(review.scheduledAt)}</small></p>` : "<p>Delivery starts when the worker processes this notification.</p>"}<p class="muted">Only eligible users who opted in will be included. The audience is checked again at delivery.</p><p id="push-review-error" class="form-error" role="alert"></p><div class="push-actions"><button id="push-review-back" type="button" class="button secondary">Back</button><button id="push-review-confirm" type="button" class="button primary">${review.action === "schedule" ? "Confirm schedule" : "Send notification"}</button></div></div>`;
+      dialog.innerHTML = `<div class="push-review-content"><h2>${review.action === "schedule" ? "Confirm schedule" : "Send notification?"}</h2><span class="push-app-name">${escape(types[campaign.notificationType])}</span><h3>${escape(review.preview?.title || campaign.title)}</h3><p class="push-review-body">${escape(review.preview?.body || campaign.body)}</p><p class="field-hint">Changes saved. Personalized text is a preview; recipients use their own name.</p><p>Audience: <b>${escape(labels[campaign.targetAudience])}</b></p><p>${escape(review.audienceMessage)}</p>${campaign.targetAudience === "SPECIFIC_USERS" ? `<p>${campaign.targetConditions.userIds.length} selected account IDs</p>` : ""}<p>Opens: ${escape(campaign.deepLink)}</p>${campaign.targetAudience === "OLDER_APP_VERSION" ? `<p>Reported version code below ${escape(campaign.targetConditions.minimumVersionCode)}. Unknown versions excluded.</p>` : ""}${review.scheduledAt ? `<p>${escape(formatDate(review.scheduledAt))} · ${escape(zone)}<small class="field-hint">UTC: ${escape(review.scheduledAt)}</small></p>` : "<p>Delivery starts when the worker processes this notification.</p>"}<p class="muted">Only eligible users who opted in will be included. The audience is checked again at delivery.</p><p id="push-review-error" class="form-error" role="alert"></p><div class="push-actions"><button id="push-review-back" type="button" class="button secondary">Back</button><button id="push-review-confirm" type="button" class="button primary">${review.action === "schedule" ? "Confirm schedule" : "Send notification"}</button></div></div>`;
       document.body.append(dialog); dialog.showModal();
       $("push-review-back").addEventListener("click", () => { dialog.close(); review = null; });
       dialog.addEventListener("cancel", (event) => { if (busy) event.preventDefault(); else review = null; });

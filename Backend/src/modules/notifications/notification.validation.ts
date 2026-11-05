@@ -13,6 +13,10 @@ export function validateCampaign(input: unknown): CampaignInput {
       !audiences.includes(value.targetAudience)) return bad();
   const type = value.notificationType as keyof typeof notificationTypes;
   const conditions = value.targetConditions ?? {};
+  const minimumVersionCode = conditions.minimumVersionCode;
+  if ((value.targetAudience === "OLDER_APP_VERSION" || minimumVersionCode !== undefined) &&
+      (!Number.isInteger(minimumVersionCode) || minimumVersionCode < 1 || minimumVersionCode > 2100000000)) return bad();
+  if (type === "APP_UPDATE" && (value.relatedStyleId || value.collectionId || value.targetAudience === "UNKNOWN_APP_VERSION")) return bad();
   const userIds = conditions.userIds ?? [];
   const recentDays = conditions.recentDays ?? 7;
   if (!Array.isArray(userIds) || userIds.length > 1000 || userIds.some((id) => typeof id !== "string" || !/^[0-9a-f]{24}$/i.test(id)) ||
@@ -23,7 +27,7 @@ export function validateCampaign(input: unknown): CampaignInput {
   }
   if (value.relatedStyleId && value.collectionId) return bad();
   if (type === "NEW_STYLE" && !value.relatedStyleId) return bad();
-  const deepLink = value.relatedStyleId ? `picme://styles/${value.relatedStyleId}` :
+  const deepLink = type === "APP_UPDATE" ? "https://play.google.com/store/apps/details?id=com.itsdhruvbhardwaj.picme" : value.relatedStyleId ? `picme://styles/${value.relatedStyleId}` :
     value.collectionId ? `picme://collections/${value.collectionId}` : "picme://home";
   if (value.deepLink !== undefined && value.deepLink !== deepLink) return bad();
   if (value.imageUrl !== undefined) {
@@ -33,7 +37,7 @@ export function validateCampaign(input: unknown): CampaignInput {
     } catch { return bad(); }
   }
   const campaign: CampaignInput = { title, body, notificationType: type, category: notificationTypes[type],
-    targetAudience: value.targetAudience, targetConditions: { userIds: [...new Set<string>(userIds)], recentDays },
+    targetAudience: value.targetAudience, targetConditions: { userIds: [...new Set<string>(userIds)], recentDays, ...(value.targetAudience === "OLDER_APP_VERSION" ? { minimumVersionCode } : {}) },
     relatedStyleId: value.relatedStyleId, collectionId: value.collectionId, imageUrl: value.imageUrl, deepLink };
   const { targetConditions: _conditions, targetAudience: _audience, ...payload } = campaign;
   if (Buffer.byteLength(JSON.stringify(payload), "utf8") > 3200) return bad();

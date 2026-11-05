@@ -1,7 +1,7 @@
 import express from "express";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ create: vi.fn(), update: vi.fn(), findById: vi.fn(), init: vi.fn(), ready: vi.fn(), preview: vi.fn(), destination: vi.fn(), cloudinaryConfigured: vi.fn(), signature: vi.fn() }));
+const mocks = vi.hoisted(() => ({ versions: vi.fn(), create: vi.fn(), update: vi.fn(), findById: vi.fn(), init: vi.fn(), ready: vi.fn(), preview: vi.fn(), destination: vi.fn(), cloudinaryConfigured: vi.fn(), signature: vi.fn() }));
 vi.mock("../../middleware/auth.js", () => ({ requireAuth: (req: any, res: any, next: any) => {
   if (!req.headers.authorization) return res.sendStatus(401);
   req.user = { id: "admin-id", emailVerified: req.headers.authorization !== "Bearer unverified", email: req.headers.authorization === "Bearer user" ? "user@example.com" : "admin@example.com" }; next();
@@ -12,6 +12,7 @@ vi.mock("./notification.models.js", () => ({ initializeNotificationModels: mocks
     NotificationCampaign: { create: mocks.create, findOneAndUpdate: mocks.update, findOneAndDelete: mocks.update, findById: () => ({ lean: mocks.findById }) }, NotificationLog: { updateMany: vi.fn() },
 }));
 vi.mock("./notification.service.js", () => ({ notificationService: { preview: mocks.preview }, validateDestination: mocks.destination }));
+vi.mock("../../models/DeviceToken.js", () => ({ DeviceToken: { aggregate: mocks.versions } }));
 import { adminNotificationsRouter } from "./notification.routes.js";
 const app = express(); app.use(express.json()); app.use("/admin/push", adminNotificationsRouter);
 const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
@@ -31,6 +32,18 @@ describe("admin notification API", () => {
     expect((await request(app).post("/admin/push").set("Authorization", "Bearer user").send(draft)).status).toBe(403);
     expect((await request(app).post("/admin/push").set("Authorization", "Bearer unverified").send(draft)).status).toBe(403);
     expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.init).not.toHaveBeenCalled();
+  });
+  it("restricts version counts to administrators and returns only grouped metadata", async () => {
+    expect((await request(app).get("/admin/push/device-versions")).status).toBe(401);
+    expect((await request(app).get("/admin/push/device-versions").set("Authorization", "Bearer user")).status).toBe(403);
+    mocks.versions.mockResolvedValue([{ versionCode: 9, versionName: "1.1.6", devices: 2 }]);
+    const response = await request(app).get("/admin/push/device-versions").set("Authorization", "Bearer admin");
+    expect(response.status).toBe(200);
+    expect(response.body.versions[0]).toEqual({versionCode: 9, versionName: "1.1.6", devices: 2});
+    expect(mocks.versions).toHaveBeenCalledWith(expect.arrayContaining([
+      { $match: { isActive: true, permissionGranted: true } }, { $limit: 100 },
+      { $project: { _id: 0, versionCode: "$_id", versionName: "$name", devices: 1, lastReportedAt: 1 } }
+    ]));
   });
   it("creates an allowlisted draft with the authenticated creator", async () => {
     expect((await request(app).post("/admin/push").set("Authorization", "Bearer admin").send({ ...draft, status: "SENT", createdBy: "victim" })).status).toBe(201);

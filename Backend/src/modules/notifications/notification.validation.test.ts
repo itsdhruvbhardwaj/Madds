@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { validateCampaign, validateSchedule } from "./notification.validation.js";
-import { audienceUserFilter, buildPushMessage, retryDecision } from "./notification.service.js";
+import { matchesDeviceAudience, audienceUserFilter, buildPushMessage, retryDecision } from "./notification.service.js";
 
 const draft = { title: "New in Madds", body: "Explore the latest update", notificationType: "PRODUCT_UPDATE", targetAudience: "ALL_USERS" };
 describe("notification payload and audience rules", () => {
@@ -49,5 +49,29 @@ describe("notification payload and audience rules", () => {
     expect(retryDecision("messaging/server-unavailable", 1, new Date(now.getTime() - 3_600_001), now).retry).toBe(false);
     expect(retryDecision("messaging/registration-token-not-registered", 1, now).invalidToken).toBe(true);
     expect(retryDecision("messaging/invalid-argument", 1, now)).toMatchObject({ retry: false, invalidToken: false });
+  });
+});
+
+describe("app-version notification audiences", () => {
+  const older = () => validateCampaign({ ...draft, targetAudience: "OLDER_APP_VERSION", targetConditions: { minimumVersionCode: 10 } });
+  it("compares numeric codes per device and excludes unknown/current/newer versions", () => {
+    expect(matchesDeviceAudience(older(), { appVersionCode: 9 })).toBe(true);
+    for (const appVersionCode of [10, 11, undefined, null, "9", 0]) expect(matchesDeviceAudience(older(), { appVersionCode })).toBe(false);
+  });
+  it("keeps unknown versions separate and supports legacy home messages", () => {
+    const unknown = validateCampaign({...draft, targetAudience: "UNKNOWN_APP_VERSION"});
+    expect(matchesDeviceAudience(unknown, {})).toBe(true);
+    expect(matchesDeviceAudience(unknown, { appVersionCode: 9 })).toBe(false);
+  });
+  it.each([undefined, 0, -1, 1.5, "10", 2100000001])("rejects invalid release code %j", minimumVersionCode => {
+    expect(() => validateCampaign({...draft, targetAudience: "OLDER_APP_VERSION", targetConditions: { minimumVersionCode }})).toThrow();
+  });
+  it("locks app updates to the correct Play listing and capable devices", () => {
+    const update = validateCampaign({...draft, notificationType: "APP_UPDATE"});
+    expect(update.deepLink).toBe("https://play.google.com/store/apps/details?id=com.itsdhruvbhardwaj.picme");
+    expect(update.category).toBe("productUpdates");
+    expect(matchesDeviceAudience(update, {})).toBe(false);
+    expect(() => validateCampaign({...draft, notificationType: "APP_UPDATE", relatedStyleId: "portrait"})).toThrow();
+    expect(() => validateCampaign({...draft, notificationType: "APP_UPDATE", deepLink: "https://evil.example"})).toThrow();
   });
 });

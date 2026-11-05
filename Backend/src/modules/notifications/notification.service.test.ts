@@ -139,3 +139,15 @@ describe("persistent notification delivery worker", () => {
     expect(mocks.sendEach).not.toHaveBeenCalled();
   });
 });
+
+it("skips an older-version recipient that updated after audience expansion", async () => {
+  vi.resetAllMocks(); vi.stubEnv("NOTIFICATION_DELIVERY_ENABLED", "true");
+  mocks.claim.mockResolvedValue({ ...campaign, targetAudience: "OLDER_APP_VERSION", targetConditions: { minimumVersionCode: 10 } });
+  mocks.campaignExists.mockResolvedValue(true);
+  mocks.logClaim.mockResolvedValueOnce(log).mockResolvedValue(null);
+  mocks.deviceFind.mockResolvedValue({ ...device, appVersionCode: 10 });
+  mocks.aggregate.mockResolvedValue([{ _id: "SKIPPED", count: 1 }]);
+  await new NotificationService().tick();
+  expect(mocks.sendEach).not.toHaveBeenCalled();
+  vi.unstubAllEnvs();
+});

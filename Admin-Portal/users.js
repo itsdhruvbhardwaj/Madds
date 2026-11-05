@@ -32,7 +32,7 @@
   }
   function create({ api, notify }) {
     const $ = id => document.getElementById(id), base = "/api/admin/users";
-    let page = 1, epoch = 0, historyTicket = 0, activeHistory = null, selected = null, selectedBalance = 0, busy = false, pending = null, query = "", status = "";
+    let page = 1, epoch = 0, historyTicket = 0, activeHistory = null, selected = null, selectedBalance = 0, busy = false, pending = null, query = "", status = "", sort = "joined_desc";
     const accountStatus = u => u.isActive === false ? "Suspended" : !u.emailVerified ? "Email unverified" : u.deletionScheduledAt ? "Deletion scheduled" : "Active";
     function closeDetails() {
       const detail = $("user-details"); detail.hidden = true; $("users-panel").append(detail);
@@ -46,10 +46,10 @@
       if (busy) return;
       const ticket = ++epoch; $("users-error").textContent = "";
       try {
-        const result = await api(`${base}?page=${page}&q=${encodeURIComponent(query)}&status=${status}`);
+        const result = await api(`${base}?page=${page}&q=${encodeURIComponent(query)}&status=${status}&sort=${encodeURIComponent(sort)}`);
         if (ticket !== epoch) return;
         closeDetails();
-        $("users-list").innerHTML = `<div class="users-table-wrap"><table class="users-table"><thead><tr><th>User</th><th>Credits</th><th>Joined</th><th>Status</th><th></th></tr></thead><tbody>${result.users.map(u => `<tr id="user-row-${esc(u._id)}"><td><strong>${esc(u.name)}</strong><span class="log-member-email">${esc(u.email)}</span></td><td><span class="user-credit-count">${Number(u.credits)}</span></td><td>${esc(date(u.createdAt))}</td><td><span class="user-status ${u.isActive === false ? "is-suspended" : !u.emailVerified ? "is-unverified" : ""}">${accountStatus(u)}</span></td><td><button class="button secondary user-view" data-user="${esc(u._id)}" aria-expanded="false">View</button></td></tr>`).join("") || '<tr><td colspan="5">No users found.</td></tr>'}</tbody></table></div>`;
+        $("users-list").innerHTML = `<div class="users-table-wrap"><table class="users-table"><thead><tr><th>User</th><th>Credits</th><th>Joined</th><th>Last active</th><th>Status</th><th></th></tr></thead><tbody>${result.users.map(u => `<tr id="user-row-${esc(u._id)}"><td><strong>${esc(u.name)}</strong><span class="log-member-email">${esc(u.email)}</span></td><td><span class="user-credit-count">${Number(u.credits)}</span></td><td>${esc(date(u.createdAt))}</td><td>${esc(u.lastActiveAt ? date(u.lastActiveAt) : "Not recorded")}</td><td><span class="user-status ${u.isActive === false ? "is-suspended" : !u.emailVerified ? "is-unverified" : ""}">${accountStatus(u)}</span></td><td><button class="button secondary user-view" data-user="${esc(u._id)}" aria-expanded="false">View</button></td></tr>`).join("") || '<tr><td colspan="6">No users found.</td></tr>'}</tbody></table></div>`;
         $("users-count").textContent = `${result.total} users · Page ${result.page} of ${result.pages}`;
         $("users-prev").disabled = page <= 1; $("users-next").disabled = page >= result.pages;
       } catch (e) { if (ticket === epoch) $("users-error").textContent = e.message; }
@@ -61,7 +61,7 @@
       const anchor = $("user-row-" + id); if (!anchor) return;
       anchor.classList.add("is-expanded");
       const row = document.createElement("tr"); row.id = "user-detail-row";
-      const cell = document.createElement("td"); cell.colSpan = 5; row.append(cell); anchor.after(row); cell.append($("user-details"));
+      const cell = document.createElement("td"); cell.colSpan = 6; row.append(cell); anchor.after(row); cell.append($("user-details"));
       const view = anchor.querySelector("[data-user]"); view.textContent = "Close"; view.setAttribute("aria-expanded", "true");
       const ticket = ++epoch; selected = id; pending = null;
       $("user-details").hidden = false; $("user-details").textContent = "Loading account…";
@@ -122,7 +122,14 @@
       catch (error) { $("user-change-error").textContent = error.message; }
       finally { busy = false; form.querySelectorAll("input,textarea,select,button").forEach(el => el.disabled = false); }
     }
-    $("users-search").onsubmit = e => { e.preventDefault(); if (busy) return; query = e.target.elements.q.value.trim(); status = e.target.elements.status.value; page = 1; void refresh(); };
+    function applyFilters() {
+      const form = $("users-search");
+      if (busy) { form.elements.sort.value = sort; return; }
+      query = form.elements.q.value.trim(); status = form.elements.status.value; sort = form.elements.sort.value;
+      page = 1; void refresh();
+    }
+    $("users-search").onsubmit = e => { e.preventDefault(); applyFilters(); };
+    $("users-search").elements.sort.onchange = applyFilters;
     $("users-prev").onclick = () => { if (!busy && page > 1) { page--; void refresh(); } };
     $("users-next").onclick = () => { if (!busy) { page++; void refresh(); } };
     $("users-list").onclick = e => { const b = e.target.closest("[data-user]"); if (b) void open(b.dataset.user); };

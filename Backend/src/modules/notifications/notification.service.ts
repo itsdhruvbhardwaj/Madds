@@ -39,8 +39,17 @@ export async function validateDestination(campaign: CampaignInput): Promise<void
   }
 }
 
+export function matchesDeviceAudience(campaign: CampaignInput, device: any): boolean {
+  const known = Number.isInteger(device.appVersionCode) && device.appVersionCode >= 1 && device.appVersionCode <= 2100000000;
+  // Update actions are understood by builds that report their version; legacy builds remain unknown.
+  if (campaign.notificationType === "APP_UPDATE" && !known) return false;
+  if (campaign.targetAudience === "UNKNOWN_APP_VERSION") return !known;
+  if (campaign.targetAudience === "OLDER_APP_VERSION") return known && device.appVersionCode < (campaign.targetConditions.minimumVersionCode ?? 0);
+  return true;
+}
+
 async function eligible(campaign: CampaignInput, device: any, now: Date): Promise<boolean> {
-  if (!device.isActive || !device.permissionGranted ||
+  if (!matchesDeviceAudience(campaign, device) || !device.isActive || !device.permissionGranted ||
       !await hasActiveNotificationSession(String(device.userId), String(device.sessionId))) return false;
   const userFilter = audienceUserFilter(campaign, now);
   if (!await User.exists({ $and: [{ _id: device.userId }, userFilter] })) return false;

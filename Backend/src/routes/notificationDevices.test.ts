@@ -26,7 +26,7 @@ describe("authenticated push installation registration", () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ ok: true });
     expect(mocks.findOneAndUpdate).toHaveBeenCalledWith({ deviceId: registration.deviceId, bindingVersion: { $lt: 1 } },
-      { $set: expect.objectContaining({ userId: "account-a", sessionId: "session-a", permissionGranted: false }) },
+      expect.objectContaining({ $set: expect.objectContaining({ userId: "account-a", sessionId: "session-a", permissionGranted: false }) }),
       { upsert: true, runValidators: true });
   });
   it.each([{ deviceId: "hardware-id" }, { bindingVersion: 0 }, { bindingVersion: "1" },
@@ -45,4 +45,22 @@ describe("authenticated push installation registration", () => {
     expect(mocks.updateOne).toHaveBeenCalledWith(expect.objectContaining({ userId: "account-a", sessionId: "session-a",
       bindingVersion: { $lt: 1 } }), { $set: { isActive: false, bindingVersion: 1 } });
   });
+});
+
+it("stores reported version on the same guarded installation update", async () => {
+  mocks.findOneAndUpdate.mockResolvedValue({});
+  const result = await request(app).put("/push/device").set("Authorization", "Bearer test")
+    .send({ ...registration, appVersionCode: 9, appVersionName: "1.1.6" });
+  expect(result.status).toBe(200);
+  expect(mocks.findOneAndUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ bindingVersion: { $lt: 1 } }),
+    expect.objectContaining({ $set: expect.objectContaining({ appVersionCode: 9, appVersionName: "1.1.6", appVersionReportedAt: expect.any(Date) }) }), expect.anything());
+});
+it("clears stale version metadata when a legacy build registers", async () => {
+  await request(app).put("/push/device").set("Authorization", "Bearer test").send(registration);
+  expect(mocks.findOneAndUpdate).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({
+    $unset: { appVersionCode: 1, appVersionName: 1, appVersionReportedAt: 1 } }), expect.anything());
+});
+it.each([{appVersionCode: "9", appVersionName: "1.1.6"}, {appVersionCode: 0, appVersionName: "1"},
+  {appVersionCode: 9}, {appVersionCode: 9.5, appVersionName: "1"}])("rejects invalid version reports %j", async fields => {
+  expect((await request(app).put("/push/device").set("Authorization", "Bearer test").send({...registration, ...fields})).status).toBe(400);
 });

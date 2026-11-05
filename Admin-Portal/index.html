@@ -9,7 +9,7 @@
   <title>Madds Studio · Style Manager</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="portal-overrides.css?v=20261031-user-container">
-  <link rel="stylesheet" href="studio-modern.css?v=20261104-cleanup-editors">
+  <link rel="stylesheet" href="studio-modern.css?v=20261105-user-sorting">
 </head>
 <body>
   <main id="login-view" class="login-shell">
@@ -101,7 +101,7 @@
       <section id="feedback-panel" class="panel-view" hidden><div class="page-heading"><div><p class="eyebrow">LISTEN TO YOUR COMMUNITY</p><h1>Feedback</h1><p class="muted">Suggestions and bug reports from Madds users.</p></div><button id="feedback-refresh" class="button secondary">Refresh</button></div><div class="logs-toolbar"><label>Status<select id="feedback-filter"><option value="">All feedback</option><option value="NEW">New</option><option value="IN_REVIEW">In review</option><option value="RESOLVED">Resolved</option></select></label></div><p id="feedback-error" class="form-error" role="alert"></p><div id="feedback-list"></div><div class="logs-pagination"><button id="feedback-prev" class="button secondary">Previous</button><span id="feedback-page" class="muted"></span><button id="feedback-next" class="button secondary">Next</button></div></section>
       <section id="users-panel" class="panel-view" hidden>
         <div class="page-heading"><div><p class="eyebrow">ACCOUNT SUPPORT</p><h1>Users</h1><p class="muted">Manage accounts, credits, and creation history.</p></div></div>
-        <form id="users-search" class="logs-toolbar"><label>Find a user<input name="q" maxlength="120" placeholder="Name, email, or user ID"></label><label>Status<select name="status"><option value="">All users</option><option value="active">Active</option><option value="suspended">Suspended</option></select></label><button class="button primary">Search</button></form>
+        <form id="users-search" class="logs-toolbar"><label>Find a user<input name="q" maxlength="120" placeholder="Name, email, or user ID"></label><label>Status<select name="status"><option value="">All users</option><option value="active">Active</option><option value="suspended">Suspended</option></select></label><label>Sort by<select name="sort"><option value="joined_desc">Newest joined</option><option value="joined_asc">Oldest joined</option><option value="last_active_desc">Recently active</option><option value="last_active_asc">Inactive longest</option></select></label><button class="button primary">Search</button></form>
         <p id="users-error" class="form-error" role="alert"></p><div id="users-list"></div><div class="logs-pagination"><span id="users-count" class="muted"></span><div><button id="users-prev" class="button secondary">Previous</button><button id="users-next" class="button secondary">Next</button></div></div>
         <section id="user-details" class="push-editor" hidden></section>
       </section>
@@ -171,8 +171,8 @@
     <form id="rename-form" method="dialog"><header class="dialog-header"><div><p class="eyebrow">COLLECTION</p><h2>Rename collection</h2></div><button type="button" class="icon-button" data-close="rename-dialog">×</button></header><label>Collection name<input name="name" maxlength="60" required></label><footer class="dialog-footer"><button type="button" class="button secondary" data-close="rename-dialog">Cancel</button><button class="button primary" type="submit">Save name</button></footer></form>
   </dialog>
   <script src="config.js"></script>
-  <script src="notifications.js?v=20261102-streamlined-send" defer></script>
-  <script src="users.js?v=20261103-provider-error-details" defer></script>
+  <script src="notifications.js?v=20261105-version-targeting" defer></script>
+  <script src="users.js?v=20261105-user-sorting" defer></script>
   <script src="feedback.js?v=20261101" defer></script>
   <script src="style-bulk.js?v=20261031-filtered-selection" defer></script>
   <script src="style-uploads.js?v=20261104" defer></script>

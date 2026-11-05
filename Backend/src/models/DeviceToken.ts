@@ -9,6 +9,9 @@ const schema = new Schema({
   platform: { type: String, enum: ["android"], default: "android" },
   isActive: { type: Boolean, default: true },
   permissionGranted: { type: Boolean, default: false },
+  appVersionCode: { type: Number, min: 1, max: 2100000000 },
+  appVersionName: { type: String, maxlength: 100 },
+  appVersionReportedAt: Date,
   lastUsedAt: { type: Date, required: true },
 }, { timestamps: true });
 schema.index({ fcmToken: 1 }, { unique: true });

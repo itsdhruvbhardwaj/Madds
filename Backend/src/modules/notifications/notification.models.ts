@@ -5,7 +5,7 @@ const campaignSchema = new Schema({
   title: { type: String, required: true }, body: { type: String, required: true }, imageUrl: String,
   notificationType: { type: String, required: true }, category: { type: String, enum: notificationCategories, required: true },
   targetAudience: { type: String, enum: audiences, required: true },
-  targetConditions: { userIds: [String], recentDays: { type: Number, default: 7 } },
+  targetConditions: { userIds: [String], recentDays: { type: Number, default: 7 }, minimumVersionCode: Number },
   relatedStyleId: String, collectionId: String, deepLink: { type: String, required: true },
   createdBy: { type: Schema.Types.ObjectId, required: true },
   revision: { type: Number, default: 0 },

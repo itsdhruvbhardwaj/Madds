@@ -5,12 +5,12 @@ import { Generation } from "../models/Generation.js";
 import { CatalogStyle } from "../models/CatalogStyle.js";
 import { CreditTransaction } from "../models/CreditTransaction.js";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-const m = vi.hoisted(() => ({ user: vi.fn(), update: vi.fn(), ledger: vi.fn(), audit: vi.fn(), previous: vi.fn() }));
+const m = vi.hoisted(() => ({ user: vi.fn(), update: vi.fn(), ledger: vi.fn(), audit: vi.fn(), previous: vi.fn(), list: vi.fn(), count: vi.fn() }));
 vi.mock("../middleware/auth.js", () => ({ requireAuth: (req: any, res: any, next: any) => {
   if (!req.headers.authorization) return res.sendStatus(401);
   req.user = { id: "aaaaaaaaaaaaaaaaaaaaaaaa", email: req.headers.authorization === "Bearer admin" ? "admin@example.com" : "user@example.com", emailVerified: true }; next();
 } }));
-vi.mock("../models/User.js", () => ({ User: { findById: () => ({ session: () => ({ lean: m.user }), select: () => ({ lean: m.user }) }), findOneAndUpdate: (...args: any[]) => { m.update(...args); return { lean: m.user }; } } }));
+vi.mock("../models/User.js", () => ({ User: { aggregate: m.list, countDocuments: m.count, findById: () => ({ session: () => ({ lean: m.user }), select: () => ({ lean: m.user }) }), findOneAndUpdate: (...args: any[]) => { m.update(...args); return { lean: m.user }; } } }));
 vi.mock("../models/CreditTransaction.js", () => ({ CreditTransaction: { create: m.ledger, find: vi.fn() } }));
 import { adminUsersRouter } from "./adminUsers.js";
 const app = express(); app.use(express.json()); app.use("/users", adminUsersRouter);
@@ -40,12 +40,52 @@ describe("admin user controls", () => {
     vi.spyOn(audit, "init").mockResolvedValue(audit);
     vi.spyOn(audit, "findOne").mockReturnValue({ session: () => ({ lean: m.previous }) } as any);
     vi.spyOn(audit, "create").mockImplementation(m.audit);
+    m.list.mockResolvedValue([]); m.count.mockResolvedValue(0);
     m.previous.mockResolvedValue(null); m.user.mockResolvedValue({ _id: id, email: "person@example.com", credits: 120 });
   });
   afterEach(() => { vi.restoreAllMocks(); vi.resetAllMocks(); vi.unstubAllEnvs(); });
   it("denies unauthenticated and ordinary users", async () => {
     expect((await request(app).get("/users")).status).toBe(401);
     expect((await request(app).get("/users").set("Authorization", "Bearer user")).status).toBe(403);
+  });
+  it("keeps newest joined as the default and supports oldest joined", async () => {
+    for (const [query, sort] of [["", -1], ["?sort=joined_asc", 1]] as const) {
+      const response = await request(app).get(`/users${query}`).set("Authorization", "Bearer admin");
+      expect(response.status).toBe(200);
+      expect(m.list.mock.lastCall?.[0]).toEqual(expect.arrayContaining([{ $sort: { createdAt: sort, _id: sort } }]));
+    }
+  });
+  it("sorts all matching users by last activity before paginating with unknown activity last", async () => {
+    for (const [sort, direction] of [["last_active_desc", -1], ["last_active_asc", 1]] as const) {
+      const response = await request(app).get(`/users?sort=${sort}&page=2&status=active&q=person`).set("Authorization", "Bearer admin");
+      expect(response.status).toBe(200);
+      const pipeline = m.list.mock.lastCall?.[0];
+      expect(pipeline[0].$match.isActive).toEqual({ $ne: false });
+      expect(pipeline[0].$match.$or).toHaveLength(2);
+      expect(pipeline[1]).toEqual({ $set: { __activityMissing: { $cond: [{ $eq: [{ $type: "$lastActiveAt" }, "date"] }, 0, 1] } } });
+      expect(pipeline[2]).toEqual({ $sort: { __activityMissing: 1, lastActiveAt: direction, _id: direction } });
+      expect(pipeline[3]).toEqual({ $skip: 25 });
+      expect(pipeline[4]).toEqual({ $limit: 25 });
+      expect(pipeline[5].$project.lastActiveAt).toBe(1);
+      expect(pipeline[5].$project).not.toHaveProperty("passwordHash");
+      expect(pipeline[5].$project).not.toHaveProperty("googleId");
+      expect(response.body.sort).toBe(sort);
+    }
+  });
+  it("casts exact user ID searches for aggregation and keeps pagination metadata", async () => {
+    m.list.mockResolvedValue([{ _id: id, lastActiveAt: "2026-11-03T00:00:00Z" }]); m.count.mockResolvedValue(52);
+    const response = await request(app).get(`/users?sort=last_active_desc&q=${id}&page=2`).set("Authorization", "Bearer admin");
+    expect(response.status).toBe(200);
+    const filter = m.list.mock.lastCall?.[0][0].$match;
+    expect(String(filter.$or[2]._id)).toBe(id);
+    expect(filter.$or[2]._id).toBeInstanceOf(mongoose.Types.ObjectId);
+    expect(response.body).toMatchObject({ page: 2, pages: 3, total: 52 });
+  });
+  it("rejects unsupported sorting instead of accepting raw database sort expressions", async () => {
+    for (const query of ["sort=anything", "sort=%7B%22%24where%22%3A%22x%22%7D", "sort=joined_desc&sort=joined_asc"]) {
+      expect((await request(app).get(`/users?${query}`).set("Authorization", "Bearer admin")).status).toBe(400);
+    }
+    expect(m.list).not.toHaveBeenCalled();
   });
   it("writes balance, ledger, and administrator audit in one session", async () => {
     const r = await request(app).post(`/users/${id}/credits`).set("Authorization", "Bearer admin").send(body);

@@ -26,15 +26,28 @@ router.param("id", (_req, res, next, id) => /^[a-f0-9]{24}$/i.test(id) ? next() 
 router.get("/", async (req, res) => {
   const q = String(req.query.q || "").trim().slice(0, 120);
   const page = Math.max(1, Math.min(100000, Number.parseInt(String(req.query.page || 1), 10) || 1));
+  const sort = typeof req.query.sort === "string" ? req.query.sort : req.query.sort === undefined ? "joined_desc" : "";
+  if (!["joined_desc", "joined_asc", "last_active_desc", "last_active_asc"].includes(sort)) {
+    return res.status(400).json({ error: "Choose a valid user sort order." });
+  }
   const filter: Record<string, any> = {};
   if (q) {
     const literal = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    filter.$or = [{ name: { $regex: literal, $options: "i" } }, { email: { $regex: literal, $options: "i" } }, ...(/^[a-f0-9]{24}$/i.test(q) ? [{ _id: q }] : [])];
+    filter.$or = [{ name: { $regex: literal, $options: "i" } }, { email: { $regex: literal, $options: "i" } }, ...(/^[a-f0-9]{24}$/i.test(q) ? [{ _id: new mongoose.Types.ObjectId(q) }] : [])];
   }
   if (req.query.status === "active") filter.isActive = { $ne: false };
   if (req.query.status === "suspended") filter.isActive = false;
-  const [users, total] = await Promise.all([User.find(filter).select(fields).sort({ _id: -1 }).skip((page - 1) * 25).limit(25).lean(), User.countDocuments(filter)]);
-  res.json({ users, total, page, pages: Math.max(1, Math.ceil(total / 25)) });
+  const activitySort = sort.startsWith("last_active_");
+  const direction = sort.endsWith("_asc") ? 1 : -1;
+  const pipeline: mongoose.PipelineStage[] = [
+    { $match: filter },
+    ...(activitySort ? [{ $set: { __activityMissing: { $cond: [{ $eq: [{ $type: "$lastActiveAt" }, "date"] }, 0, 1] } } }] : []),
+    { $sort: activitySort ? { __activityMissing: 1, lastActiveAt: direction, _id: direction } : { createdAt: direction, _id: direction } },
+    { $skip: (page - 1) * 25 }, { $limit: 25 },
+    { $project: Object.fromEntries(fields.split(" ").map(field => [field, 1])) },
+  ];
+  const [users, total] = await Promise.all([User.aggregate(pipeline), User.countDocuments(filter)]);
+  res.json({ users, total, page, pages: Math.max(1, Math.ceil(total / 25)), sort });
 });
 router.get("/:id", async (req, res) => {
   const user = await User.findById(req.params.id).select(`${fields} passwordHash googleId`).lean();

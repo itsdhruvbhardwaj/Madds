@@ -47,11 +47,14 @@ router.post("/activity", async (req: AuthenticatedRequest, res) => {
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 router.put("/device", async (req: AuthenticatedRequest, res) => {
-  const { deviceId, bindingVersion, fcmToken, permissionGranted } = req.body ?? {};
+  const { deviceId, bindingVersion, fcmToken, permissionGranted, appVersionCode, appVersionName } = req.body ?? {};
   if (!uuid.test(typeof deviceId === "string" ? deviceId : "") ||
       !Number.isSafeInteger(bindingVersion) || bindingVersion < 1 ||
       typeof fcmToken !== "string" || fcmToken.length < 20 || fcmToken.length > 4096 || /\s/.test(fcmToken) ||
-      typeof permissionGranted !== "boolean") {
+      typeof permissionGranted !== "boolean" ||
+      ((appVersionCode !== undefined || appVersionName !== undefined) &&
+        (!Number.isInteger(appVersionCode) || appVersionCode < 1 || appVersionCode > 2100000000 ||
+         typeof appVersionName !== "string" || !appVersionName.trim() || appVersionName.length > 100))) {
     return res.status(400).json({ ok: false, error: "Invalid device registration." });
   }
   try {
@@ -60,7 +63,9 @@ router.put("/device", async (req: AuthenticatedRequest, res) => {
     // from reclaiming this installation after account switching or logout.
     await DeviceToken.findOneAndUpdate({ deviceId, bindingVersion: { $lt: bindingVersion } }, {
       $set: { userId: req.user!.id, sessionId: req.sessionId, fcmToken,
-        bindingVersion, permissionGranted, isActive: true, platform: "android", lastUsedAt: new Date() },
+        bindingVersion, permissionGranted, isActive: true, platform: "android", lastUsedAt: new Date(),
+        ...(appVersionCode !== undefined ? { appVersionCode, appVersionName: appVersionName.trim(), appVersionReportedAt: new Date() } : {}) },
+      ...(appVersionCode === undefined ? { $unset: { appVersionCode: 1, appVersionName: 1, appVersionReportedAt: 1 } } : {}),
     }, { upsert: true, runValidators: true });
     return res.json({ ok: true });
   } catch (error) {
