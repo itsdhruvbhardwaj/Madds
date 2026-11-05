@@ -22,6 +22,8 @@ data class PushSession(val userId: String, val sessionId: String) {
     }
 }
 
+const val APP_UPDATE_LINK = "https://play.google.com/store/apps/details?id=com.itsdhruvbhardwaj.picme"
+
 private val objectId = Regex("[a-fA-F0-9]{24}")
 private val slug = Regex("[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?")
 
@@ -34,7 +36,7 @@ data class PushPayload(val title: String, val body: String, val category: PushCa
             val body = data["body"]?.takeIf { it.isNotBlank() && it.length <= 500 } ?: return null
             val expectedCategory = when (data["type"]) {
                 "NEW_STYLE" -> PushCategory.NEW_STYLES; "OFFER" -> PushCategory.OFFERS
-                "PRODUCT_UPDATE" -> PushCategory.UPDATES; "REENGAGEMENT" -> PushCategory.REENGAGEMENT
+                "PRODUCT_UPDATE", "APP_UPDATE" -> PushCategory.UPDATES; "REENGAGEMENT" -> PushCategory.REENGAGEMENT
                 else -> return null
             }
             if (data["category"] != expectedCategory.key) return null
@@ -45,7 +47,9 @@ data class PushPayload(val title: String, val body: String, val category: PushCa
             val style = data["styleId"]; val collection = data["collectionId"]
             if ((style != null && !slug.matches(style)) || (collection != null && !slug.matches(collection)) || (style != null && collection != null)) return null
             if (expectedCategory == PushCategory.NEW_STYLES && style == null) return null
-            val link = if (style != null) "picme://styles/$style" else if (collection != null) "picme://collections/$collection" else "picme://home"
+            val update = data["type"] == "APP_UPDATE"
+            if (update && (style != null || collection != null)) return null
+            val link = if (update) APP_UPDATE_LINK else if (style != null) "picme://styles/$style" else if (collection != null) "picme://collections/$collection" else "picme://home"
             if (data["deepLink"] != link) return null
             PushPayload(title, body, expectedCategory, id, campaign, user, version, style, collection,
                 data["imageUrl"]?.takeIf(::isSafePushImage), link)

@@ -95,6 +95,7 @@ fun StylesGridScreen(
                                     StyleCard(
                                         name = style.name,
                                         thumbnailUrl = style.thumbnail,
+                                        genderTag = style.genderTag,
                                         onClick = { onStyleClick(style.id) },
                                         modifier = Modifier.fillMaxWidth(),
                                         width = Dp.Unspecified,

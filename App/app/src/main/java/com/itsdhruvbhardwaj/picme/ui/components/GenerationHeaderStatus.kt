@@ -89,9 +89,12 @@ fun GenerationHeaderStatus(title: String, modifier: Modifier = Modifier) {
             // title's width into the pill's width and shifting it sideways.
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             if (group == "title") {
-                Text(label, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(label, textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        brush = com.itsdhruvbhardwaj.picme.ui.theme.MaddsPalette.goldShine,
+                        letterSpacing = 0.25.sp
+                    ), maxLines = 1, overflow = TextOverflow.Ellipsis)
             } else {
                 val gold = MaterialTheme.colorScheme.primary
                 Surface(onClick = {

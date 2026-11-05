@@ -66,14 +66,17 @@ import kotlinx.coroutines.flow.first
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.itsdhruvbhardwaj.picme.ui.components.CreditsRequest
+import com.itsdhruvbhardwaj.picme.ui.components.LocalCreditsLauncher
+import com.itsdhruvbhardwaj.picme.ui.components.CreditsOptionsBottomSheet
 import com.itsdhruvbhardwaj.picme.ui.components.GenerationHeaderState
 import com.itsdhruvbhardwaj.picme.ui.components.LocalGenerationHeaderState
 import com.itsdhruvbhardwaj.picme.utils.AdManager
 import com.itsdhruvbhardwaj.picme.utils.MainScreenAdTimer
 import android.os.SystemClock
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.supervisorScope
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NavGraph(
     navController: NavHostController,
@@ -109,6 +112,13 @@ fun NavGraph(
             signedIn.profileSetupComplete == false) return@LaunchedEffect
         val payload = pushLocalState.tap(id, pushAuth)
         if (payload != null) {
+            if (payload.deepLink == com.itsdhruvbhardwaj.picme.notifications.APP_UPDATE_LINK) {
+                runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse(payload.deepLink))) }
+                pushLocalState.markOpened(id)
+                onNotificationHandled()
+                return@LaunchedEffect
+            }
             val route = when {
                 payload.styleId != null -> Screen.StyleDetails.createRoute(payload.styleId)
                 payload.collectionId != null -> Screen.NotificationCollection.createRoute(payload.collectionId)
@@ -170,6 +180,30 @@ fun NavGraph(
             }
         }
     }
+    val focusedGenerationId by generationViewModel.focusedGenerationId.collectAsState()
+    val viewingGeneration = currentRoute == Screen.Generation.route || currentRoute == Screen.Result.route
+    val latestReadyWatch by rememberUpdatedState(generationOwner to focusedGenerationId.takeIf { viewingGeneration })
+    // Keep this observer stable across generation -> result navigation and ID resolution.
+    // Disposing an ID-keyed effect would release a ready alert before the image renders.
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, _ ->
+            val (owner, id) = latestReadyWatch
+            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                GenerationNotifications.watchResult(context, owner, id)
+            } else GenerationNotifications.watchResult(context, null, null)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            GenerationNotifications.watchResult(context, null, null)
+        }
+    }
+    SideEffect {
+        val (owner, id) = latestReadyWatch
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            GenerationNotifications.watchResult(context, owner, id)
+        } else GenerationNotifications.watchResult(context, null, null)
+    }
     val recoverableGenerations by generationViewModel.operations.collectAsState()
     LaunchedEffect(pendingGeneration, generationOwner, currentRoute) {
         val parts = pendingGeneration?.split(":") ?: return@LaunchedEffect
@@ -192,13 +226,28 @@ fun NavGraph(
 
     val isBottomBarVisible = currentRoute in bottomBarScreens
     val mainAdTimer = remember(generationOwner) { MainScreenAdTimer() }
-    LaunchedEffect(isBottomBarVisible, generationOwner, lifecycleOwner) {
-        if (isBottomBarVisible && generationOwner != null) {
+    // Route changes do not restart this timer: all signed-in screens count.
+    LaunchedEffect(generationOwner, lifecycleOwner) {
+        if (generationOwner != null) {
             lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 mainAdTimer.enter(SystemClock.elapsedRealtime())
+                var nextLoadAt = 0L
                 try {
-                    AdManager.loadInterstitial(context)
-                    awaitCancellation()
+                    while (true) {
+                        val now = SystemClock.elapsedRealtime()
+                        val busy = authViewModel.isPurchaseLoading.value || authViewModel.isRewardedAdLoading.value
+                        val activity = context as? Activity
+                        if (!busy && activity != null && !activity.isFinishing && !activity.isDestroyed) {
+                            if (mainAdTimer.isDue(now) && AdManager.mainScreenInterstitialAllowed(now) && AdManager.isInterstitialReady()) {
+                                mainAdTimer.reset(now)
+                                AdManager.showInterstitial(activity) { }
+                            } else if (!AdManager.isInterstitialReady() && now >= nextLoadAt) {
+                                AdManager.loadInterstitial(context)
+                                nextLoadAt = now + 30_000L
+                            }
+                        }
+                        delay(1_000)
+                    }
                 } finally { mainAdTimer.leave(SystemClock.elapsedRealtime()) }
             }
         }
@@ -211,7 +260,10 @@ fun NavGraph(
             navController.navigate(Screen.Generation.createRoute("recovery")) { launchSingleTop = true }
         }
     )
-    CompositionLocalProvider(LocalGenerationHeaderState provides headerState) {
+    var creditsRequest by remember { mutableStateOf<CreditsRequest?>(null) }
+    LaunchedEffect(generationOwner) { creditsRequest = null }
+    CompositionLocalProvider(LocalGenerationHeaderState provides headerState,
+        LocalCreditsLauncher provides { request -> creditsRequest = request }) {
     // Global Layout: Banner pushes content up physically.
     Column(
         modifier = Modifier
@@ -652,7 +704,7 @@ fun NavGraph(
 
 
                     BackHandler {
-                        if (genState is GenerationUiState.Error && !(genState as GenerationUiState.Error).isAmbiguous) generationViewModel.markFocusedViewed()
+                        if (genState is GenerationUiState.Error) generationViewModel.markFocusedViewed()
                         generationViewModel.resetState()
                         navController.popBackStack()
                     }
@@ -661,7 +713,7 @@ fun NavGraph(
                         statusMessage = statusMsg,
                         selectedPhotos = selectedPhotos,
                         onCancelClick = {
-                            if (genState is GenerationUiState.Error && !(genState as GenerationUiState.Error).isAmbiguous) generationViewModel.markFocusedViewed()
+                            if (genState is GenerationUiState.Error) generationViewModel.markFocusedViewed()
                             generationViewModel.resetState()
                             navController.popBackStack()
                         },
@@ -824,20 +876,10 @@ fun NavGraph(
                 PicMeBottomNavigationBar(
                     currentRoute = currentRoute,
                     onNavigate = { route ->
-                        val now = SystemClock.elapsedRealtime()
-                        val showMainAd = route != currentRoute && generationOwner != null &&
-                            mainAdTimer.isDue(now) && AdManager.mainScreenInterstitialAllowed(now) &&
-                            AdManager.isInterstitialReady() &&
-                            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
                         navController.navigate(route) {
                             popUpTo(Screen.Home.route) { saveState = true }
                             launchSingleTop = true
                             restoreState = true
-                        }
-                        val activity = context as? Activity
-                        if (showMainAd && activity != null && !activity.isFinishing && !activity.isDestroyed) {
-                            mainAdTimer.reset(now)
-                            AdManager.showInterstitial(activity) { }
                         }
                     }
                 )
@@ -845,7 +887,13 @@ fun NavGraph(
         }
 
         // Shared Banner Slot: Takes physical space ONLY when visible.
-        if (!isBottomBarVisible) BannerAdView(modifier = Modifier.fillMaxWidth())
+        if (bannerAllowed(currentRoute, isBottomBarVisible,
+            (authState as? AuthState.Authenticated)?.user?.profileSetupComplete == false)) {
+            BannerAdView(modifier = Modifier.fillMaxWidth())
+        }
+    }
+    creditsRequest?.let { request ->
+        CreditsOptionsBottomSheet(viewModel = authViewModel, request = request, onDismiss = { creditsRequest = null })
     }
     }
 }

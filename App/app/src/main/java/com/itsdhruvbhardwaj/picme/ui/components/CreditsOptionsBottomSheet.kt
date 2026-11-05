@@ -1,7 +1,6 @@
 package com.itsdhruvbhardwaj.picme.ui.components
 
 import android.app.Activity
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,9 +39,14 @@ import kotlinx.coroutines.flow.collectLatest
 fun CreditsOptionsBottomSheet(
     viewModel: AuthViewModel,
     onDismiss: () -> Unit,
-    sheetState: SheetState = rememberModalBottomSheetState()
+    sheetState: SheetState = rememberModalBottomSheetState(),
+    request: CreditsRequest = CreditsRequest()
 ) {
     val context = LocalContext.current
+    val rewardConfig by viewModel.rewardedAdConfig.collectAsState()
+    val rewardLoading by viewModel.rewardConfigLoading.collectAsState()
+    val authState by viewModel.authState.collectAsState()
+    val available = (authState as? com.itsdhruvbhardwaj.picme.ui.auth.AuthState.Authenticated)?.user?.credits ?: request.availableCredits ?: 0
     val isAdLoading by viewModel.isRewardedAdLoading.collectAsState()
     val isPurchaseLoading by viewModel.isPurchaseLoading.collectAsState()
     val products by viewModel.creditProducts.collectAsState()
@@ -54,12 +58,11 @@ fun CreditsOptionsBottomSheet(
     // Get the formatted price from Google Play ProductDetails
     val selectedOffer = productDetails?.let { com.itsdhruvbhardwaj.picme.utils.BillingManager.creditOffer(it) }
     val priceText = selectedOffer?.formattedPrice?.takeIf { it.isNotBlank() }
-    LaunchedEffect(viewModel) { viewModel.refreshCreditProduct() }
+    LaunchedEffect(viewModel) { viewModel.refreshCreditProduct(); viewModel.refreshRewardConfig() }
 
-    // Collect transient UI events like "Ad not ready" or "Purchase success"
+    // The navigation host shows messages once; this sheet only handles dismissal.
     LaunchedEffect(viewModel) {
         viewModel.uiEvent.collectLatest { message ->
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
             // Auto-dismiss on success message from backend
             if (message.contains("Credits added", ignoreCase = true)) {
                 onDismiss()
@@ -92,7 +95,8 @@ fun CreditsOptionsBottomSheet(
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = "Top up your balance to keep creating.",
+                text = request.requiredCredits?.let { "This photo needs $it credits. Your balance is $available." }
+                    ?: "Top up your balance to keep creating.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = TextSecondary,
                 textAlign = TextAlign.Center
@@ -105,10 +109,11 @@ fun CreditsOptionsBottomSheet(
                 onClick = {
                     val activity = context as? Activity
                     if (activity != null) {
-                        viewModel.startRewardedAdFlow(activity)
+                        if (rewardConfig?.validReward == true) viewModel.startRewardedAdFlow(activity)
+                        else viewModel.refreshRewardConfig()
                     }
                 },
-                enabled = !isAdLoading && !isPurchaseLoading,
+                enabled = !isAdLoading && !isPurchaseLoading && !rewardLoading && rewardConfig?.available != false,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(64.dp),
@@ -140,14 +145,19 @@ fun CreditsOptionsBottomSheet(
                     Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = if (isAdLoading) "Preparing Ad..." else "Watch an Ad to Earn",
+                            text = if (isAdLoading) "Preparing Ad..." else if (rewardConfig == null && !rewardLoading) "Retry loading ad reward" else "Watch an Ad to Earn",
                             style = MaterialTheme.typography.labelLarge.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp
                             )
                         )
                         Text(
-                            text = "1 Ad = 1 Credit",
+                            text = when {
+                                rewardLoading -> "Checking reward…"
+                                rewardConfig?.validReward == true -> "1 Ad = ${rewardConfig!!.credits} ${if (rewardConfig!!.credits == 1) "Credit" else "Credits"}"
+                                rewardConfig?.available == false -> "Rewarded ads are temporarily unavailable"
+                                else -> "Couldn't load reward. Tap to retry."
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = TextSecondary
                         )

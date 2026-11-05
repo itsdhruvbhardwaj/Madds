@@ -1,8 +1,8 @@
 package com.itsdhruvbhardwaj.picme.utils
 
-/** Counts only foreground main-tab use. Showing is deferred to a tab change. */
+/** Counts foreground app usage across main screens and sub-screens. */
 class MainScreenAdTimer(private val intervalMillis: Long = INTERVAL_MILLIS) {
-    companion object { const val INTERVAL_MILLIS = 120_000L }
+    companion object { const val INTERVAL_MILLIS = 180_000L }
     private var accumulated = 0L
     private var startedAt: Long? = null
 

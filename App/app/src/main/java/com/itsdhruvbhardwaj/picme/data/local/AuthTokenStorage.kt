@@ -32,8 +32,22 @@ class AuthTokenStorage(context: Context) {
         sharedPreferences.getStringSet("generation_pending_$userId", emptySet())?.toSet() ?: emptySet()
 
     // Commit before network submission so process death cannot erase request identity.
-    fun savePendingGenerationKeys(userId: String, keys: Set<String>): Boolean =
-        sharedPreferences.edit().putStringSet("generation_pending_$userId", keys).commit()
+    fun pendingGenerationSince(userId: String, key: String): Long {
+        val name = "generation_since_${userId}_$key"
+        val saved = sharedPreferences.getLong(name, 0)
+        if (saved > 0) return saved
+        val now = System.currentTimeMillis()
+        sharedPreferences.edit().putLong(name, now).commit()
+        return now
+    }
+
+    fun savePendingGenerationKeys(userId: String, keys: Set<String>): Boolean {
+        val previous = pendingGenerationKeys(userId)
+        val editor = sharedPreferences.edit().putStringSet("generation_pending_$userId", keys)
+        (keys - previous).forEach { editor.putLong("generation_since_${userId}_$it", System.currentTimeMillis()) }
+        (previous - keys).forEach { editor.remove("generation_since_${userId}_$it") }
+        return editor.commit()
+    }
 
     companion object {
         private const val KEY_ACCESS_TOKEN = "access_token"

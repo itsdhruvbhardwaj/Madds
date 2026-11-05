@@ -40,7 +40,8 @@ fun StyleCard(
     modifier: Modifier = Modifier,
     width: Dp = 168.dp,
     height: Dp = 236.dp,
-    internalPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 20.dp)
+    internalPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
+    genderTag: String? = null
 ) {
     Surface(
         modifier = modifier
@@ -73,6 +74,8 @@ fun StyleCard(
                     ),
                 contentScale = ContentScale.Crop
             )
+
+            StyleGenderBadge(genderTag, Modifier.align(Alignment.TopStart).padding(8.dp))
 
             // Premium Gradient Overlay
             Box(

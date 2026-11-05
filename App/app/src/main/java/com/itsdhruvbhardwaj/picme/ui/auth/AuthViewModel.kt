@@ -51,6 +51,23 @@ class AuthViewModel(
     private val _isRewardedAdLoading = MutableStateFlow(false)
     val isRewardedAdLoading: StateFlow<Boolean> = _isRewardedAdLoading.asStateFlow()
 
+    private val _rewardedAdConfig = MutableStateFlow<com.itsdhruvbhardwaj.picme.data.model.RewardedAdConfigResponse?>(null)
+    val rewardedAdConfig = _rewardedAdConfig.asStateFlow()
+    private val _rewardConfigLoading = MutableStateFlow(false)
+    val rewardConfigLoading = _rewardConfigLoading.asStateFlow()
+    fun refreshRewardConfig() {
+        if (_rewardConfigLoading.value) return
+        _rewardConfigLoading.value = true
+        viewModelScope.launch {
+            try {
+                authRepository.getRewardedAdConfig().fold(
+                    onSuccess = { _rewardedAdConfig.value = it },
+                    onFailure = { _rewardedAdConfig.value = null }
+                )
+            } finally { _rewardConfigLoading.value = false }
+        }
+    }
+
     private val _isPurchaseLoading = MutableStateFlow(false)
     val isPurchaseLoading: StateFlow<Boolean> = _isPurchaseLoading.asStateFlow()
 
@@ -256,10 +273,12 @@ class AuthViewModel(
     }
 
     fun startRewardedAdFlow(activity: Activity) {
-        if (_isRewardedAdLoading.value) return
-
+        if (_isRewardedAdLoading.value || _isPurchaseLoading.value) return
+        val displayedReward = _rewardedAdConfig.value?.takeIf { it.validReward }?.credits
+        if (displayedReward == null) { refreshRewardConfig(); return }
+        // Lock before launching so rapid taps cannot create multiple attempts.
+        _isRewardedAdLoading.value = true
         viewModelScope.launch {
-            _isRewardedAdLoading.value = true
             val adState = AdManager.rewardedAdState.value
 
             when (adState) {
@@ -282,6 +301,18 @@ class AuthViewModel(
             val result = authRepository.requestRewardAttempt()
             result.fold(
                 onSuccess = { response ->
+                    val actualReward = response.credits
+                    if (actualReward == null || actualReward !in 1..100_000) {
+                        _isRewardedAdLoading.value = false
+                        _uiEvent.emit("Couldn't confirm the ad reward. Please try again later.")
+                        return@fold
+                    }
+                    if (actualReward != displayedReward) {
+                        _rewardedAdConfig.value = com.itsdhruvbhardwaj.picme.data.model.RewardedAdConfigResponse(true, true, actualReward)
+                        _isRewardedAdLoading.value = false
+                        _uiEvent.emit("The ad reward is now $actualReward credits. Tap again to watch.")
+                        return@fold
+                    }
                     val customData = response.customData
                     if (!customData.isNullOrBlank()) {
                         AdManager.showRewardedAd(activity, customData, {

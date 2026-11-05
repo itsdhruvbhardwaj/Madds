@@ -21,6 +21,8 @@ data class RecoverableGeneration(
     val styleName: String = "Your photo",
     val status: String = "processing",
     val failureCode: String? = null,
+    val failureReason: String? = null,
+    val processingExpiresAt: String? = null,
     val resultAvailable: Boolean = false,
     val resultExpiresAt: String? = null,
     val creditsCost: Int = 0

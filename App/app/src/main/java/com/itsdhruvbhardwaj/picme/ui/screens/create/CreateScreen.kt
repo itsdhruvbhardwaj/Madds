@@ -45,6 +45,7 @@ fun CreateScreen(
 ) {
     val authState by authViewModel.authState.collectAsState()
     val context = LocalContext.current
+    val openCredits = LocalCreditsLauncher.current
     var prompt by remember { mutableStateOf("") }
     var selectedPhotos by remember { mutableStateOf<List<Uri>>(emptyList()) }
 
@@ -78,13 +79,18 @@ fun CreateScreen(
                     PicMeButton(
                         text = "Generate (10 Credits)",
                         onClick = {
-                            val activity = context as? Activity
-                            if (activity != null) {
-                                AdManager.showInterstitial(activity) {
+                            val available = (authState as? AuthState.Authenticated)?.user?.credits ?: 0
+                            if (available < 10) {
+                                openCredits(CreditsRequest(10, available))
+                            } else {
+                                val activity = context as? Activity
+                                if (activity != null) {
+                                    AdManager.showInterstitial(activity) {
+                                        onGenerateClick(prompt, selectedPhotos)
+                                    }
+                                } else {
                                     onGenerateClick(prompt, selectedPhotos)
                                 }
-                            } else {
-                                onGenerateClick(prompt, selectedPhotos)
                             }
                         },
                         enabled = isPromptValid,

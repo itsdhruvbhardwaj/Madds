@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.itsdhruvbhardwaj.picme.ui.components.LocalCreditsLauncher
+import com.itsdhruvbhardwaj.picme.ui.components.CreditsRequest
 import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.ui.theme.Primary
 import com.itsdhruvbhardwaj.picme.ui.theme.Secondary
@@ -49,10 +51,13 @@ fun GenerationScreen(
     onSuccess: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val openCredits = LocalCreditsLauncher.current
 
     LaunchedEffect(state) {
         if (state is GenerationUiState.Success) {
             onSuccess(state.imageBase64)
+        } else if (state is GenerationUiState.Error && state.requiredCredits != null) {
+            openCredits(CreditsRequest(state.requiredCredits, state.availableCredits))
         }
     }
 
@@ -119,8 +124,10 @@ fun GenerationScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     if (state is GenerationUiState.Error) {
-                        GenerationErrorView(state.message, if (state.isAmbiguous) onRetryClick else onCancelClick,
-                            if (state.isAmbiguous) "Check status" else "Back")
+                        GenerationErrorView(state.message,
+                            if (state.requiredCredits != null) ({ openCredits(CreditsRequest(state.requiredCredits, state.availableCredits)) })
+                            else if (state.isAmbiguous) onRetryClick else onCancelClick,
+                            if (state.requiredCredits != null) "Get credits" else if (state.isAmbiguous) "Check status" else "Back")
                     } else {
                         // 1. Display selected photos
                         PhotoComposition(selectedPhotos = selectedPhotos)

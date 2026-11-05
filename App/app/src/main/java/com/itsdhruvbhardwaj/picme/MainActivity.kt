@@ -163,9 +163,6 @@ class MainActivity : ComponentActivity() {
         val homeViewModel = ViewModelProvider(this, viewModelFactory)[HomeViewModel::class.java]
         val collectionsViewModel = ViewModelProvider(this, viewModelFactory)[CollectionsViewModel::class.java]
         val generationViewModel = ViewModelProvider(this, viewModelFactory)[GenerationViewModel::class.java]
-        generationViewModel.onDownloadStateChanged = { owner, id, stage ->
-            com.itsdhruvbhardwaj.picme.notifications.GenerationNotifications.download(applicationContext, owner, id, stage)
-        }
         lifecycleScope.launch {
             generationViewModel.operations.collect { items ->
                 com.itsdhruvbhardwaj.picme.notifications.GenerationNotifications.sync(applicationContext, generationViewModel.notificationOwner(), items)

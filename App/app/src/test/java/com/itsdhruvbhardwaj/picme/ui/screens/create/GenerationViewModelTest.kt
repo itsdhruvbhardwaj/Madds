@@ -28,6 +28,125 @@ import retrofit2.Response
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class GenerationViewModelTest {
+    @Test fun `unknown outcome explains cause and can be acknowledged without another generation`() = runTest {
+        whenever(repository.operations()).thenReturn(Response.success(GenerationOperationsResponse(listOf(
+            RecoverableGeneration("operation", status = "outcome_unknown", failureReason = "Provider timed out")
+        ))))
+        whenever(repository.viewed("operation")).thenReturn(Response.success(Unit))
+        viewModel.openOperation("operation")
+        advanceUntilIdle()
+        val error = viewModel.uiState.value as GenerationUiState.Error
+        assertTrue(error.message.contains("Provider timed out"))
+        assertTrue(error.isAmbiguous)
+        viewModel.markFocusedViewed()
+        advanceUntilIdle()
+        assertTrue(viewModel.operations.value.isEmpty())
+        verify(repository, never()).generateImage(any(), any(), any())
+    }
+
+    @Test fun `unavailable result becomes a recoverable error instead of an endless spinner`() = runTest {
+        whenever(repository.operations()).thenReturn(Response.success(GenerationOperationsResponse(listOf(
+            RecoverableGeneration("operation", status = "completed", resultAvailable = true)
+        ))))
+        whenever(repository.result("operation")).thenReturn(Response.error(503,
+            okhttp3.ResponseBody.create(null, "temporarily unavailable")))
+        viewModel.openOperation("operation")
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value is GenerationUiState.Error)
+        viewModel.markFocusedViewed()
+        advanceUntilIdle()
+        verify(repository, never()).viewed(any())
+        verify(repository, never()).generateImage(any(), any(), any())
+    }
+
+    @Test fun `network failure while retrieving result stops the spinner and preserves recovery`() = runTest {
+        whenever(repository.operations()).thenReturn(Response.success(GenerationOperationsResponse(listOf(
+            RecoverableGeneration("operation", status = "completed", resultAvailable = true)
+        ))))
+        whenever(repository.result("operation")).doSuspendableAnswer { throw java.io.IOException("offline") }
+        viewModel.openOperation("operation")
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value is GenerationUiState.Error)
+        assertEquals("operation", viewModel.operations.value.single().id)
+        verify(repository, never()).generateImage(any(), any(), any())
+    }
+
+    @Test fun `confirmed missing submission ages out without making another paid request`() = runTest {
+        var key = ""
+        whenever(repository.rememberPending(any(), any())).thenAnswer { key = it.getArgument(1); true }
+        whenever(repository.pendingKeys(any())).thenAnswer { setOf(key) }
+        whenever(repository.pendingSince(any(), any())).thenReturn(System.currentTimeMillis() - 360_000)
+        whenever(repository.operationByKey(any())).thenReturn(Response.error(404, okhttp3.ResponseBody.create(null, "Not found")))
+        whenever(repository.generateImage(any(), any(), any())).thenReturn(Result.failure(
+            com.itsdhruvbhardwaj.picme.data.repository.AmbiguousOutcomeException("connection lost")))
+        viewModel.setSelectedPhotos(listOf(mock()))
+        viewModel.generateImage("style")
+        advanceUntilIdle()
+        viewModel.refreshOperations()
+        assertTrue(viewModel.operations.value.isEmpty())
+        assertTrue(viewModel.uiState.value is GenerationUiState.Error)
+        verify(repository).forgetPending("owner", key)
+        verify(repository, times(1)).generateImage(any(), any(), any())
+    }
+
+    @Test fun `completed status waits for result download and never submits again`() = runTest {
+        val download = CompletableDeferred<Response<GenerationResponse>>()
+        whenever(repository.operations()).thenReturn(Response.success(GenerationOperationsResponse(listOf(
+            RecoverableGeneration("operation", status = "completed", resultAvailable = true)
+        ))))
+        whenever(repository.result("operation")).doSuspendableAnswer { download.await() }
+        viewModel.openOperation("operation")
+        runCurrent()
+        assertTrue(viewModel.uiState.value is GenerationUiState.Processing)
+        assertEquals("operation", viewModel.focusedGenerationId.value)
+        verify(repository, never()).viewed(any())
+        download.complete(Response.success(GenerationResponse(true, image = "downloaded-photo")))
+        advanceUntilIdle()
+        assertEquals("downloaded-photo", (viewModel.uiState.value as GenerationUiState.Success).imageBase64)
+        verify(repository, never()).generateImage(any(), any(), any())
+        verify(repository, never()).viewed(any())
+    }
+
+    @Test fun `late display callback cannot acknowledge a different focused generation`() = runTest {
+        whenever(repository.operations()).thenReturn(Response.success(GenerationOperationsResponse(listOf(
+            RecoverableGeneration("operation", status = "processing")
+        ))))
+        viewModel.openOperation("operation")
+        advanceUntilIdle()
+        viewModel.markFocusedViewed("old-operation")
+        advanceUntilIdle()
+        verify(repository, never()).viewed(any())
+    }
+
+    @Test fun `safety rejection politely explains alternatives without resubmitting`() = runTest {
+        whenever(repository.operations()).thenReturn(Response.success(GenerationOperationsResponse(listOf(
+            RecoverableGeneration("operation", status = "failed", failureReason = "The provider rejected the request under its content policy.")
+        ))))
+        viewModel.openOperation("operation")
+        advanceUntilIdle()
+        val error = viewModel.uiState.value as GenerationUiState.Error
+        assertTrue(error.message.contains("safety checks"))
+        assertTrue(error.message.contains("credits have been refunded"))
+        assertTrue(error.message.contains("style prompt, or their combination"))
+        assertTrue(error.message.contains("clear, well-lit photograph"))
+        assertTrue(!error.canRetryWithNewKey)
+        verify(repository, never()).generateImage(any(), any(), any())
+        verify(repository, never()).generateCustomImage(any(), any(), any())
+    }
+
+    @Test fun `server insufficient credits exposes the shared top-up request without retrying generation`() = runTest {
+        viewModel.setSelectedPhotos(listOf(mock()))
+        whenever(repository.generateImage(any(), any(), any())).thenReturn(Result.failure(
+            com.itsdhruvbhardwaj.picme.data.repository.InsufficientCreditsException(10, 0, "Not enough credits")))
+        viewModel.generateImage("style")
+        advanceUntilIdle()
+        val error = viewModel.uiState.value as GenerationUiState.Error
+        assertEquals(10, error.requiredCredits)
+        assertEquals(0, error.availableCredits)
+        assertTrue(!error.canRetryWithNewKey)
+        assertTrue(viewModel.operations.value.isEmpty())
+        verify(repository, times(1)).generateImage(any(), any(), any())
+    }
 
     @Mock
     private lateinit var repository: GenerationRepository

@@ -55,6 +55,37 @@ class AuthViewModelTest {
         Dispatchers.resetMain()
     }
 
+    @Test fun `reward label refreshes from remote configuration on each opening`() = runTest {
+        whenever(authRepository.getRewardedAdConfig()).thenReturn(
+            Result.success(com.itsdhruvbhardwaj.picme.data.model.RewardedAdConfigResponse(true, true, 2)),
+            Result.success(com.itsdhruvbhardwaj.picme.data.model.RewardedAdConfigResponse(true, true, 5)))
+        viewModel.refreshRewardConfig()
+        advanceUntilIdle()
+        assertEquals(2, viewModel.rewardedAdConfig.value?.credits)
+        viewModel.refreshRewardConfig()
+        advanceUntilIdle()
+        assertEquals(5, viewModel.rewardedAdConfig.value?.credits)
+        verify(authRepository, times(2)).getRewardedAdConfig()
+    }
+
+    @Test fun `unavailable reward configuration clears the previously advertised amount`() = runTest {
+        whenever(authRepository.getRewardedAdConfig()).thenReturn(
+            Result.success(com.itsdhruvbhardwaj.picme.data.model.RewardedAdConfigResponse(true, true, 2)),
+            Result.failure(java.io.IOException("offline")))
+        viewModel.refreshRewardConfig(); advanceUntilIdle()
+        viewModel.refreshRewardConfig(); advanceUntilIdle()
+        assertEquals(null, viewModel.rewardedAdConfig.value)
+        assertEquals(false, viewModel.rewardConfigLoading.value)
+    }
+
+    @Test fun `rapid reward configuration refreshes share one in-flight call`() = runTest {
+        whenever(authRepository.getRewardedAdConfig()).thenReturn(Result.success(
+            com.itsdhruvbhardwaj.picme.data.model.RewardedAdConfigResponse(true, true, 3)))
+        viewModel.refreshRewardConfig(); viewModel.refreshRewardConfig(); viewModel.refreshRewardConfig()
+        advanceUntilIdle()
+        verify(authRepository, times(1)).getRewardedAdConfig()
+    }
+
     @Test
     fun `when purchase is successful, verifyPurchase is called and balance is refreshed`() = runTest {
         val mockPurchase = mock<Purchase> {

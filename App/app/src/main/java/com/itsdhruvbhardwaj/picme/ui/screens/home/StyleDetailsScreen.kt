@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import com.itsdhruvbhardwaj.picme.ui.components.StyleGenderBadge
+import com.itsdhruvbhardwaj.picme.data.model.genderTagLabel
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
@@ -47,7 +49,8 @@ import coil.request.ImageRequest
 import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
-import com.itsdhruvbhardwaj.picme.ui.components.InsufficientCreditsBottomSheet
+import com.itsdhruvbhardwaj.picme.ui.components.LocalCreditsLauncher
+import com.itsdhruvbhardwaj.picme.ui.components.CreditsRequest
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeButton
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeCompactHeader
 import com.itsdhruvbhardwaj.picme.ui.theme.Primary
@@ -67,7 +70,7 @@ fun StyleDetailsScreen(
     val isAuthenticated = authState is AuthState.Authenticated
     val context = LocalContext.current
 
-    var showInsufficientCreditsSheet by remember { mutableStateOf(false) }
+    val openCredits = LocalCreditsLauncher.current
     val currentStyle = (uiState as? StyleDetailsUiState.Success)?.style
 
     LaunchedEffect(Unit) {
@@ -91,7 +94,7 @@ fun StyleDetailsScreen(
                             if (currentCredits >= style.tokensRequired) {
                                 onTryStyleClick(style.id)
                             } else {
-                                showInsufficientCreditsSheet = true
+                                openCredits(CreditsRequest(style.tokensRequired, currentCredits))
                             }
                         }
                     )
@@ -162,6 +165,10 @@ fun StyleDetailsScreen(
                             }
 
                             Spacer(modifier = Modifier.height(16.dp))
+                            if (genderTagLabel(style.genderTag) != null) {
+                                StyleGenderBadge(style.genderTag, details = true)
+                                Spacer(Modifier.height(10.dp))
+                            }
                             Text(
                                 text = style.description,
                                 style = MaterialTheme.typography.bodyMedium,
@@ -205,15 +212,7 @@ fun StyleDetailsScreen(
         }
     }
 
-    if (showInsufficientCreditsSheet && uiState is StyleDetailsUiState.Success) {
-        val style = (uiState as StyleDetailsUiState.Success).style
-        InsufficientCreditsBottomSheet(
-            viewModel = authViewModel,
-            requiredCredits = style.tokensRequired,
-            availableCredits = user?.credits ?: 0,
-            onDismiss = { showInsufficientCreditsSheet = false }
-        )
-    }
+
 }
 
 @Composable

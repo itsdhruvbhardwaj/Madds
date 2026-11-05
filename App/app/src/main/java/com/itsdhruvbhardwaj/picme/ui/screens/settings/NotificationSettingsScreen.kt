@@ -18,7 +18,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CardGiftcard
 import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.NewReleases
@@ -111,10 +110,6 @@ fun NotificationSettingsScreen(userId: String?, viewModel: NotificationPreferenc
                 HorizontalDivider(Modifier.padding(start = 62.dp, end = 16.dp))
                 PhotoNotificationSetting(Icons.Outlined.AutoAwesome, "Generation progress", "Quiet updates while creating") {
                     openServiceChannel(GenerationNotifications.PROGRESS)
-                }
-                HorizontalDivider(Modifier.padding(start = 62.dp, end = 16.dp))
-                PhotoNotificationSetting(Icons.Outlined.FileDownload, "Downloads & saving", "Quiet updates while saving photos") {
-                    openServiceChannel(GenerationNotifications.DOWNLOADS)
                 }
             }
             Spacer(Modifier.height(8.dp))

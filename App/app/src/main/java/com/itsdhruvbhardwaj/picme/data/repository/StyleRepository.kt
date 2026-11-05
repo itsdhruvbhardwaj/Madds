@@ -141,7 +141,11 @@ class StyleRepository(
                     cacheHomeStyles(feed)
                     Result.success(feed)
                 } else {
-                    Result.failure(Exception("failed_to_load_config"))
+                    Result.failure(Exception(when (response.code()) {
+                        401, 403 -> "session_expired"
+                        429, in 500..599 -> "server_overloaded"
+                        else -> "failed_to_load_config"
+                    }))
                 }
             } catch (e: SocketTimeoutException) {
                 Result.failure(Exception("timeout"))

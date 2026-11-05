@@ -110,6 +110,9 @@ interface AuthApiService {
      * Requests a one-time ticket for a rewarded ad attempt.
      * The ticket should be passed to AdMob SSV custom data.
      */
+    @GET("api/rewarded-ads/config")
+    suspend fun rewardedAdConfig(): Response<RewardedAdConfigResponse>
+
     @POST("api/rewarded-ads/attempts")
     suspend fun requestRewardAttempt(
         @Header("Authorization") authorization: String

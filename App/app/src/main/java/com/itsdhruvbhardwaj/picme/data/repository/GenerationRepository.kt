@@ -33,6 +33,7 @@ class GenerationRepository(
     private val preparePhoto: (ContentResolver, Uri, String) -> okhttp3.MultipartBody.Part = GenerationPhotoProcessor::multipart
 ) {
     fun accountId(): String? = tokenStorage.getUser()?.id
+    fun pendingSince(owner: String, key: String): Long = tokenStorage.pendingGenerationSince(owner, key)
     fun pendingKeys(owner: String): Set<String> = tokenStorage.pendingGenerationKeys(owner)
     fun rememberPending(owner: String, key: String): Boolean = tokenStorage.savePendingGenerationKeys(owner, pendingKeys(owner) + key)
     fun forgetPending(owner: String, key: String) { tokenStorage.savePendingGenerationKeys(owner, pendingKeys(owner) - key) }

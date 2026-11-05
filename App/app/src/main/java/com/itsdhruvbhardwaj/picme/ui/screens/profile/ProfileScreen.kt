@@ -40,7 +40,8 @@ import coil.request.ImageRequest
 import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
-import com.itsdhruvbhardwaj.picme.ui.components.CreditsOptionsBottomSheet
+import com.itsdhruvbhardwaj.picme.ui.components.LocalCreditsLauncher
+import com.itsdhruvbhardwaj.picme.ui.components.CreditsRequest
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeButton
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeMainHeader
 import com.itsdhruvbhardwaj.picme.ui.components.ProfileAvatar
@@ -74,7 +75,7 @@ fun ProfileScreen(
 
     val user = (authState as? AuthState.Authenticated)?.user ?: cachedUser
     val context = LocalContext.current
-    var showCreditsOptions by remember { mutableStateOf(false) }
+    val openCredits = LocalCreditsLauncher.current
     var showLogoutConfirm by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -166,7 +167,7 @@ fun ProfileScreen(
                         }
                         PicMeButton(
                             text = "Buy More",
-                            onClick = { showCreditsOptions = true },
+                            onClick = { openCredits(CreditsRequest()) },
                             modifier = Modifier.width(130.dp).height(44.dp),
                             shadowElevation = 0.dp
                         )
@@ -318,12 +319,6 @@ fun ProfileScreen(
         )
     }
 
-    if (showCreditsOptions) {
-        CreditsOptionsBottomSheet(
-            viewModel = authViewModel,
-            onDismiss = { showCreditsOptions = false }
-        )
-    }
 }
 
 @Composable

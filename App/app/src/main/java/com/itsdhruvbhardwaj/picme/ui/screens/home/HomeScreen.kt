@@ -36,6 +36,8 @@ fun HomeScreen(
     onRefresh: () -> Unit = { viewModel.loadHomeData() }
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val autoRetrying by viewModel.isAutoRetrying.collectAsState()
+    ObserveHomeRecovery(viewModel)
     val authState by authViewModel.authState.collectAsState()
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -65,12 +67,12 @@ fun HomeScreen(
                         HomeUiState.Loading -> items(3) { SectionSkeleton() }
                         is HomeUiState.Error -> item {
                             Box(Modifier.fillParentMaxSize()) {
-                                HomeErrorState(message = state.message, onRetry = onRefresh)
+                                HomeErrorState(message = if (autoRetrying) "Connection interrupted. Reconnecting automatically…" else state.message, onRetry = onRefresh)
                             }
                         }
                         is HomeUiState.Success -> {
                             if (state.refreshError != null) item {
-                                Text(state.refreshError, color = MaterialTheme.colorScheme.error,
+                                Text(if (autoRetrying) "Reconnecting automatically…" else state.refreshError, color = if (autoRetrying) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
                                     modifier = Modifier.padding(20.dp))
                             }
                             if (state.sections.isEmpty()) item {
@@ -120,6 +122,7 @@ fun HomeSectionRow(
                 StyleCard(
                     name = style.name,
                     thumbnailUrl = style.thumbnail,
+                    genderTag = style.genderTag,
                     onClick = { onStyleClick(style.id) },
                     width = 148.dp,
                     height = 208.dp,

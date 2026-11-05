@@ -30,7 +30,9 @@ sealed interface GenerationUiState {
     data class Error(
         val message: String,
         val canRetryWithNewKey: Boolean = true,
-        val isAmbiguous: Boolean = false
+        val isAmbiguous: Boolean = false,
+        val requiredCredits: Int? = null,
+        val availableCredits: Int? = null
     ) : GenerationUiState
 }
 
@@ -59,12 +61,15 @@ class GenerationViewModel(
 
     private var currentIdempotencyKey: String? = null
     var onProfileRefreshRequested: (() -> Unit)? = null
-    var onDownloadStateChanged: ((String?, String?, String) -> Unit)? = null
     fun notificationOwner(): String? = account
     private var statusJob: Job? = null
     private var account: String? = null
     private var epoch = 0
-    private var focusedId: String? = null
+    private val _focusedGenerationId = MutableStateFlow<String?>(null)
+    val focusedGenerationId = _focusedGenerationId.asStateFlow()
+    private var focusedId: String?
+        get() = _focusedGenerationId.value
+        set(value) { _focusedGenerationId.value = value }
     private var refreshing = false
     private val fetching = mutableSetOf<String>()
     private val jobs = mutableListOf<Job>()
@@ -132,7 +137,10 @@ class GenerationViewModel(
                     if (error is InsufficientCreditsException || (error !is AmbiguousOutcomeException && error !is DuplicateOperationException)) {
                         generationRepository.forgetPending(owner, key)
                         _operations.value = _operations.value.filterNot { it.id == key }
-                        if (focusedId == key) _uiState.value = GenerationUiState.Error(error.message ?: "Couldn't submit this photo.")
+                        if (focusedId == key) _uiState.value = if (error is InsufficientCreditsException) {
+                            GenerationUiState.Error("You need ${error.required} credits, but your balance is ${error.available}.", false,
+                                requiredCredits = error.required, availableCredits = error.available)
+                        } else GenerationUiState.Error(error.message ?: "Couldn't submit this photo.")
                     } else {
                         upsert(com.itsdhruvbhardwaj.picme.data.model.RecoverableGeneration(key, styleId, status = "checking"))
                         if (focusedId == key) { _uiState.value = GenerationUiState.Processing; _statusMessage.value = "Checking your generation. You can leave this screen safely." }
@@ -167,6 +175,9 @@ class GenerationViewModel(
                     if (focusedId == key) focusedId = operation.id
                     // A viewed result need not reappear in the floating list.
                     if (remote.none { it.id == operation.id } && focusedId == operation.id) pending += operation
+                } else if (found.code() == 404 && System.currentTimeMillis() - generationRepository.pendingSince(owner, key) >= 5 * 60_000L) {
+                    generationRepository.forgetPending(owner, key)
+                    if (focusedId == key) _uiState.value = GenerationUiState.Error("The server could not find this submission after repeated checks. No new generation was started. Check credit history or contact support if credits were deducted.", false)
                 } else pending += com.itsdhruvbhardwaj.picme.data.model.RecoverableGeneration(key, status = "checking")
             }
             if (ticket != epoch) return
@@ -175,12 +186,22 @@ class GenerationViewModel(
             if (focused != null && _uiState.value !is GenerationUiState.Success) {
                 when (focused.status) {
                     "completed" -> if (focused.resultAvailable) loadResult(focused.id) else _uiState.value = GenerationUiState.Error("This photo's recovery copy is no longer available. Checking it did not charge credits.", false)
-                    "failed" -> _uiState.value = GenerationUiState.Error("Generation failed. Its reserved credits were refunded.", false)
-                    "outcome_unknown" -> _uiState.value = GenerationUiState.Error("The provider outcome is unconfirmed. Your request is saved for review. Do not pay to retry this request; contact support.", false, true)
+                    "failed" -> {
+                        val reason = focused.failureReason
+                        val message = if (reason?.contains("content policy", ignoreCase = true) == true) {
+                            "We couldn't generate this photo because the image provider's safety checks didn't accept the request. " +
+                                "This can relate to the photograph, the style prompt, or their combination.\n\n" +
+                                "Your credits have been refunded. Please try a different, clear, well-lit photograph. " +
+                                "If this keeps happening with this style, please contact support."
+                        } else (reason ?: "Generation failed.") + " Reserved credits were refunded."
+                        _uiState.value = GenerationUiState.Error(message, false)
+                    }
+                    "outcome_unknown" -> _uiState.value = GenerationUiState.Error((focused.failureReason ?: "The provider outcome is unconfirmed.") + " Your request is saved for review. Closing this reminder does not retry or refund it. Contact support with request " + focused.id, false, true)
                     "checking" -> { _uiState.value = GenerationUiState.Processing; _statusMessage.value = "Checking submission status. You can browse and return using the shortcut." }
                     else -> { _uiState.value = GenerationUiState.Processing; _statusMessage.value = "Creating your photo... You can browse while it finishes." }
                 }
             }
+            if (_uiState.value is GenerationUiState.Error) _statusMessage.value = "No new generation was started. Review the details above."
             if (remote.any { previousStatuses[it.id] != it.status }) onProfileRefreshRequested?.invoke()
         } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
         catch (_: Exception) { if (ticket == epoch && _uiState.value is GenerationUiState.Processing) _statusMessage.value = "Connection interrupted. Checking again shortly..." }
@@ -207,27 +228,30 @@ class GenerationViewModel(
     private suspend fun loadResult(id: String) {
         if (!fetching.add(id)) return
         val ticket = epoch
-        onDownloadStateChanged?.invoke(account, id, "downloading")
         try {
             val response = generationRepository.result(id)
             if (ticket != epoch || focusedId != id) return
             val image = response.body()?.image
             if (response.isSuccessful && !image.isNullOrBlank()) {
                 _uiState.value = GenerationUiState.Success(image)
-                onDownloadStateChanged?.invoke(account, id, "downloaded")
             }
             else if (response.code() == 410) _uiState.value = GenerationUiState.Error("This photo's 24-hour recovery period has ended. Checking it did not charge credits.", false)
             else if (response.code() == 404) _uiState.value = GenerationUiState.Error("This generation is no longer available for this account.", false)
-            if (response.code() == 409) onDownloadStateChanged?.invoke(account, id, "waiting")
-            else if (!response.isSuccessful || image.isNullOrBlank()) onDownloadStateChanged?.invoke(account, id, "failed")
-        } catch (error: Exception) {
-            if (ticket == epoch) onDownloadStateChanged?.invoke(account, id, "failed")
-            throw error
+            else if (response.code() != 409) _uiState.value = GenerationUiState.Error("Couldn't retrieve this photo. Check your connection and check status again; this does not start a paid generation.", false, true)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            if (ticket == epoch && focusedId == id) _uiState.value = GenerationUiState.Error(
+                "Couldn't retrieve this photo. Check your connection and check status again; this does not start a paid generation.", false, true)
         } finally { if (ticket == epoch) fetching.remove(id) }
     }
 
-    fun markFocusedViewed() {
-        val id = focusedId ?: return
+    fun markFocusedViewed(expectedId: String? = focusedId) {
+        val id = focusedId?.takeIf { it == expectedId } ?: return
+        // A failed download must not hide a completed photo that is still recoverable.
+        if (_uiState.value is GenerationUiState.Error && _operations.value.any {
+            it.id == id && it.status == "completed" && it.resultAvailable
+        }) return
         val ticket = epoch
         viewModelScope.launch {
             try {
@@ -242,25 +266,19 @@ class GenerationViewModel(
         val state = _uiState.value
         if (state !is GenerationUiState.Success || _isActionLoading.value) return false
 
-        val owner = account
-        val operation = focusedId
         // Lock before launching work so rapid save taps cannot create duplicate files.
         _isActionLoading.value = true
         viewModelScope.launch {
           try {
-            onDownloadStateChanged?.invoke(owner, operation, "saving")
             val bitmap = withContext(Dispatchers.IO) { ImageUtils.decodeBase64ToBitmap(state.imageBase64) }
             if (bitmap != null) {
                 val result = ImageUtils.saveBitmapToGallery(context, bitmap)
                 if (result.isSuccess) {
-                    onDownloadStateChanged?.invoke(owner, operation, "saved")
                     _eventFlow.emit(GenerationEvent.ShowSnackbar("Image saved to gallery!"))
                 } else {
-                    onDownloadStateChanged?.invoke(owner, operation, "failed")
                     _eventFlow.emit(GenerationEvent.ShowSnackbar("Failed to save image: ${result.exceptionOrNull()?.message}"))
                 }
             } else {
-                onDownloadStateChanged?.invoke(owner, operation, "failed")
                 _eventFlow.emit(GenerationEvent.ShowSnackbar("Failed to decode image for saving."))
             }
           } finally { _isActionLoading.value = false }

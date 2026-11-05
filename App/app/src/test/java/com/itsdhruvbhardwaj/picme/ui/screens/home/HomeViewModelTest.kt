@@ -24,6 +24,82 @@ class HomeViewModelTest {
     @Before fun setup() { Dispatchers.setMain(dispatcher) }
     @After fun cleanup() { Dispatchers.resetMain() }
 
+    @Test fun `timeout automatically recovers while cached styles stay visible`() = runTest(dispatcher) {
+        whenever(repository.getCachedHome()).thenReturn(feed())
+        whenever(repository.getHomeConfig()).thenReturn(Result.failure(Exception("timeout")), Result.success(feed()))
+        val model = HomeViewModel(repository)
+        model.setHomeActive(true)
+        runCurrent()
+        assertEquals(listOf(style), (model.uiState.value as HomeUiState.Success).sections.single().styles)
+        assertTrue(model.isAutoRetrying.value)
+        advanceTimeBy(2_000); runCurrent()
+        assertNull((model.uiState.value as HomeUiState.Success).refreshError)
+        assertFalse(model.isAutoRetrying.value)
+        verify(repository, times(2)).getHomeConfig()
+    }
+
+    @Test fun `leaving Home cancels queued retries and returning resumes recovery`() = runTest(dispatcher) {
+        whenever(repository.getHomeConfig()).thenReturn(Result.failure(Exception("network_error")))
+        val model = HomeViewModel(repository)
+        model.setHomeActive(true); runCurrent()
+        model.setHomeActive(false)
+        advanceTimeBy(60_000); runCurrent()
+        verify(repository, times(1)).getHomeConfig()
+        doReturn(Result.success(feed())).whenever(repository).getHomeConfig()
+        model.setHomeActive(true)
+        advanceUntilIdle()
+        assertTrue(model.uiState.value is HomeUiState.Success)
+        verify(repository, times(2)).getHomeConfig()
+    }
+
+    @Test fun `retries are bounded and restored internet starts a new recovery attempt`() = runTest(dispatcher) {
+        whenever(repository.getHomeConfig()).thenReturn(Result.failure(Exception("network_error")))
+        val model = HomeViewModel(repository)
+        model.setHomeActive(true)
+        advanceUntilIdle()
+        verify(repository, times(4)).getHomeConfig()
+        assertFalse(model.isAutoRetrying.value)
+        doReturn(Result.success(feed())).whenever(repository).getHomeConfig()
+        model.onConnectionRestored()
+        advanceUntilIdle()
+        assertTrue(model.uiState.value is HomeUiState.Success)
+        verify(repository, times(5)).getHomeConfig()
+    }
+
+    @Test fun `manual refresh cancels the scheduled retry instead of duplicating it`() = runTest(dispatcher) {
+        whenever(repository.getHomeConfig()).thenReturn(Result.failure(Exception("timeout")), Result.success(feed()))
+        val model = HomeViewModel(repository)
+        model.setHomeActive(true); runCurrent()
+        model.loadHomeData()
+        advanceUntilIdle()
+        verify(repository, times(2)).getHomeConfig()
+        assertFalse(model.isAutoRetrying.value)
+    }
+
+    @Test fun `expired sessions do not cause repeated Home calls`() = runTest(dispatcher) {
+        whenever(repository.getHomeConfig()).thenReturn(Result.failure(Exception("session_expired")))
+        val model = HomeViewModel(repository)
+        model.setHomeActive(true)
+        advanceUntilIdle()
+        model.onConnectionRestored(); advanceUntilIdle()
+        verify(repository, times(1)).getHomeConfig()
+        assertFalse(model.isAutoRetrying.value)
+        assertTrue((model.uiState.value as HomeUiState.Error).message.contains("sign in"))
+    }
+
+    @Test fun `hung Home request automatically retries and clears its loading state`() = runTest(dispatcher) {
+        whenever(repository.getHomeConfig()).doSuspendableAnswer { awaitCancellation() }
+        val model = HomeViewModel(repository)
+        model.setHomeActive(true)
+        advanceTimeBy(40_000); runCurrent()
+        assertTrue(model.isAutoRetrying.value)
+        doReturn(Result.success(feed())).whenever(repository).getHomeConfig()
+        advanceUntilIdle()
+        assertTrue(model.uiState.value is HomeUiState.Success)
+        verify(repository, times(2)).getHomeConfig()
+        assertFalse(model.isAutoRetrying.value)
+    }
+
     @Test fun `combined feed renders without individual section requests`() = runTest(dispatcher) {
         whenever(repository.getHomeConfig()).thenReturn(Result.success(feed()))
         val model = HomeViewModel(repository)

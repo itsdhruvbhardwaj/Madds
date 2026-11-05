@@ -12,5 +12,11 @@ data class RewardAttemptResponse(
     @SerializedName("customData") val customData: String?,
     @SerializedName("expiresAt") val expiresAt: String?,
     @SerializedName("message") val message: String? = null,
-    @SerializedName("error") val error: String? = null
+    @SerializedName("error") val error: String? = null,
+    val credits: Int? = null
 )
+
+/** Display configuration only. The server independently verifies every reward. */
+data class RewardedAdConfigResponse(val ok: Boolean, val available: Boolean, val credits: Int? = null) {
+    val validReward: Boolean get() = ok && available && credits != null && credits in 1..100_000
+}

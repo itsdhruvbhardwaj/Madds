@@ -2,6 +2,12 @@ package com.itsdhruvbhardwaj.picme.data.model
 
 import com.google.gson.annotations.SerializedName
 
+fun genderTagLabel(value: String?): String? = when (value) {
+    "her" -> "For her"
+    "him" -> "For him"
+    else -> null
+}
+
 /**
  * Data model representing a generation style in PicMe.
  */
@@ -40,7 +46,9 @@ data class Style(
     val collections: List<String> = emptyList(),
 
     @SerializedName("isFavorite", alternate = ["is_favorite"])
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    @SerializedName("genderTag")
+    val genderTag: String? = "none"
 )
 
 data class PaginationMetadata(

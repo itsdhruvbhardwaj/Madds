@@ -51,6 +51,17 @@ fun ResultScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     var imageReady by remember(imageBase64) { mutableStateOf(false) }
     var imageFailed by remember(imageBase64) { mutableStateOf(false) }
+    val resultOwner = remember(imageBase64) { viewModel.notificationOwner() }
+    val resultId = remember(imageBase64) { viewModel.focusedGenerationId.value }
+    // Coil success means decoded; wait for the next frame before announcing readiness.
+    LaunchedEffect(imageBase64, imageReady) {
+        if (imageReady) {
+            withFrameNanos { }
+            com.itsdhruvbhardwaj.picme.notifications.GenerationNotifications.imageDisplayed(
+                context, resultOwner, resultId)
+            viewModel.markFocusedViewed(resultId)
+        }
+    }
     var showFullscreenPreview by remember { mutableStateOf(false) }
     var previewScale by remember { mutableFloatStateOf(1f) }
     var previewOffset by remember { mutableStateOf(Offset.Zero) }
@@ -94,6 +105,9 @@ fun ResultScreen(
         }
     }
 
+    LaunchedEffect(imageBytes) {
+        if (imageBytes == null) imageFailed = true
+    }
     val sourceImageSize = remember(imageBytes) {
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         imageBytes?.let { bytes ->
@@ -164,11 +178,14 @@ fun ResultScreen(
                     AsyncImage(
                         model = ImageRequest.Builder(context)
                             .data(imageBytes)
-                            .crossfade(true)
+                            .crossfade(false)
                             .build(),
                         contentDescription = "Generated AI Photo",
-                        onSuccess = { imageReady = true; imageFailed = false; viewModel.markFocusedViewed() },
-                        onError = { imageFailed = true },
+                        onSuccess = {
+                            imageReady = true
+                            imageFailed = false
+                        },
+                        onError = { imageReady = false; imageFailed = true },
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
@@ -198,14 +215,14 @@ fun ResultScreen(
             )
 
             Text(
-                text = "Save it to your gallery or share it with friends",
+                text = if (imageReady) "Save it to your gallery or share it with friends" else "",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp)
             )
 
             Text(
-                text = "Tap the image to view it full screen",
+                text = if (imageReady) "Tap the image to view it full screen" else "",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp)

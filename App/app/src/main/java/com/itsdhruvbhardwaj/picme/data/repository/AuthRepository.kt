@@ -382,6 +382,14 @@ class AuthRepository(
     /**
      * Requests a reward attempt ticket from the backend.
      */
+    suspend fun getRewardedAdConfig(): Result<RewardedAdConfigResponse> = safeApiCall(
+        call = { apiService.rewardedAdConfig() },
+        onSuccess = { config ->
+            if (config.ok && (!config.available || config.validReward)) Result.success(config)
+            else Result.failure(Exception("Couldn't load the ad reward. Please try again."))
+        }
+    )
+
     suspend fun requestRewardAttempt(): Result<RewardAttemptResponse> {
         val accessToken = tokenStorage.getAccessToken()
             ?: return Result.failure(Exception("No access token available"))
