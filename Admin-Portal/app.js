@@ -220,14 +220,7 @@
       const img = coverUrl
         ? `<img src="${escapeHtml(coverUrl)}" alt="${escapeHtml(style.name)} cover" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\'>Preview unavailable</div>'">`
         : '';
-      const collection = (style.collections || [])[0];
-      const collectionBadge = collection
-        ? `<span class="style-collection-pill">${escapeHtml(collection)}</span>`
-        : '<span class="style-collection-pill">No collection</span>';
-      const verificationBadge = style.verified === true
-        ? '<span class="verification-badge is-verified">✓ Verified</span>'
-        : '<span class="verification-badge is-unverified">Unverified</span>';
-      return `<article class="style-card website-style-card" data-style-open="${escapeHtml(style.id)}"><div class="style-image ${coverUrl ? "" : "missing-image"}">${img}${collectionBadge}</div><div class="style-body"><h3 class="style-card-title">${escapeHtml(style.name)}</h3><div class="style-description">${escapeHtml(style.description)}</div><div class="style-admin-footer"><span class="style-id">ID · ${escapeHtml(style.id)}</span>${verificationBadge}<span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
+      return `<article class="style-card website-style-card" data-style-open="${escapeHtml(style.id)}"><div class="style-image ${coverUrl ? "" : "missing-image"}">${img}</div><div class="style-body"><h3 class="style-card-title">${escapeHtml(style.name)}</h3><div class="style-admin-footer"><span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
     }).join("");
     grid.querySelectorAll("[data-style-open]").forEach((card) => card.addEventListener("click", (event) => {
       if (event.target.closest("button, a, input, label")) return;
