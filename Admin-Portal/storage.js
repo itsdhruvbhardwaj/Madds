@@ -9,6 +9,8 @@
       for (const id of ["storage-refresh", "media-refresh", "media-more", "media-folder", "cleanup-retry"]) $(id).disabled = busy;
       $("storage-policies").querySelectorAll("button").forEach(b => b.disabled = busy || b.dataset.empty === "true");
       $("media-grid").querySelectorAll("button").forEach(b => b.disabled = busy);
+      for (const button of [$("storage-refresh"), $("media-refresh"), $("media-more"), $("cleanup-retry"),
+        ...$("storage-policies").querySelectorAll("button"), ...$("media-grid").querySelectorAll("button")]) button.ariaBusy = String(busy);
     }
     const error = text => { $("storage-error").textContent = text || ""; };
     async function overview() {

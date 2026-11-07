@@ -1,4 +1,7 @@
 /* Shared Workspace design language. Loaded last so every workspace uses the same controls. */
+/* Disabled can mean unchanged or unavailable; it does not imply a request is running. */
+button:disabled:not(.is-loading):not([aria-busy="true"]){cursor:not-allowed}
+button.is-loading,button[aria-busy="true"],.button:disabled[aria-busy="true"],.icon-button:disabled[aria-busy="true"]{cursor:progress}
 .login-card .password-field{position:relative;margin-top:-8px}
 .login-card .password-field input{padding-right:54px}
 .password-toggle{position:absolute;right:5px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:42px;height:42px;padding:10px;border:0;border-radius:8px;background:transparent;color:var(--muted)}

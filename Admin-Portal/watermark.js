@@ -8,6 +8,7 @@
     function render() {
       for (const input of form.querySelectorAll("input,button")) input.disabled = busy || revision === null;
       $("watermark-refresh").disabled = busy;
+      for (const id of ["watermark-save", "watermark-upload", "watermark-refresh"]) $(id).ariaBusy = String(busy);
       $("watermark-save").disabled = busy || revision === null || JSON.stringify(values()) === saved || (fields.enabled.checked && !logoUrl);
       $("watermark-preview-logo").hidden = !logoUrl || !fields.enabled.checked;
       if (logoUrl) $("watermark-preview-logo").src = logoUrl;
