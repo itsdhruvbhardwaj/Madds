@@ -432,7 +432,7 @@ function validateStyle(body: unknown, fixedId?: string): { value?: Style; error?
   if (name.length < 2 || name.length > 80) return { error: "Style names must be 2 to 80 characters." };
   if (!description || description.length > 300) return { error: "Add a description of up to 300 characters." };
   if (!prompt || prompt.length > 10000) return { error: "Add a prompt of up to 10,000 characters." };
-  if (prompt.split(/\s+/u).length > 200) return { error: "The generation prompt must contain no more than 200 words." };
+  if (prompt.split(/\s+/u).length > 250) return { error: "The generation prompt must contain no more than 250 words." };
   if (!thumbnail || !thumbnailPublicId) return { error: "Upload a cover image to Cloudinary before saving." };
   if (previewImages.length > 10 || (previewImagePublicIds.length > 0 && previewImagePublicIds.length !== previewImages.length)) return { error: "Preview images must have matching Cloudinary IDs." };
   const imagePairs: Array<[string, string | null]> = [[thumbnail, thumbnailPublicId], ...previewImages.map((url, index) => [optimizeCloudinaryThumbnailUrl(url), previewImagePublicIds[index] ?? (index === 0 ? exampleBeforePublicId : (index === 1 ? exampleAfterPublicId : null))] as [string, string | null])];

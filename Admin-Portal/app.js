@@ -5,6 +5,14 @@
   const state = { styles: [], collections: [], sections: [], logs: [], logMembers: [], logPage: 1, logPagination: null, pendingCloudinaryCleanup: 0, activePanel: "styles-panel", editingId: null, renamingId: null, styleEditorBaseline: null, catalogLoaded: false, catalogLoading: false, logsLoading: false, promptTestFile: null, promptTestOriginalUrl: null, promptTestResultUrl: null, promptTestDownloadUrl: null, promptTestGenerating: false };
   let styleSaving = false;
   const byId = (id) => document.getElementById(id);
+  function setPasswordVisible(visible) {
+    byId("login-password").type = visible ? "text" : "password";
+    const toggle = byId("toggle-password");
+    toggle.setAttribute("aria-pressed", String(visible));
+    toggle.setAttribute("aria-label", visible ? "Hide password" : "Show password");
+    toggle.title = visible ? "Hide password" : "Show password";
+  }
+  byId("toggle-password").addEventListener("click", () => setPasswordVisible(byId("login-password").type === "password"));
   const styleUploads = window.MaddsStyleUploads.create({ discard: async publicId => {
     const result = await api("/api/admin/catalog/cloudinary/discard-upload", { method: "POST", body: JSON.stringify({ publicId }) });
     if (result.pending) notify("Unused image cleanup is queued and will retry automatically.", true);
@@ -21,6 +29,7 @@
   const users = window.MaddsUsers.create({ api, notify });
   const storage = window.MaddsStorage.create({ api, notify });
   const settings = window.MaddsSettings.create({ api, notify });
+  const watermark = window.MaddsWatermark.create({ api, notify });
   const homeOrder = window.MaddsHomeOrder.create({ api, notify, onSaved: sections => { state.sections = sections; renderCollections(); } });
   const feedback = window.MaddsFeedback.create({ api, notify });
   const bulkStyles = window.MaddsStyleBulk.create({ api, notify, getCatalog: () => state, reload: loadCatalog });
@@ -55,6 +64,7 @@
     feedback.reset();
     storage.reset();
     settings.reset();
+    watermark.reset();
     homeOrder.reset();
     bulkStyles.reset();
     users.reset();
@@ -63,6 +73,7 @@
     sessionStorage.removeItem(refreshKey);
   }
   function showLogin(message = "") {
+    setPasswordVisible(false);
     byId("login-view").hidden = false;
     byId("app-view").hidden = true;
     byId("login-message").textContent = message;
@@ -117,7 +128,7 @@
     } catch (error) {
       if (error.message.includes("not allowed")) {
         clearSession();
-        showLogin("This account can sign in, but it has not been approved for catalogue access. Ask the Madds Studio owner to add its email to the backend ADMIN_EMAILS setting.");
+        showLogin("This account can sign in, but it has not been approved for catalogue access. Ask the Madds Workspace owner to add its email to the backend ADMIN_EMAILS setting.");
       } else if (!byId("login-view").hidden) {
         showLogin(error.message);
       } else notify(error.message, true);
@@ -260,7 +271,7 @@
     let blob = await canvasToBlob(canvas, "image/webp", quality);
     if (blob.type === "image/webp") return blob;
 
-    // Older browsers may not encode WebP. Studio images are photos, so use a
+    // Older browsers may not encode WebP. Workspace images are photos, so use a
     // white-backed JPEG fallback to avoid black transparency when exporting.
     const jpegCanvas = document.createElement("canvas");
     jpegCanvas.width = canvas.width;
@@ -418,7 +429,7 @@
     byId("prompt-test-progress-status").textContent = "Sending your image and prompt to Sunburst…";
     byId("prompt-test-nav-status").hidden = false;
     byId("prompt-test-nav-status").textContent = "Generating";
-    const progressMessages = ["Sunburst is creating your style preview…", "Working on the details…", "Still generating. You can keep using the other Studio sections."];
+    const progressMessages = ["Sunburst is creating your style preview…", "Working on the details…", "Still generating. You can keep using the other Workspace sections."];
     let messageIndex = 0;
     const progressTimer = window.setInterval(() => {
       messageIndex = Math.min(messageIndex + 1, progressMessages.length - 1);
@@ -753,6 +764,7 @@
 
   byId("login-form").addEventListener("submit", async (event) => {
     event.preventDefault();
+    setPasswordVisible(false);
     const form = new FormData(event.currentTarget);
     byId("login-message").textContent = "Signing in…";
     const submit = event.currentTarget.querySelector('button[type="submit"]');
@@ -780,7 +792,7 @@
     else if (state.activePanel === "users-panel") void users.refresh();
     else if (state.activePanel === "feedback-panel") void feedback.refresh();
     else if (state.activePanel === "storage-panel") void storage.refresh();
-    else if (state.activePanel === "app-settings-panel") void settings.refresh();
+    else if (state.activePanel === "app-settings-panel") { void settings.refresh(); void watermark.refresh(); }
     else void loadCatalog();
   });
   document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => {
@@ -802,10 +814,10 @@
     const input = byId("style-prompt"), trimmed = input.value.trim();
     const words = trimmed ? trimmed.split(/\s+/u).length : 0;
     const count = byId("style-prompt-count");
-    count.textContent = `${Array.from(input.value).length} characters · ${words} / 200 words${words > 200 ? " — remove " + (words - 200) + " words to save" : ""}`;
-    count.classList.toggle("is-over-limit", words > 200);
-    input.setCustomValidity(words > 200 ? "The generation prompt must contain no more than 200 words." : "");
-    return words <= 200;
+    count.textContent = `${Array.from(input.value).length} characters · ${words} / 250 words${words > 250 ? " — remove " + (words - 250) + " words to save" : ""}`;
+    count.classList.toggle("is-over-limit", words > 250);
+    input.setCustomValidity(words > 250 ? "The generation prompt must contain no more than 250 words." : "");
+    return words <= 250;
   }
   byId("style-prompt").addEventListener("input", updatePromptCount);
   byId("copy-style-prompt").addEventListener("click", async () => {
@@ -845,7 +857,7 @@
     if (state.activePanel === "users-panel") void users.refresh();
     if (state.activePanel === "feedback-panel") void feedback.refresh();
     if (state.activePanel === "storage-panel") void storage.refresh();
-    if (state.activePanel === "app-settings-panel") void settings.refresh();
+    if (state.activePanel === "app-settings-panel") { void settings.refresh(); void watermark.refresh(); }
   }));
   byId("log-member-filter").addEventListener("change", () => loadLogs(1));
   byId("log-action-filter").addEventListener("change", () => loadLogs(1));

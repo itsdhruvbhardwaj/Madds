@@ -4,12 +4,14 @@ import { env } from "../config/env.js";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth.js";
 import { AppSettings } from "../models/AppSettings.js";
 import { getWelcomeCreditSetting, validWelcomeCredits } from "../services/welcomeCredits.js";
+import { adminWatermarkRouter } from "./watermarkSettings.js";
 const router = Router();
 router.use(requireAuth, (req: AuthenticatedRequest, res, next) => {
   if (!req.user?.emailVerified || !env.adminEmails.includes(req.user.email?.toLowerCase() || "")) return res.status(403).json({error:"Administrator access required."});
   res.set("Cache-Control", "no-store"); next();
 });
 router.use(rateLimit({windowMs:60000,max:30,standardHeaders:true,legacyHeaders:false}));
+router.use("/watermark", adminWatermarkRouter);
 router.get("/credits", async (_req,res) => res.json({ok:true,...await getWelcomeCreditSetting()}));
 router.patch("/credits", async (req: AuthenticatedRequest,res) => {
   const {welcomeCredits,expectedRevision}=req.body || {};

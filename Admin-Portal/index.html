@@ -6,11 +6,11 @@
   <meta name="theme-color" content="#090909">
   <link rel="icon" type="image/svg+xml" href="assets/madds-favicon.svg?v=2">
   <link rel="alternate icon" type="image/png" sizes="512x512" href="assets/Icon5.png">
-  <title>Madds Studio · Style Manager</title>
+  <title>Madds Workspace</title>
   <script src="theme.js?v=20261105-themes"></script>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="portal-overrides.css?v=20261031-user-container">
-  <link rel="stylesheet" href="studio-modern.css?v=20261105-home-order">
+  <link rel="stylesheet" href="studio-modern.css?v=20261107-watermark">
   <link rel="stylesheet" href="themes.css?v=20261105-themes">
 </head>
 <body>
@@ -18,12 +18,17 @@
     <label class="theme-control login-theme-control"><span>Theme</span><select data-studio-theme aria-label="Sign-in theme"><option value="dark">Dark</option><option value="light">Light</option></select></label>
     <section class="login-card">
       <img class="brand-title login-brand-title" src="assets/madds-title.png" alt="Madds">
-      <p class="eyebrow">MADDS STUDIO</p>
-      <h1>Style manager</h1>
+      <h1>Workspace</h1>
       <p class="muted">Sign in with an approved Madds team account.</p>
       <form id="login-form" class="stack">
         <label>Email address<input name="email" type="email" autocomplete="username" required></label>
-        <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+        <label for="login-password">Password</label>
+        <div class="password-field">
+          <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+          <button id="toggle-password" class="password-toggle" type="button" aria-label="Show password" title="Show password" aria-controls="login-password" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path class="password-eye-slash" d="m3 3 18 18"/></svg>
+          </button>
+        </div>
         <button class="button primary" type="submit">Sign in</button>
       </form>
       <p id="login-message" class="message" role="status"></p>
@@ -32,7 +37,7 @@
 
   <div id="app-view" class="app-shell" hidden>
     <aside class="sidebar">
-      <div class="brand"><img class="brand-title studio-brand-title" src="assets/madds-title.png" alt="Madds"><span class="studio-word">Studio</span></div>
+      <div class="brand"><img class="brand-title studio-brand-title" src="assets/madds-title.png" alt="Madds"><span class="studio-word">Workspace</span></div>
       <div class="side-label">WORKSPACE</div>
       <button class="side-link active" data-panel="styles-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg> Styles <small id="style-count">0</small></button>
       <button class="side-link" data-panel="testing-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"/></svg> Prompt testing <small id="prompt-test-nav-status" class="test-nav-status" hidden></small></button>
@@ -48,7 +53,7 @@
     </aside>
 
     <section class="main-area">
-      <header class="topbar"><div><div class="eyebrow">CATALOGUE CONTROL</div><div id="account-email" class="account-email"></div></div><div class="top-actions"><label class="theme-control"><span>Theme</span><select data-studio-theme aria-label="Studio theme"><option value="dark">Dark</option><option value="light">Light</option></select></label><button id="retry-cloudinary-cleanup" class="button secondary cleanup-button" type="button" hidden></button><span class="live-pill"><i></i> Live data</span><button id="refresh-button" class="icon-button" title="Refresh catalogue">↻</button></div></header>
+      <header class="topbar"><div><div class="eyebrow">CATALOGUE CONTROL</div><div id="account-email" class="account-email"></div></div><div class="top-actions"><label class="theme-control"><span>Theme</span><select data-studio-theme aria-label="Workspace theme"><option value="dark">Dark</option><option value="light">Light</option></select></label><button id="retry-cloudinary-cleanup" class="button secondary cleanup-button" type="button" hidden></button><span class="live-pill"><i></i> Live data</span><button id="refresh-button" class="icon-button" title="Refresh catalogue">↻</button></div></header>
       <div id="notice" class="notice" role="status" hidden></div>
 
       <section id="styles-panel" class="panel-view">
@@ -71,13 +76,13 @@
             <button id="generate-test-image" class="button primary" type="button">Generate test image</button>
           </section>
           <section class="prompt-test-result" aria-live="polite">
-            <div id="prompt-test-progress" class="test-generation-progress" role="status" aria-live="polite" hidden><span class="generation-orbit"><i></i></span><h2>Creating your test image</h2><p id="prompt-test-progress-status">Sunburst is generating your image…</p><div class="generation-progress-track"><i></i></div><small>You can keep working in other Studio sections. This test will be here when you return.</small></div>
+            <div id="prompt-test-progress" class="test-generation-progress" role="status" aria-live="polite" hidden><span class="generation-orbit"><i></i></span><h2>Creating your test image</h2><p id="prompt-test-progress-status">Sunburst is generating your image…</p><div class="generation-progress-track"><i></i></div><small>You can keep working in other Workspace sections. This test will be here when you return.</small></div>
             <div id="prompt-test-empty" class="test-empty-state"><span>✦</span><h2>Your test image will appear here</h2><p>Change the prompt or source photo and generate again until the result looks right.</p></div>
             <img id="prompt-test-result-image" class="test-result-image" alt="Generated prompt test image" hidden>
             <div id="test-export-controls" class="test-export-controls" hidden>
               <label>Download aspect ratio<select id="test-export-aspect"><option value="5:7" selected>5:7 · Madds style card</option><option value="3:4">3:4</option><option value="2:3">2:3</option><option value="4:5">4:5</option><option value="1:1">1:1</option><option value="9:16">9:16</option><option value="16:9">16:9</option></select></label>
               <label>Compression quality <span><output id="test-export-quality-value">82%</output><input id="test-export-quality" type="range" min="40" max="100" step="1" value="82"></span></label>
-              <p>Download is capped at 300 KB. Studio may reduce quality or dimensions to meet the limit. The preview above stays at the original Sunburst quality.</p>
+              <p>Download is capped at 300 KB. Workspace may reduce quality or dimensions to meet the limit. The preview above stays at the original Sunburst quality.</p>
               <button id="download-test-image" class="button secondary" type="button">Prepare and download</button>
               <span id="download-test-status" class="field-hint" role="status"></span>
             </div>
@@ -112,11 +117,23 @@
         <section id="user-details" class="push-editor" hidden></section>
       </section>
       <section id="app-settings-panel" class="panel-view" hidden>
-        <div class="page-heading"><div><p class="eyebrow">APP CONTROLS</p><h1>App settings</h1><p class="muted">Manage welcome credits without an Android update.</p></div><button id="app-settings-refresh" class="button secondary" type="button">Refresh</button></div>
+        <div class="page-heading"><div><p class="eyebrow">APP CONTROLS</p><h1>App settings</h1><p class="muted">Manage welcome credits and image exports.</p></div><button id="app-settings-refresh" class="button secondary" type="button">Refresh credits</button></div>
         <form id="app-settings-form" class="app-settings-form">
           <h2>New-user welcome credits</h2><p class="muted">Applies once when a new account is created, through email or Google. Existing accounts, logins and reinstalls receive no extra grant.</p>
           <p id="app-settings-current" class="field-hint"></p><label>Credits per new account<input name="welcomeCredits" type="number" min="0" max="100000" step="1" inputmode="numeric" required></label><p class="field-hint">Use 0 to disable welcome credits. Changes apply to account creations that start after the setting is saved.</p>
           <p id="app-settings-error" class="form-error" role="alert"></p><button id="app-settings-save" class="button primary" type="submit" disabled>Save changes</button><p id="app-settings-editor" class="field-hint"></p>
+        </form>
+        <form id="watermark-form" class="app-settings-form watermark-form">
+          <div class="push-section-heading"><h2>Image watermark</h2><button id="watermark-refresh" class="button secondary" type="button">Refresh watermark</button></div>
+          <p class="muted">Add your logo to the bottom-right corner when users save or share a new creation. Requires the updated Android app. Existing gallery photos stay as saved.</p>
+          <label class="watermark-enable"><input name="enabled" type="checkbox"> Enable watermark</label>
+          <input id="watermark-logo-file" type="file" accept="image/png" hidden>
+          <div><button id="watermark-upload" class="button secondary" type="button">Upload / replace logo</button><p id="watermark-logo-name" class="field-hint"></p></div>
+          <p class="field-hint">Transparent PNG · up to 2 MB. Uploaded to Cloudinary → picmee/branding/watermarks. Uploading alone does not change the live logo.</p>
+          <div class="watermark-controls"><label>Width (% of image)<input name="widthPercent" type="number" min="5" max="35" step="1" value="18" required></label><label>Opacity (%)<input name="opacityPercent" type="number" min="10" max="100" step="1" value="85" required></label><label>Edge spacing (%)<input name="paddingPercent" type="number" min="1" max="10" step="1" value="2" required></label></div>
+          <div class="watermark-preview" aria-label="Watermark placement preview"><span>Export preview</span><img id="watermark-preview-logo" alt="Watermark logo" hidden></div>
+          <p class="field-hint">Preview shows placement on a 3:2 image. On mobile, settings refresh at each save/share; offline exports use the last saved settings and logo.</p>
+          <p id="watermark-error" class="form-error" role="alert"></p><button id="watermark-save" class="button primary" type="submit" disabled>Save watermark</button><p id="watermark-editor" class="field-hint"></p>
         </form>
       </section>
       <section id="storage-panel" class="panel-view" hidden>
@@ -147,7 +164,7 @@
         <div class="id-preview-field"><span class="field-label">Internal style ID</span><span id="style-id-preview" class="style-id-preview">style-id-from-name</span><span class="field-hint">Generated from the name on creation, then kept stable so app references and favorites keep working.</span></div>
         <label class="wide">Short description<textarea name="description" maxlength="300" rows="2" required></textarea></label>
         <fieldset class="wide"><legend>Collections</legend><div id="collection-checkboxes" class="checkbox-grid"></div></fieldset>
-        <div class="wide prompt-editor"><div class="prompt-editor-heading"><label for="style-prompt">Generation prompt</label><button id="copy-style-prompt" class="button secondary" type="button">Copy prompt</button></div><textarea id="style-prompt" name="prompt" maxlength="10000" rows="6" required aria-describedby="style-prompt-count"></textarea><span id="style-prompt-count" class="field-hint prompt-count" role="status">0 characters · 0 / 200 words</span><span id="copy-prompt-status" class="field-hint" role="status"></span></div>
+        <div class="wide prompt-editor"><div class="prompt-editor-heading"><label for="style-prompt">Generation prompt</label><button id="copy-style-prompt" class="button secondary" type="button">Copy prompt</button></div><textarea id="style-prompt" name="prompt" maxlength="10000" rows="6" required aria-describedby="style-prompt-count"></textarea><span id="style-prompt-count" class="field-hint prompt-count" role="status">0 characters · 0 / 250 words</span><span id="copy-prompt-status" class="field-hint" role="status"></span></div>
         <input name="thumbnail" type="hidden">
         <input name="thumbnailPublicId" type="hidden">
         <input name="previewImages" type="hidden">
@@ -157,7 +174,7 @@
         <input name="exampleAfterUrl" type="hidden">
         <input name="exampleAfterPublicId" type="hidden">
         <div class="wide style-cover-upload style-example-upload">
-          <h3>Cover image <span class="required-mark">Required</span></h3><p class="field-hint">Shown on Madds Studio and website style cards.</p>
+          <h3>Cover image <span class="required-mark">Required</span></h3><p class="field-hint">Shown on Madds Workspace and website style cards.</p>
           <input id="cover-image-file" type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden>
           <button id="upload-cover-image" class="button secondary" type="button">Upload cover image</button>
           <span id="cover-image-status" class="field-hint" role="status">Required</span>
@@ -198,12 +215,13 @@
   <script src="config.js"></script>
   <script src="notifications.js?v=20261105-notification-history" defer></script>
   <script src="home-order.js?v=20261105-home-order" defer></script>
-  <script src="settings.js?v=20261105-welcome" defer></script>
+  <script src="settings.js?v=20261107-workspace" defer></script>
+  <script src="watermark.js?v=20261107-watermark" defer></script>
   <script src="storage.js?v=20261105-storage" defer></script>
   <script src="users.js?v=20261105-user-sorting" defer></script>
   <script src="feedback.js?v=20261101" defer></script>
   <script src="style-bulk.js?v=20261031-filtered-selection" defer></script>
   <script src="style-uploads.js?v=20261104" defer></script>
-  <script src="app.js?v=20261105-home-order" defer></script>
+  <script src="app.js?v=20261107-prompt250" defer></script>
 </body>
 </html>

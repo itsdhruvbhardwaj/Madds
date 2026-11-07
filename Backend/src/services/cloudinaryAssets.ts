@@ -148,6 +148,13 @@ export function isManagedStyleImageId(id: string): boolean {
 export function isManagedNotificationImageId(id: string): boolean {
   return /^picmee\/notifications\/[a-zA-Z0-9_-]+$/.test(id);
 }
+export function isManagedWatermarkImageId(id: string): boolean {
+  return /^picmee\/branding\/watermarks\/logo-[0-9a-f-]{36}$/.test(id);
+}
+export async function destroyManagedWatermarkImage(publicId: string): Promise<void> {
+  if (!isManagedWatermarkImageId(publicId)) throw new Error("Invalid managed watermark image.");
+  return destroyManagedImage(publicId);
+}
 export function notificationImageId(source: unknown): string | undefined {
   try {
     const url = new URL(String(source));

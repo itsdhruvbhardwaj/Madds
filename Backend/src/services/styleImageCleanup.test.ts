@@ -3,8 +3,9 @@ import { User } from "../models/User.js";
 import { NotificationCampaign } from "../modules/notifications/notification.models.js";
 import { CatalogStyle } from "../models/CatalogStyle.js";
 import { CloudinaryCleanup } from "../models/CloudinaryCleanup.js";
-const cloud = vi.hoisted(() => ({ destroy: vi.fn(), resolve: vi.fn() }));
-vi.mock("./cloudinaryAssets.js", async original => ({ ...await original<any>(), destroyManagedStyleImage: cloud.destroy, resolveLegacyStyleImagePublicIds: cloud.resolve }));
+import { WatermarkSettings } from "../models/WatermarkSettings.js";
+const cloud = vi.hoisted(() => ({ destroy: vi.fn(), watermark: vi.fn(), resolve: vi.fn() }));
+vi.mock("./cloudinaryAssets.js", async original => ({ ...await original<any>(), destroyManagedStyleImage: cloud.destroy, destroyManagedWatermarkImage: cloud.watermark, resolveLegacyStyleImagePublicIds: cloud.resolve }));
 import { getStyleImageIds, queueStyleImages, retryPendingCloudinaryCleanup, styleImageReferenceFilter, startStyleImageCleanup } from "./styleImageCleanup.js";
 const id = "picmee/styles/indian-traditional/img-27648c1c-456a-4d49-ac96-0bbfa886c6cc";
 const item = { _id: "job", publicId: id, styleId: "discarded-upload", attempts: 0 };
@@ -21,12 +22,28 @@ describe("style image cleanup", () => {
     vi.spyOn(CloudinaryCleanup, "deleteOne").mockResolvedValue({} as any);
     vi.spyOn(CloudinaryCleanup, "updateOne").mockResolvedValue({} as any);
     cloud.destroy.mockReset(); cloud.destroy.mockResolvedValue(undefined);
+    cloud.watermark.mockReset(); cloud.watermark.mockResolvedValue(undefined);
+    vi.spyOn(WatermarkSettings, "exists").mockResolvedValue(null);
     cloud.resolve.mockReset(); cloud.resolve.mockResolvedValue(new Map());
   });
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.useRealTimers(); });
   it("recovers managed URL-only references without allowing unrelated folders or clouds", () => {
     expect(getStyleImageIds({ thumbnail: `https://res.cloudinary.com/test/image/upload/q_auto/v123/${id}.jpg`, previewImagePublicIds: [id] })).toEqual([id]);
     expect(getStyleImageIds({ thumbnail: `https://res.cloudinary.com/other/image/upload/${id}.jpg`, exampleBeforeUrl: "https://res.cloudinary.com/test/image/upload/profile/a.jpg", thumbnailPublicId: "profile/a" })).toEqual([]);
+  });
+  it("keeps active watermark logos even when watermarking is disabled", async () => {
+    const logo = "picmee/branding/watermarks/logo-b8b1822c-1dfe-4be9-bdc5-9ad7d035b20f";
+    pending([{ ...item, publicId: logo }]);
+    vi.mocked(WatermarkSettings.exists).mockResolvedValue({ _id: "exports" } as any);
+    await retryPendingCloudinaryCleanup();
+    expect(WatermarkSettings.exists).toHaveBeenCalledWith({ logoPublicId: logo });
+    expect(cloud.watermark).not.toHaveBeenCalled(); expect(CloudinaryCleanup.deleteOne).not.toHaveBeenCalled();
+  });
+  it("removes replaced and abandoned watermark uploads through the retry queue", async () => {
+    const logo = "picmee/branding/watermarks/logo-b8b1822c-1dfe-4be9-bdc5-9ad7d035b20f";
+    pending([{ ...item, publicId: logo }]); await retryPendingCloudinaryCleanup();
+    expect(cloud.watermark).toHaveBeenCalledWith(logo); expect(CloudinaryCleanup.deleteOne).toHaveBeenCalled();
+    expect(cloud.destroy).not.toHaveBeenCalled();
   });
   it("handles original bundled covers without granting arbitrary root deletion", async () => {
     vi.stubEnv("CLOUDINARY_CLOUD_NAME", "xjqlkkta");

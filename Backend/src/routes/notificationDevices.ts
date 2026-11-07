@@ -7,6 +7,7 @@ import { notificationCategories } from "../modules/notifications/notification.ty
 const router = Router();
 router.use(requireAuth);
 const preferencesFor = (user: any) => Object.fromEntries(notificationCategories.map((key) => [key, user?.notificationPreferences?.[key] === true]));
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 router.get("/preferences", async (req: AuthenticatedRequest, res) => {
   const user = await User.findById(req.user!.id).select("notificationPreferences").lean();
@@ -14,13 +15,30 @@ router.get("/preferences", async (req: AuthenticatedRequest, res) => {
 });
 
 router.post("/preferences/initialize", async (req: AuthenticatedRequest, res) => {
-  // Called after device permission is granted. Atomic and one-time: a later
-  // permission grant or reinstall must never overwrite category choices.
+  // Legacy clients use this for routine synchronization; preserve saved choices.
   const user = await User.findOneAndUpdate({ _id: req.user!.id, isActive: { $ne: false }, deletionScheduledAt: null,
     notificationDefaultsEligible: true }, { $set: {
       notificationDefaultsEligible: false,
       ...Object.fromEntries(notificationCategories.map(key => [`notificationPreferences.${key}`, true])),
     } }, { new: true }).select("notificationPreferences");
+  const current = user || await User.findById(req.user!.id).select("notificationPreferences").lean();
+  return current ? res.json({ ok: true, preferences: preferencesFor(current) }) : res.sendStatus(404);
+});
+
+router.post("/preferences/permission-grant", async (req: AuthenticatedRequest, res) => {
+  const { installationId } = req.body ?? {};
+  if (typeof installationId !== "string" || !uuid.test(installationId) || Object.keys(req.body).some(key => key !== "installationId")) {
+    return res.status(400).json({ ok: false, error: "Invalid notification permission grant." });
+  }
+  // Record the receipt and enable categories in ONE atomic write. A lost response,
+  // concurrent retry, or later login from this installation cannot repeat the reset.
+  const id = installationId.toLowerCase();
+  const user = await User.findOneAndUpdate({ _id: req.user!.id, isActive: { $ne: false }, deletionScheduledAt: null,
+    notificationPermissionInstallations: { $ne: id } }, {
+      $addToSet: { notificationPermissionInstallations: id },
+      $set: { notificationDefaultsEligible: false,
+        ...Object.fromEntries(notificationCategories.map(key => [`notificationPreferences.${key}`, true])) },
+    }, { new: true }).select("notificationPreferences");
   const current = user || await User.findById(req.user!.id).select("notificationPreferences").lean();
   return current ? res.json({ ok: true, preferences: preferencesFor(current) }) : res.sendStatus(404);
 });
@@ -44,7 +62,6 @@ router.post("/activity", async (req: AuthenticatedRequest, res) => {
     { $set: { lastActiveAt: now } });
   return res.json({ ok: true });
 });
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 router.put("/device", async (req: AuthenticatedRequest, res) => {
   const { deviceId, bindingVersion, fcmToken, permissionGranted, appVersionCode, appVersionName } = req.body ?? {};

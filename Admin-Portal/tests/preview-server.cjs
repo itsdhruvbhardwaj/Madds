@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 let serial = 10;
+let watermark = { enabled:false, logoUrl:"", logoPublicId:"", widthPercent:18, opacityPercent:85, paddingPercent:2, revision:0 };
 const campaigns = [
   { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", title: "A little inspiration, just for you", body: "Find a fresh look in the latest Madds collection.", notificationType: "PRODUCT_UPDATE", targetAudience: "ALL_USERS", targetConditions: { userIds: [], recentDays: 7 }, status: "DRAFT", revision: 0, deepLink: "picme://home", createdAt: new Date().toISOString() },
   { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", title: "Weekend portraits are here", body: "Create something new this weekend.", notificationType: "NEW_STYLE", targetAudience: "ACTIVE_USERS", targetConditions: { userIds: [], recentDays: 7 }, relatedStyleId: "golden-hour", deepLink: "picme://styles/golden-hour", status: "SENT", revision: 0, createdAt: new Date().toISOString() },
@@ -12,16 +13,28 @@ const json = (res, data, status = 200) => { res.writeHead(status, { "Content-Typ
 http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://127.0.0.1");
   if (!url.pathname.startsWith("/api/")) {
+    if (url.pathname === "/fixture-watermark.png" && process.env.WORKSPACE_PREVIEW_LOGO) {
+      res.writeHead(200, {"Content-Type":"image/png"}); return fs.createReadStream(process.env.WORKSPACE_PREVIEW_LOGO).pipe(res);
+    }
     if (url.pathname === "/config.js") { res.writeHead(200, { "Content-Type": "text/javascript" }); return res.end("window.PICMEE_API_BASE = location.origin;"); }
     const file = path.resolve(root, "." + decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname));
     if (!file.startsWith(root + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) { res.writeHead(404); return res.end(); }
     const mime = { ".js": "text/javascript", ".css": "text/css", ".html": "text/html", ".png": "image/png", ".svg": "image/svg+xml" }[path.extname(file)] || "application/octet-stream";
     res.writeHead(200, { "Content-Type": mime }); return fs.createReadStream(file).pipe(res);
   }
+  if (url.pathname === "/api/admin/settings/watermark/logo" && req.method === "POST") {
+    for await (const _chunk of req) { /* Local-only fixture discards the upload. */ }
+    return json(res,{logoUrl:process.env.WORKSPACE_PREVIEW_LOGO?"/fixture-watermark.png":"/assets/madds-title.png",logoPublicId:"fixture-watermark"});
+  }
   let body = ""; for await (const chunk of req) body += chunk;
   let input = {}; try { input = body ? JSON.parse(body) : {}; } catch { return json(res, { error: "Invalid JSON" }, 400); }
   if (url.pathname === "/api/auth/login") return json(res, { accessToken: "fixture-access", refreshToken: "fixture-refresh", user: { email: "preview@example.com" } });
   if (url.pathname === "/api/auth/logout") return json(res, { ok: true });
+  if (url.pathname === "/api/admin/settings/credits") return json(res,{welcomeCredits:100,revision:1});
+  if (url.pathname === "/api/admin/settings/watermark") {
+    if (req.method === "PATCH") watermark={...watermark,...input,revision:watermark.revision+1,updatedByName:"Preview Editor",updatedAt:new Date().toISOString()};
+    return json(res,watermark);
+  }
   if (url.pathname === "/api/admin/catalog") return json(res, { styles: [{ id: "golden-hour", name: "Golden hour", verified: true, collections: ["Portraits"], description: "Golden light", imageCount: 1, tokensRequired: 5 }], collections: [{ id: "portraits", name: "Portraits" }], sections: [] });
   const prefix = "/api/admin/notifications";
   if (!url.pathname.startsWith(prefix)) return json(res, { error: "Fixture route not found" }, 404);

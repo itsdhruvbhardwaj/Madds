@@ -3,6 +3,8 @@ import { NotificationCampaign } from "../modules/notifications/notification.mode
 import { CatalogStyle } from "../models/CatalogStyle.js";
 import { CloudinaryCleanup } from "../models/CloudinaryCleanup.js";
 import { env } from "../config/env.js";
+import { WatermarkSettings } from "../models/WatermarkSettings.js";
+import { isManagedWatermarkImageId, destroyManagedWatermarkImage } from "./cloudinaryAssets.js";
 import { destroyManagedNotificationImage, isManagedNotificationImageId, destroyManagedStyleImage, resolveLegacyStyleImagePublicIds, legacyStyleImagePublicId, isManagedStyleImageId } from "./cloudinaryAssets.js";
 
 export function getStyleImageIds(style: Record<string, any>): string[] {
@@ -65,6 +67,15 @@ export async function retryPendingCloudinaryCleanup(limit = 25, onlyIds?: string
       if (!claimed) continue;
       try {
         let publicId = item.publicId;
+        if (isManagedWatermarkImageId(publicId)) {
+          if (await WatermarkSettings.exists({ logoPublicId: publicId })) {
+            await CloudinaryCleanup.updateOne({ _id: item._id }, { $set: { cleanupAfter: new Date(Date.now() + 86_400_000), attempts: 0, lastError: "" }, $unset: { leaseUntil: 1 } });
+          } else {
+            await destroyManagedWatermarkImage(publicId);
+            await CloudinaryCleanup.deleteOne({ _id: item._id });
+          }
+          continue;
+        }
         if (!isManagedStyleImageId(publicId) && !isManagedNotificationImageId(publicId)) {
           if (!legacyIds.includes(publicId)) throw new Error("Invalid managed Cloudinary public ID.");
           if (lookupFailed) throw new Error("Cloudinary legacy asset lookup failed.");

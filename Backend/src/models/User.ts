@@ -44,6 +44,8 @@ const UserSchema = new Schema(
     },
     // Persisted on new accounts only; legacy users retain their saved choices.
     notificationDefaultsEligible: { type: Boolean, default: false },
+    // Durable receipts: retrying an installation's Allow must not undo later choices.
+    notificationPermissionInstallations: { type: [String], default: [], select: false },
     emailVerified: {
       type: Boolean,
       default: false,

@@ -1,4 +1,4 @@
-/* Notification controls share Studio's authenticated API client. No Firebase keys belong here. */
+/* Notification controls share Workspace's authenticated API client. No Firebase keys belong here. */
 (() => {
   const labels = {
     ALL_USERS: "All eligible users", ACTIVE_USERS: "Active in the last 7 days",

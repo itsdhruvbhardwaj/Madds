@@ -35,6 +35,37 @@ describe("notification category preferences and activity", () => {
     const response = await request(app).post("/push/preferences/initialize").set("Authorization", "Bearer test");
     expect(response.body.preferences).toEqual({ newStyles: true, offers: false, productUpdates: false, reengagement: false });
   });
+  const installationId = "b8b1822c-1dfe-4be9-bdc5-9ad7d035b20f";
+  it("explicit Allow resets every category for an existing account with opt-outs", async () => {
+    const enabled = { newStyles: true, offers: true, productUpdates: true, reengagement: true };
+    mocks.user.mockResolvedValue({ notificationPreferences: enabled });
+    const response = await request(app).post("/push/preferences/permission-grant").set("Authorization", "Bearer test").send({ installationId });
+    expect(response.status).toBe(200);
+    expect(response.body.preferences).toEqual(enabled);
+    expect(mocks.update).toHaveBeenCalledWith({ _id: "user-a", isActive: { $ne: false }, deletionScheduledAt: null,
+      notificationPermissionInstallations: { $ne: installationId } }, {
+      $addToSet: { notificationPermissionInstallations: installationId },
+      $set: { notificationDefaultsEligible: false, "notificationPreferences.newStyles": true,
+        "notificationPreferences.offers": true, "notificationPreferences.productUpdates": true, "notificationPreferences.reengagement": true },
+    }, { new: true });
+  });
+  it("a retried Allow returns current choices without replaying its reset", async () => {
+    mocks.user.mockResolvedValueOnce(null).mockResolvedValueOnce({ notificationPreferences: { newStyles: true, offers: false, productUpdates: true, reengagement: true } });
+    const response = await request(app).post("/push/preferences/permission-grant").set("Authorization", "Bearer test").send({ installationId });
+    expect(response.status).toBe(200);
+    expect(response.body.preferences.offers).toBe(false);
+    expect(mocks.update.mock.calls[0][0].notificationPermissionInstallations).toEqual({ $ne: installationId });
+    expect(mocks.update).toHaveBeenCalledTimes(1);
+  });
+  it.each([{}, { installationId: "bad" }, { installationId, userId: "victim" }, { installationId, force: true }])("rejects invalid Allow receipts %j", async (body) => {
+    expect((await request(app).post("/push/preferences/permission-grant").set("Authorization", "Bearer test").send(body)).status).toBe(400);
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+  it("requires authentication for Allow and handles a missing account", async () => {
+    expect((await request(app).post("/push/preferences/permission-grant").send({ installationId })).status).toBe(401);
+    mocks.user.mockResolvedValue(null);
+    expect((await request(app).post("/push/preferences/permission-grant").set("Authorization", "Bearer test").send({ installationId })).status).toBe(404);
+  });
   it.each([{ userId: "other" }, { offers: "true" }, {}, { authVersion: 0 }])("rejects unknown/nonboolean preference writes %j", async (body) => {
     expect((await request(app).patch("/push/preferences").set("Authorization", "Bearer test").send(body)).status).toBe(400);
     expect(mocks.update).not.toHaveBeenCalled();

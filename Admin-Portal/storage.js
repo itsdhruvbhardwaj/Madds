@@ -1,4 +1,4 @@
-/* Storage and media tools use the same authenticated Studio client. */
+/* Storage and media tools use the same authenticated Workspace client. */
 (() => {
   const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
   const bytes = n => n != null && Number.isFinite(Number(n)) ? `${(Number(n)/1048576).toFixed(2)} MB` : "Not available";
