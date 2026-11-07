@@ -21,10 +21,17 @@ describe("transactional welcome-back credits",()=>{
  it("matches 0–9 credits, verified active accounts and the selected inactivity cutoff",()=>{
   expect(welcomeBackFilter(cutoffAt)).toEqual({isActive:{$ne:false},emailVerified:true,deletionScheduledAt:null,credits:{$gte:0,$lt:10},$or:[{lastActiveAt:{$type:"date",$lte:cutoffAt}},{lastActiveAt:null,createdAt:{$lte:cutoffAt}}]});
  });
- it.each([7,15,30])("accepts %i days and rejects unsafe credit amounts",days=>{
+ it.each([0,2,7,15,30])("accepts %i days and rejects unsafe credit amounts",days=>{
   const input={inactiveDays:days,amount:20,requestId:"b8b1822c-1dfe-4be9-bdc5-9ad7d035b20f"};expect(validWelcomeBackInput(input)).toBe(true);
   for(const amount of [0,-1,1.5,100001,"20"])expect(validWelcomeBackInput({...input,amount})).toBe(false);
   expect(validWelcomeBackInput({...input,inactiveDays:14})).toBe(false);
+ });
+ it("Any activity filters only by low credits and account eligibility",()=>{
+  expect(welcomeBackFilter(null)).toEqual({isActive:{$ne:false},emailVerified:true,deletionScheduledAt:null,credits:{$gte:0,$lt:10}});
+ });
+ it("Any activity rechecks credits without applying a date restriction when granting",async()=>{
+  m.batch.mockResolvedValue({...batch,inactiveDays:0});await processWelcomeBackRecipient(batchId,userId);
+  expect(m.user).toHaveBeenCalledWith({_id:userId,...welcomeBackFilter(null)},{$inc:{credits:20}},{new:true,session});
  });
  it("rechecks eligibility and commits balance, history and receipt in the same transaction",async()=>{
   await processWelcomeBackRecipient(batchId,userId);

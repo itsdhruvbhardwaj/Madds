@@ -22,6 +22,10 @@ test("preview uses selected inactivity days and credits and makes no grant reque
  assert.equal(f.calls.length,1);assert.match(f.el("welcome-back-summary").textContent,/2 users selected · 40 total credits/);
  assert.match(f.el("welcome-back-recipients").innerHTML,/User &lt;one&gt;/);assert.equal(f.el("welcome-back-confirm").disabled,false);
 });
+test("Any activity submits low-credits-only audience without an inactivity requirement",async()=>{
+ const f=fixture();f.form.elements.inactiveDays.value="0";await f.form.events.submit({preventDefault(){}});
+ assert.equal(JSON.parse(f.calls[0].options.body).inactiveDays,0);assert.equal(f.calls.length,1);
+});
 test("deselecting users updates total and confirms exactly that selection",async()=>{
  const f=fixture();await f.form.events.submit({preventDefault(){}});
  f.el("welcome-back-recipients").events.change({target:{dataset:{grantUser:"cccccccccccccccccccccccc"},checked:false}});

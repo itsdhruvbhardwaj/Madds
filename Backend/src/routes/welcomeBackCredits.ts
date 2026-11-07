@@ -11,7 +11,7 @@ router.get("/", async (_req,res) => {
   return res.json({ batches: batches.map(welcomeBackSummary), deliveryEnabled: deliveryEnabled() });
 });
 router.post("/preview", async (req: AuthenticatedRequest,res) => {
-  if (!validWelcomeBackInput(req.body)) return res.status(400).json({ error: "Choose 7, 15 or 30 inactive days and 1–100,000 whole credits." });
+  if (!validWelcomeBackInput(req.body)) return res.status(400).json({ error: "Choose Any activity, or 2, 7, 15 or 30 inactive days, and 1–100,000 whole credits." });
   const { inactiveDays, amount, requestId } = req.body;
   await WelcomeBackGrant.init();
   const previous = await WelcomeBackGrant.findOne({ requestId }).lean();
@@ -21,7 +21,7 @@ router.post("/preview", async (req: AuthenticatedRequest,res) => {
     return res.json({ batch: welcomeBackSummary(previous) });
   }
   const now = new Date(), cutoffAt = new Date(now.getTime() - inactiveDays * 86400000);
-  const users = await User.find(welcomeBackFilter(cutoffAt)).select("name credits lastActiveAt createdAt").sort({ _id: 1 }).limit(WELCOME_BACK_LIMIT + 1).lean();
+  const users = await User.find(welcomeBackFilter(inactiveDays === 0 ? null : cutoffAt)).select("name credits lastActiveAt createdAt").sort({ _id: 1 }).limit(WELCOME_BACK_LIMIT + 1).lean();
   try {
     const batch = await WelcomeBackGrant.create({ requestId, actorId: req.user!.id, actorName: req.user?.name || "Team member", inactiveDays, amount,
       cutoffAt, expiresAt: new Date(now.getTime() + 30 * 60000), hasMore: users.length > WELCOME_BACK_LIMIT,

@@ -6,13 +6,13 @@ import { WelcomeBackGrant } from "../models/WelcomeBackGrant.js";
 import { NotificationCampaign } from "../modules/notifications/notification.models.js";
 
 export const WELCOME_BACK_LIMIT = 500;
-export function welcomeBackFilter(cutoff: Date): Record<string, any> {
+export function welcomeBackFilter(cutoff: Date | null): Record<string, any> {
   return { isActive: { $ne: false }, emailVerified: true, deletionScheduledAt: null,
     credits: { $gte: 0, $lt: 10 },
-    $or: [{ lastActiveAt: { $type: "date", $lte: cutoff } }, { lastActiveAt: null, createdAt: { $lte: cutoff } }] };
+    ...(cutoff ? { $or: [{ lastActiveAt: { $type: "date", $lte: cutoff } }, { lastActiveAt: null, createdAt: { $lte: cutoff } }] } : {}) };
 }
 export function validWelcomeBackInput(input: any): boolean {
-  return !!input && [7,15,30].includes(input.inactiveDays) && Number.isSafeInteger(input.amount) && input.amount >= 1 && input.amount <= 100000 &&
+  return !!input && [0,2,7,15,30].includes(input.inactiveDays) && Number.isSafeInteger(input.amount) && input.amount >= 1 && input.amount <= 100000 &&
     typeof input.requestId === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.requestId);
 }
 export function welcomeBackSummary(batch: any) {
@@ -37,7 +37,7 @@ export async function processWelcomeBackRecipient(batchId: any, userId: any) {
       const target = batch?.recipients.find((r: any) => String(r.userId) === String(userId) && r.status === "PENDING");
       if (!batch || !target) return;
       const activeGeneration = await Generation.exists({ userId, status: { $in: ["processing", "outcome_unknown"] } }).session(session);
-      const user = activeGeneration ? null : await User.findOneAndUpdate({ _id: userId, ...welcomeBackFilter(batch.cutoffAt) },
+      const user = activeGeneration ? null : await User.findOneAndUpdate({ _id: userId, ...welcomeBackFilter(batch.inactiveDays === 0 ? null : batch.cutoffAt) },
         { $inc: { credits: batch.amount } }, { new: true, session }).select("credits").lean();
       if (user) await CreditTransaction.create([{ userId, amount: batch.amount, type: "ADMIN_ADJUSTMENT", balanceAfter: user.credits,
         referenceId: `welcome-back:${batch._id}:${userId}`, description: `Welcome-back gift: ${batch.amount} credits` }], { session });

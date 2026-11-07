@@ -34,7 +34,19 @@ describe("welcome-back administrator preview and confirmation",()=>{
   expect((await request(app).post("/push/welcome-back/preview").set("Authorization","Bearer admin").send({...input,amount:30})).status).toBe(409);
   expect(m.create).not.toHaveBeenCalled();
  });
- it.each([14,0,"7"])("rejects unsupported inactivity selection %j",async inactiveDays=>{
+ it("accepts a two-day preview with the matching inactivity cutoff",async()=>{
+  const started=Date.now();
+  const response=await request(app).post("/push/welcome-back/preview").set("Authorization","Bearer admin").send({...input,inactiveDays:2});
+  expect(response.status).toBe(200);
+  const saved=m.create.mock.calls[0][0];expect(saved.inactiveDays).toBe(2);
+  expect(saved.cutoffAt.getTime()).toBeGreaterThanOrEqual(started-2*86400000);
+  expect(saved.cutoffAt.getTime()).toBeLessThanOrEqual(Date.now()-2*86400000);
+ });
+ it("accepts Any activity for low-credit users",async()=>{
+  const response=await request(app).post("/push/welcome-back/preview").set("Authorization","Bearer admin").send({...input,inactiveDays:0});
+  expect(response.status).toBe(200);expect(m.create.mock.calls[0][0].inactiveDays).toBe(0);
+ });
+ it.each([14,-1,"7"])("rejects unsupported inactivity selection %j",async inactiveDays=>{
   expect((await request(app).post("/push/welcome-back/preview").set("Authorization","Bearer admin").send({...input,inactiveDays})).status).toBe(400);
  });
  it("confirmation only queues the reviewed selection and removes preview expiry",async()=>{

@@ -1,6 +1,8 @@
 # Welcome-back credits and personalised notifications
 
-Open **Workspace → Notifications → Welcome-back credits**. Choose inactive for at least **7, 15 or 30 days** and a whole credit amount. The backend filters to active, verified accounts not scheduled for deletion, with a current balance **0–9 credits**. Exactly 10 credits is excluded. Accounts without a recorded last-active date use their creation date, so a newly created account is never classified as long inactive.
+The **Activity filter** also offers **Any activity · low credits only**. This includes users with 0–9 credits regardless of last-active or account-creation date, while preserving verified/active-account checks and the unresolved-generation safeguard. It uses `inactiveDays: 0` internally. The default remains 2 days; 7, 15 and 30 days are still available. Eligibility is rechecked with the selected activity mode immediately before each grant.
+
+Open **Workspace → Notifications → Welcome-back credits**. Choose inactive for at least **2, 7, 15 or 30 days** (2 days is the default) and a whole credit amount. The backend filters to active, verified accounts not scheduled for deletion, with a current balance **0–9 credits**. Exactly 10 credits is excluded. Accounts without a recorded last-active date use their creation date, so a newly created account is never classified as long inactive.
 
 **Preview eligible users** saves a review snapshot valid for 30 minutes without granting credits. Select or deselect recipients, review the maximum total, then click **Grant credits & notify** and confirm. Each preview contains at most 500 users; the page indicates if more users qualify. Recent grants show added credits and granted/skipped/pending counts. Notification delivery results open the existing Notifications view.
 

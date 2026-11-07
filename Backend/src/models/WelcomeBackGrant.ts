@@ -7,7 +7,7 @@ const recipient = new Schema({
 const schema = new Schema({
   requestId: { type: String, required: true, unique: true },
   actorId: { type: Schema.Types.ObjectId, required: true }, actorName: String,
-  inactiveDays: { type: Number, enum: [7,15,30], required: true }, amount: { type: Number, required: true, min: 1, max: 100000 },
+  inactiveDays: { type: Number, enum: [0,2,7,15,30], required: true }, amount: { type: Number, required: true, min: 1, max: 100000 },
   cutoffAt: { type: Date, required: true },
   status: { type: String, enum: ["DRAFT", "PROCESSING", "DONE"], default: "DRAFT" },
   recipients: [recipient], hasMore: Boolean, expiresAt: Date,
