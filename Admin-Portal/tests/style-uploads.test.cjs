@@ -8,6 +8,24 @@ function create(discard) {
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../style-uploads.js"), "utf8"), context);
   return context.window.MaddsStyleUploads.create({ discard });
 }
+test("opening a style clears all retained hidden image fields", () => {
+  const context = { window: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../style-uploads.js"), "utf8"), context);
+  const names = ["thumbnail", "thumbnailPublicId", "exampleBeforeUrl", "exampleBeforePublicId", "exampleAfterUrl", "exampleAfterPublicId", "previewImages", "previewImagePublicIds"];
+  const form = { elements: Object.fromEntries(names.map(name => [name, {value:"previous-style-image"}])) };
+  context.window.MaddsStyleUploads.clearImageFields(form);
+  assert.ok(names.every(name => form.elements[name].value === ""));
+});
+test("removing the preview pair keeps the current cover", () => {
+  const context = { window: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../style-uploads.js"), "utf8"), context);
+  const names = ["thumbnail", "thumbnailPublicId", "exampleBeforeUrl", "exampleBeforePublicId", "exampleAfterUrl", "exampleAfterPublicId", "previewImages", "previewImagePublicIds"];
+  const form = { elements: Object.fromEntries(names.map(name => [name, {value:"saved-image"}])) };
+  context.window.MaddsStyleUploads.clearImageFields(form,true);
+  assert.equal(form.elements.thumbnail.value,"saved-image");
+  assert.equal(form.elements.thumbnailPublicId.value,"saved-image");
+  assert.ok(names.slice(2).every(name => form.elements[name].value === ""));
+});
 test("only unused uploads from this editor are discarded", async () => {
   const calls = [], uploads = create(async id => calls.push(id));
   uploads.track("old-upload"); uploads.track("new-upload");

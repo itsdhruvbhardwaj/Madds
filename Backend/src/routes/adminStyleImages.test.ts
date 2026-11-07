@@ -46,6 +46,15 @@ describe("admin style image lifecycle and attribution", () => {
     expect(cleanup.activate.mock.invocationCallOrder[0]).toBeGreaterThan(vi.mocked(CatalogStyle.findOneAndUpdate).mock.invocationCallOrder[0]);
     expect(cleanup.activate).toHaveBeenCalledWith([oldId]);
   });
+  it("explicitly removing previews cannot resurrect stale legacy arrays", async () => {
+    const response = await request(app).put("/admin/catalog/styles/portrait").set("Authorization", "Bearer admin").send({
+      ...style, exampleBeforeUrl: null, exampleAfterUrl: null,
+      previewImages: [previous.thumbnail, style.thumbnail], previewImagePublicIds: [oldId,newId],
+    });
+    expect(response.status).toBe(200);
+    const update = vi.mocked(CatalogStyle.findOneAndUpdate).mock.calls[0][1] as any;
+    expect(update).toMatchObject({exampleBeforeUrl:null,exampleAfterUrl:null,exampleBeforePublicId:null,exampleAfterPublicId:null,previewImages:[],previewImagePublicIds:[]});
+  });
   it("retains a queued fallback when the catalogue update fails", async () => {
     vi.mocked(CatalogStyle.findOneAndUpdate).mockReturnValue({ lean: async () => { throw Error("database failure"); } } as any);
     expect((await request(app).put("/admin/catalog/styles/portrait").set("Authorization", "Bearer admin").send(style)).status).toBe(500);

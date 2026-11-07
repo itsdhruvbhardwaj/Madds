@@ -1,4 +1,9 @@
 (() => {
+  function clearImageFields(form, previewsOnly = false) {
+    const fields = ["exampleBeforeUrl", "exampleBeforePublicId", "exampleAfterUrl", "exampleAfterPublicId", "previewImages", "previewImagePublicIds"];
+    if (!previewsOnly) fields.push("thumbnail", "thumbnailPublicId");
+    fields.forEach(name => { form.elements[name].value = ""; });
+  }
   function create({ discard }) {
     const uploads = new Set();
     const pending = new Map();
@@ -17,5 +22,5 @@
       saved(ids) { ids.forEach(id => uploads.delete(id)); },
     };
   }
-  window.MaddsStyleUploads = { create };
+  window.MaddsStyleUploads = { create, clearImageFields };
 })();

@@ -220,7 +220,11 @@
       const img = coverUrl
         ? `<img src="${escapeHtml(coverUrl)}" alt="${escapeHtml(style.name)} cover" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\'>Preview unavailable</div>'">`
         : '';
-      return `<article class="style-card website-style-card" data-style-open="${escapeHtml(style.id)}"><div class="style-image ${coverUrl ? "" : "missing-image"}">${img}</div><div class="style-body"><h3 class="style-card-title">${escapeHtml(style.name)}</h3><div class="style-admin-footer"><span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
+      const collectionBadge = `<span class="style-collection-pill">${escapeHtml(style.collections?.[0] || "No collection")}</span>`;
+      const verificationBadge = style.verified === true
+        ? '<span class="verification-badge is-verified">✓ Verified</span>'
+        : '<span class="verification-badge is-unverified">Unverified</span>';
+      return `<article class="style-card website-style-card" data-style-open="${escapeHtml(style.id)}"><div class="style-image ${coverUrl ? "" : "missing-image"}">${img}${collectionBadge}</div><div class="style-body"><h3 class="style-card-title">${escapeHtml(style.name)}</h3><div class="style-admin-footer">${verificationBadge}<span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
     }).join("");
     grid.querySelectorAll("[data-style-open]").forEach((card) => card.addEventListener("click", (event) => {
       if (event.target.closest("button, a, input, label")) return;
@@ -659,6 +663,9 @@
     state.editingId = id;
     const form = byId("style-form");
     form.reset();
+    // Hidden input values become their reset defaults; form.reset() cannot clear
+    // images assigned while editing the previous style.
+    window.MaddsStyleUploads.clearImageFields(form);
     byId("before-image-preview").removeAttribute("src");
     byId("before-image-preview").hidden = true;
     byId("after-image-preview").removeAttribute("src");
@@ -863,6 +870,20 @@
   byId("upload-cover-image").addEventListener("click", () => byId("cover-image-file").click());
   byId("upload-before-image").addEventListener("click", () => byId("before-image-file").click());
   byId("upload-after-image").addEventListener("click", () => byId("after-image-file").click());
+  byId("clear-style-previews").addEventListener("click", () => {
+    if (styleSaving || ["upload-cover-image", "upload-before-image", "upload-after-image"].some(id => byId(id).disabled)) {
+      notify("Please wait for the upload or save to finish."); return;
+    }
+    const form = byId("style-form");
+    window.MaddsStyleUploads.clearImageFields(form, true);
+    for (const kind of ["before", "after"]) {
+      byId(`${kind}-image-file`).value = "";
+      byId(`${kind}-image-preview`).removeAttribute("src");
+      byId(`${kind}-image-preview`).hidden = true;
+      byId(`${kind}-image-status`).textContent = "Optional · cover photo will be shown";
+    }
+    releaseEditorUploads(editorImageIds());
+  });
   byId("prompt-test-image").addEventListener("change", (event) => {
     const file = event.currentTarget.files?.[0] || null;
     if (!file) return;
@@ -928,10 +949,10 @@
     }
     const previewImages = beforeUrl && afterUrl
       ? [beforeUrl, afterUrl]
-      : String(fields.get("previewImages") || "").split(/\r?\n/).map((url) => url.trim()).filter(Boolean);
+      : [];
     const previewImagePublicIds = beforeUrl && afterUrl
       ? [beforeId, afterId]
-      : String(fields.get("previewImagePublicIds") || "").split(/\r?\n/).map((id) => id.trim()).filter(Boolean);
+      : [];
     const style = {
       ...(state.editingId ? { expectedUpdatedAt: state.styles.find(item => item.id === state.editingId)?.updatedAt } : {}),
       id: String(fields.get("name") || "").normalize("NFKD").toLowerCase().trim().replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""), name: fields.get("name"), description: fields.get("description"), prompt: fields.get("prompt"), verified: fields.get("verified") === "on",

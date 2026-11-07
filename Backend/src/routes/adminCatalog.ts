@@ -412,13 +412,14 @@ function validateStyle(body: unknown, fixedId?: string): { value?: Style; error?
   const previewImagesInput = Array.isArray(source.previewImages) ? source.previewImages.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean) : [];
   const previewImagePublicIdsInput = Array.isArray(source.previewImagePublicIds) ? source.previewImagePublicIds.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean) : [];
   const hasExplicitPreviewPair = Boolean(legacyBefore && legacyAfter);
+  const explicitPreviewChoice = Object.hasOwn(source, "exampleBeforeUrl") || Object.hasOwn(source, "exampleAfterUrl");
   const explicitPreviewIds = [source.exampleBeforePublicId, source.exampleAfterPublicId]
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim());
   const previewImagePublicIds = hasExplicitPreviewPair && explicitPreviewIds.length === 2 && explicitPreviewIds.every(Boolean)
     ? explicitPreviewIds
-    : previewImagePublicIdsInput;
-  const previewImages = (hasExplicitPreviewPair ? [legacyBefore, legacyAfter] : previewImagesInput)
+    : explicitPreviewChoice ? [] : previewImagePublicIdsInput;
+  const previewImages = (hasExplicitPreviewPair ? [legacyBefore, legacyAfter] : explicitPreviewChoice ? [] : previewImagesInput)
     .map(optimizeCloudinaryThumbnailUrl);
   const exampleBeforeUrl = previewImages[0] ? optimizeCloudinaryThumbnailUrl(previewImages[0]) : null;
   const exampleAfterUrl = previewImages[1] ? optimizeCloudinaryThumbnailUrl(previewImages[1]) : null;
