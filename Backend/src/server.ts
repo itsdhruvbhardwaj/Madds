@@ -27,6 +27,7 @@ import { GenerationResult } from "./models/GenerationResult.js";
 import { GenerationNotification } from "./models/GenerationNotification.js";
 import { adminCatalogRouter } from "./routes/adminCatalog.js";
 import { adminSettingsRouter } from "./routes/adminSettings.js";
+import { startWelcomeBackProcessor } from "./services/welcomeBackCredits.js";
 import { publicWatermarkRouter } from "./routes/watermarkSettings.js";
 import { adminStorageRouter } from "./routes/adminStorage.js";
 import { startStorageCleanup } from "./services/storageCleanup.js";
@@ -623,6 +624,9 @@ if (isDirectExecution) {
       app.listen(env.port, () => {
         console.log(`Server listening on port ${env.port}`);
         if (database) {
+          const stopWelcomeBack = startWelcomeBackProcessor();
+          process.once("SIGTERM", () => { void stopWelcomeBack(); });
+          process.once("SIGINT", () => { void stopWelcomeBack(); });
           try {
             const stopNotifications = startWebNotificationProcessor();
             if (stopNotifications) {

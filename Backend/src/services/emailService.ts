@@ -50,14 +50,14 @@ export async function sendPasswordSetupVerificationEmail(input: {
   return sendEmail(
     {
       to: email,
-      subject: "Verify your PicMee password setup",
+      subject: "Verify your Madds password setup",
       html: `
         <p>Hello ${name},</p>
-        <p>Confirm this password setup request for your PicMee account by opening the link below:</p>
+        <p>Confirm this password setup request for your Madds account by opening the link below:</p>
         <p><a href="${verificationUrl}">Verify password setup</a></p>
         <p>This link expires in 30 minutes. If you did not request this, you can ignore this email.</p>
       `,
-      text: `Hello ${name},\n\nVerify your PicMee password setup using this link:\n${verificationUrl}\n\nThis link expires in 30 minutes. If you did not request this, you can ignore this email.`,
+      text: `Hello ${name},\n\nVerify your Madds password setup using this link:\n${verificationUrl}\n\nThis link expires in 30 minutes. If you did not request this, you can ignore this email.`,
     },
     "password setup verification",
   );
@@ -74,14 +74,14 @@ export async function sendVerificationEmail(input: {
   return sendEmail(
     {
       to: email,
-      subject: "Verify your email address",
+      subject: "Verify your Madds email address",
       html: `
         <p>Hello ${name},</p>
-        <p>Thanks for joining. Please verify your email address by clicking below:</p>
+        <p>Thanks for joining Madds. Please verify your email address by clicking below:</p>
         <p><a href="${verificationUrl}">${verificationUrl}</a></p>
         <p>If you did not create this account, you can ignore this email.</p>
       `,
-      text: `Hello ${name},\n\nPlease verify your email address using this link:\n${verificationUrl}\n\nIf you did not create this account, you can ignore this email.`,
+      text: `Hello ${name},\n\nPlease verify your Madds email address using this link:\n${verificationUrl}\n\nIf you did not create this account, you can ignore this email.`,
     },
     "verification",
   );
@@ -97,14 +97,14 @@ export async function sendPasswordResetEmail(input: {
   return sendEmail(
     {
       to: email,
-      subject: "Reset your password",
+      subject: "Reset your Madds password",
       html: `
-        <p>We received a request to reset your password.</p>
+        <p>We received a request to reset your Madds password.</p>
         <p><a href="${resetUrl}">Reset your password</a></p>
         <p>If you did not request this, you can ignore this email.</p>
         <p>This link expires in 30 minutes.</p>
       `,
-      text: `We received a request to reset your password.\n\nReset your password using this link:\n${resetUrl}\n\nIf you did not request this, you can ignore this email. This link expires in 30 minutes.`,
+      text: `We received a request to reset your Madds password.\n\nReset your password using this link:\n${resetUrl}\n\nIf you did not request this, you can ignore this email. This link expires in 30 minutes.`,
     },
     "password reset",
   );

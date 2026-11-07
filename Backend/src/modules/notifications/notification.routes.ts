@@ -10,6 +10,7 @@ import { deliveryEnabled, notificationCooldownHours } from "./notification.types
 import { personalizeNotification } from "./notification.personalization.js";
 import { notificationService, validateDestination } from "./notification.service.js";
 import { validateCampaign, validateSchedule } from "./notification.validation.js";
+import { welcomeBackCreditsRouter } from "../../routes/welcomeBackCredits.js";
 
 const router = Router();
 const idPattern = /^[0-9a-f]{24}$/i;
@@ -20,6 +21,7 @@ router.use(requireAuth, (req: AuthenticatedRequest, res, next) => {
   res.set("Cache-Control", "no-store"); next();
 });
 router.use(rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false }));
+router.use("/welcome-back", welcomeBackCreditsRouter);
 router.use(async (_req, _res, next) => { await initializeNotificationModels(); next(); });
 router.post("/upload-signature", (_req, res) => {
   if (!cloudinaryIsConfigured()) {

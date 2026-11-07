@@ -26,6 +26,7 @@
     void styleUploads.releaseUnused(keep).catch(() => notify("Unused upload cleanup is saved for a later automatic retry.", true));
   }
   const notifications = window.MaddsNotifications.create({ api, notify, getCatalog: () => state });
+  const welcomeBack = window.MaddsWelcomeBack.create({ api, notify, openNotification: id => { void notifications.open(id); } });
   const users = window.MaddsUsers.create({ api, notify });
   const storage = window.MaddsStorage.create({ api, notify });
   const settings = window.MaddsSettings.create({ api, notify });
@@ -69,6 +70,7 @@
     bulkStyles.reset();
     users.reset();
     notifications.reset();
+    welcomeBack.reset();
     sessionStorage.removeItem(tokenKey);
     sessionStorage.removeItem(refreshKey);
   }
@@ -788,7 +790,7 @@
   byId("add-style").addEventListener("click", () => openStyleEditor());
   byId("refresh-button").addEventListener("click", () => {
     if (state.activePanel === "logs-panel") void loadLogs(1);
-    else if (state.activePanel === "notifications-panel") void notifications.refresh();
+    else if (state.activePanel === "notifications-panel") { void notifications.refresh(); void welcomeBack.refresh(); }
     else if (state.activePanel === "users-panel") void users.refresh();
     else if (state.activePanel === "feedback-panel") void feedback.refresh();
     else if (state.activePanel === "storage-panel") void storage.refresh();
@@ -853,7 +855,7 @@
     document.querySelectorAll(".side-link").forEach((item) => item.classList.toggle("active", item === button));
     document.querySelectorAll(".panel-view").forEach((panel) => { panel.hidden = panel.id !== button.dataset.panel; });
     if (state.activePanel === "logs-panel") void loadLogs(1);
-    if (state.activePanel === "notifications-panel") void notifications.refresh();
+    if (state.activePanel === "notifications-panel") { void notifications.refresh(); void welcomeBack.refresh(); }
     if (state.activePanel === "users-panel") void users.refresh();
     if (state.activePanel === "feedback-panel") void feedback.refresh();
     if (state.activePanel === "storage-panel") void storage.refresh();

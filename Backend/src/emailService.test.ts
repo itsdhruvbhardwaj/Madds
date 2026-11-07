@@ -10,7 +10,7 @@ vi.mock("resend", () => ({
   })),
 }));
 
-import { sendPasswordResetEmail, sendVerificationEmail } from "./services/emailService.js";
+import { sendPasswordResetEmail, sendVerificationEmail, sendPasswordSetupVerificationEmail } from "./services/emailService.js";
 
 const resendApiKey = "test-resend-api-key";
 const verificationToken = "secret-verification-token";
@@ -88,6 +88,19 @@ describe("Resend email delivery", () => {
 });
 
 describe("authentication email URLs", () => {
+  it("uses Madds branding in every authentication email without changing sender or link destinations", async () => {
+    resendMocks.send.mockResolvedValue({ data: { id: "email-id" }, error: null });
+    await sendPasswordSetupVerificationEmail({email:"user@example.com",name:"User",rawToken:verificationToken});
+    await sendVerificationEmail({email:"user@example.com",name:"User",rawToken:verificationToken});
+    await sendPasswordResetEmail({email:"user@example.com",rawToken:verificationToken});
+    for (const [message] of resendMocks.send.mock.calls) {
+      expect(message.subject).toContain("Madds");
+      expect(message.html).toContain("Madds");
+      expect(message.text).toContain("Madds");
+      expect(message.from).toBe("onboarding@resend.dev");
+      expect(message.subject + message.html.replace(/https?:\/\/[^\s"<]+/g, "") + message.text.replace(/https?:\/\/\S+/g, "")).not.toMatch(/picmee?/i);
+    }
+  });
   it("uses APP_BASE_URL for verification and reset links without duplicate slashes", async () => {
     process.env.APP_BASE_URL = "https://backend.example.test///";
     resendMocks.send.mockResolvedValue({ data: { id: "email-id" }, error: null });

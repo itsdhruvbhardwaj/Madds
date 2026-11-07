@@ -813,7 +813,7 @@ router.get("/google/password/verify", authRateLimiter, async (req: Request, res:
       const safeMessage = message.replace(/[&<>\"']/g, (character) => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;",
       })[character] ?? character);
-      return res.status(status).type("html").send(`<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title></head><body style="font:16px Arial,sans-serif;max-width:560px;margin:12vh auto;padding:24px;color:#202124"><h1>${title}</h1><p>${safeMessage}</p><p>Return to PicMee to continue.</p></body></html>`);
+      return res.status(status).type("html").send(`<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title></head><body style="font:16px Arial,sans-serif;max-width:560px;margin:12vh auto;padding:24px;color:#202124"><h1>${title}</h1><p>${safeMessage}</p><p>Return to Madds to continue.</p></body></html>`);
     }
     return res.status(status).json(body);
   };
@@ -830,7 +830,7 @@ router.get("/google/password/verify", authRateLimiter, async (req: Request, res:
       { new: true },
     );
     if (!token) {
-      return respond(400, { ok: false, code: "INVALID_OR_EXPIRED_TOKEN", error: "This password verification link is invalid, expired, or already used. Request a new one in PicMee." });
+      return respond(400, { ok: false, code: "INVALID_OR_EXPIRED_TOKEN", error: "This password verification link is invalid, expired, or already used. Request a new one in Madds." });
     }
 
     const updated = await User.updateOne(

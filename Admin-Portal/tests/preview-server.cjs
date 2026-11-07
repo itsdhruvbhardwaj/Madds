@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 let serial = 10;
+let welcomeBackBatches = [];
 let watermark = { enabled:false, logoUrl:"", logoPublicId:"", widthPercent:18, opacityPercent:85, paddingPercent:2, revision:0 };
 const campaigns = [
   { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", title: "A little inspiration, just for you", body: "Find a fresh look in the latest Madds collection.", notificationType: "PRODUCT_UPDATE", targetAudience: "ALL_USERS", targetConditions: { userIds: [], recentDays: 7 }, status: "DRAFT", revision: 0, deepLink: "picme://home", createdAt: new Date().toISOString() },
@@ -34,6 +35,18 @@ http.createServer(async (req, res) => {
   if (url.pathname === "/api/admin/settings/watermark") {
     if (req.method === "PATCH") watermark={...watermark,...input,revision:watermark.revision+1,updatedByName:"Preview Editor",updatedAt:new Date().toISOString()};
     return json(res,watermark);
+  }
+  const welcomeBackBase = "/api/admin/notifications/welcome-back";
+  if (url.pathname === welcomeBackBase) return json(res,{batches:welcomeBackBatches.filter(b=>b.status!=="DRAFT"),deliveryEnabled:true});
+  if (url.pathname === `${welcomeBackBase}/preview`) {
+    const batch={id:"111111111111111111111111",actorName:"Preview Editor",createdAt:new Date().toISOString(),inactiveDays:input.inactiveDays,amount:input.amount,status:"DRAFT",total:2,granted:0,skipped:0,pending:2,creditsGranted:0,maximumCredits:2*input.amount,
+      recipients:[{userId:"222222222222222222222222",name:"Dhruv Sharma",credits:4,lastActiveAt:"2026-10-01T12:00:00Z",status:"PENDING"},{userId:"333333333333333333333333",name:"Meenal Yadav",credits:9,lastActiveAt:"2026-09-25T12:00:00Z",status:"PENDING"}]};
+    welcomeBackBatches=[batch];return json(res,{batch});
+  }
+  if (url.pathname === `${welcomeBackBase}/111111111111111111111111/confirm`) {
+    const batch=welcomeBackBatches[0];batch.recipients=batch.recipients.filter(r=>input.userIds.includes(r.userId)).map(r=>({...r,status:"GRANTED",balanceAfter:r.credits+batch.amount}));
+    Object.assign(batch,{status:"DONE",granted:batch.recipients.length,skipped:0,pending:0,creditsGranted:batch.recipients.length*batch.amount});
+    return json(res,{batch});
   }
   if (url.pathname === "/api/admin/catalog") return json(res, { styles: [{ id: "golden-hour", name: "Golden hour", verified: true, collections: ["Portraits"], description: "Golden light", imageCount: 1, tokensRequired: 5 }], collections: [{ id: "portraits", name: "Portraits" }], sections: [] });
   const prefix = "/api/admin/notifications";

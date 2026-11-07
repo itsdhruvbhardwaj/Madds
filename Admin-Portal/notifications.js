@@ -453,7 +453,7 @@
     $("push-campaigns").addEventListener("click", (event) => { const clear = event.target.closest("[data-clear-draft]"); if (clear) { void clearDraftCard(clear.dataset.clearDraft); return; } const button = event.target.closest("[data-campaign]"); if (button) void open(button.dataset.campaign); });
     $("push-recent").addEventListener("click", (event) => { if (event.target.closest("[data-clear-history]")) { void clearHistory(); return; } const button = event.target.closest("[data-campaign]"); if (button) void open(button.dataset.campaign); });
     window.addEventListener("beforeunload", (event) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } });
-    return { refresh, reset, catalogChanged };
+    return { refresh, reset, catalogChanged, open };
   }
   const exported = { create, buildDraft, localSchedule, personalizedPreview, prepareDelivery };
   if (typeof module !== "undefined" && module.exports) module.exports = exported;

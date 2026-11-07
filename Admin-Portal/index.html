@@ -10,7 +10,7 @@
   <script src="theme.js?v=20261105-themes"></script>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="portal-overrides.css?v=20261031-user-container">
-  <link rel="stylesheet" href="studio-modern.css?v=20261107-cursors">
+  <link rel="stylesheet" href="studio-modern.css?v=20261107-welcome-back">
   <link rel="stylesheet" href="themes.css?v=20261105-themes">
 </head>
 <body>
@@ -103,6 +103,15 @@
         <div class="page-heading"><div><p class="eyebrow">KEEP YOUR COMMUNITY CONNECTED</p><h1>Notifications</h1><p class="muted">Create, schedule, and follow your notifications.</p></div><button id="push-new" class="button primary" type="button">＋ New notification</button></div>
         <div id="push-delivery-status" class="push-banner" role="status">Checking notification availability…</div>
         <div id="push-error" class="form-error" role="alert"></div>
+        <details class="welcome-back-panel"><summary>Welcome-back credits <span class="field-hint">Reward inactive users with fewer than 10 credits</span></summary>
+          <p class="muted">Only verified, active accounts with 0–9 credits qualify. If last activity was never recorded, account creation is used. Preview first, then choose recipients and confirm. No credits are added during preview.</p>
+          <form id="welcome-back-form" class="welcome-back-controls"><label>Inactive for at least<select name="inactiveDays"><option value="7">7 days</option><option value="15">15 days</option><option value="30">30 days</option></select></label><label>Credits per user<input name="amount" type="number" min="1" max="100000" step="1" value="20" required></label><button id="welcome-back-preview" class="button secondary" type="submit">Preview eligible users</button></form>
+          <p class="field-hint">Notification: “Hi {firstName}, a gift from Madds!” · “We've added your selected amount of free credits to your Madds account. Come create something new!”</p>
+          <p id="welcome-back-delivery" class="field-hint"></p><p id="welcome-back-error" class="form-error" role="alert"></p>
+          <div class="welcome-back-actions"><button id="welcome-back-all" class="button secondary" type="button" disabled>Select all</button><button id="welcome-back-clear" class="button secondary" type="button" disabled>Clear selection</button><button id="welcome-back-new" class="button secondary" type="button">New selection</button></div>
+          <div id="welcome-back-recipients"></div><p id="welcome-back-summary" role="status"></p><button id="welcome-back-confirm" class="button primary" type="button" disabled>Grant credits &amp; notify</button>
+          <div class="push-section-heading"><h3>Recent grants</h3><button id="welcome-back-refresh" class="button secondary" type="button">Refresh status</button></div><div id="welcome-back-history"></div>
+        </details>
         <div class="push-workspace">
           <section id="push-editor" class="push-editor" aria-label="Notification editor"><p class="muted">Select a draft or create a new notification.</p></section>
           <aside class="push-history" aria-label="Notification drafts and activity"><div class="push-section-heading"><div><h2>Drafts</h2><p class="muted">Continue where you left off.</p></div><button id="push-refresh" class="button secondary" type="button">Refresh</button></div><div id="push-campaigns" class="push-campaigns" aria-live="polite"></div><div id="push-recent" class="push-recent" aria-live="polite"></div><button id="push-more" class="button secondary" type="button" hidden>Load more</button></aside>
@@ -214,7 +223,8 @@
     <form id="rename-form" method="dialog"><header class="dialog-header"><div><p class="eyebrow">COLLECTION</p><h2>Rename collection</h2></div><button type="button" class="icon-button" data-close="rename-dialog">×</button></header><label>Collection name<input name="name" maxlength="60" required></label><footer class="dialog-footer"><button type="button" class="button secondary" data-close="rename-dialog">Cancel</button><button class="button primary" type="submit">Save name</button></footer></form>
   </dialog>
   <script src="config.js"></script>
-  <script src="notifications.js?v=20261105-notification-history" defer></script>
+  <script src="notifications.js?v=20261107-welcome-back" defer></script>
+  <script src="welcome-back.js?v=20261107-welcome-back" defer></script>
   <script src="home-order.js?v=20261105-home-order" defer></script>
   <script src="settings.js?v=20261107-cursors" defer></script>
   <script src="watermark.js?v=20261107-cursors" defer></script>
@@ -223,6 +233,6 @@
   <script src="feedback.js?v=20261101" defer></script>
   <script src="style-bulk.js?v=20261031-filtered-selection" defer></script>
   <script src="style-uploads.js?v=20261107-preview-reset" defer></script>
-  <script src="app.js?v=20261107-card-tags" defer></script>
+  <script src="app.js?v=20261107-welcome-back" defer></script>
 </body>
 </html>

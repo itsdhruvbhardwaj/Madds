@@ -163,7 +163,7 @@ describe("forgot password", () => {
     expect(mail.to).toBe("user@example.com");
     expect(mail.text).toContain("http://localhost:5000/api/auth/reset-password?token=");
     expect(mail.from).toBe("noreply@example.com");
-    expect(mail.subject).toBe("Reset your password");
+    expect(mail.subject).toBe("Reset your Madds password");
   });
 
   it("does not send reset email to disabled accounts", async () => {

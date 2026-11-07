@@ -134,7 +134,7 @@ describe("auth registration", () => {
     expect(googleAuthMocks.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
       from: "noreply@example.com",
       to: "john@example.com",
-      subject: "Verify your email address",
+      subject: "Verify your Madds email address",
       text: expect.stringContaining("http://localhost:5000/api/auth/verify-email?token="),
     }));
   });
@@ -430,7 +430,7 @@ describe("email verification", () => {
     expect(googleAuthMocks.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
       from: "noreply@example.com",
       to: "resend@example.com",
-      subject: "Verify your email address",
+      subject: "Verify your Madds email address",
       text: expect.stringContaining("http://localhost:5000/api/auth/verify-email?token="),
     }));
   });
