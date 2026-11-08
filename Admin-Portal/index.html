@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="portal-overrides.css?v=20261031-user-container">
   <link rel="stylesheet" href="studio-modern.css?v=20261107-welcome-back">
   <link rel="stylesheet" href="themes.css?v=20261105-themes">
+  <link rel="stylesheet" href="performance.css?v=20261108-performance">
 </head>
 <body>
   <main id="login-view" class="login-shell">
@@ -40,6 +41,7 @@
       <div class="brand"><img class="brand-title studio-brand-title" src="assets/madds-title.png" alt="Madds"><span class="studio-word">Workspace</span></div>
       <div class="side-label">WORKSPACE</div>
       <button class="side-link active" data-panel="styles-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg> Styles <small id="style-count">0</small></button>
+      <button class="side-link" data-panel="performance-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16M7 16v-5m5 5V5m5 11V8"/></svg> Style performance</button>
       <button class="side-link" data-panel="testing-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"/></svg> Prompt testing <small id="prompt-test-nav-status" class="test-nav-status" hidden></small></button>
       <button class="side-link" data-panel="collections-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg> Collections</button>
       <button class="side-link" data-panel="notifications-panel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg> Notifications</button>
@@ -88,6 +90,21 @@
             </div>
           </section>
         </div>
+      </section>
+
+      <section id="performance-panel" class="panel-view" hidden>
+        <div class="page-heading"><div><p class="eyebrow">WHAT YOUR COMMUNITY CREATES</p><h1>Style performance</h1><p class="muted">Find popular styles and choose what belongs in Trending.</p></div><button id="performance-refresh" class="button secondary" type="button">Refresh</button></div>
+        <div class="performance-toolbar">
+          <label>Period<select id="performance-days"><option value="7">Last 7 days</option><option value="15">Last 15 days</option><option value="30">Last 30 days</option></select></label>
+          <label>Rank by<select id="performance-sort"><option value="successful">Successful generations</option><option value="users">Unique users</option><option value="failed">Failed generations</option><option value="recent">Last used</option></select></label>
+          <label class="performance-search">Find a style<input id="performance-search" type="search" placeholder="Style name" maxlength="100"></label>
+        </div>
+        <div id="performance-summary" class="performance-summary" aria-live="polite"></div>
+        <p id="performance-period" class="muted performance-note">Successful generations determine popularity. Unique users counts people with at least one successful generation of that style.</p>
+        <p id="performance-error" class="form-error" role="alert"></p>
+        <div class="performance-table-wrap" id="performance-results" aria-busy="false"><table class="performance-table"><thead><tr><th scope="col">Style</th><th scope="col">Successful</th><th scope="col">Unique users</th><th scope="col">Failed</th><th scope="col">Last used</th><th scope="col">Trending</th></tr></thead><tbody id="performance-rows"></tbody></table></div>
+        <div class="performance-footer"><span id="performance-page" class="muted"></span><div><button id="performance-prev" class="button secondary" type="button" disabled>Previous</button><button id="performance-next" class="button secondary" type="button" disabled>Next</button></div></div>
+        <p class="muted performance-note">Counts use retained generation metadata, including history older than the diagnostic cleanup period. Processing and uncertain outcomes are excluded. Unverified styles remain hidden in the app until verified.</p>
       </section>
 
       <section id="collections-panel" class="panel-view" hidden>
@@ -208,7 +225,7 @@
         </div>
         <label>Reference photos required<select name="imageCount"><option value="1">1 photo</option><option value="2">2 photos</option><option value="3">3 photos</option></select></label>
         <label>Credits per generation<input name="tokensRequired" type="number" min="1" max="10000" value="10" required></label>
-        <label class="wide">Gender tag<select name="genderTag"><option value="none">None</option><option value="her">For her</option><option value="him">For him</option></select><small>Shown as guidance on app style cards and details. None displays no badge.</small></label>
+        <label class="wide">Gender tag<select name="genderTag"><option value="none">Everyone</option><option value="her">For her</option><option value="him">For him</option></select><small>Everyone styles appear in both male and female preferences. Choose For her or For him for styles intended for that audience.</small></label>
         <label class="wide verification-control"><span class="verification-check"><input name="verified" type="checkbox"><b>Verified</b></span><small>Mark verified only after reviewing the cover image, any before/after previews, and testing the prompt in Prompt testing. Verified styles are the only styles shown in the app and on the website.</small></label>
       </div>
       <footer class="dialog-footer style-editor-footer"><span id="style-last-editor" class="style-last-editor" hidden></span><span id="form-error" class="form-error"></span><button type="button" class="button secondary" data-close="style-dialog">Cancel</button><button class="button primary" type="submit">Save style</button></footer>
@@ -233,6 +250,7 @@
   <script src="feedback.js?v=20261101" defer></script>
   <script src="style-bulk.js?v=20261031-filtered-selection" defer></script>
   <script src="style-uploads.js?v=20261107-preview-reset" defer></script>
-  <script src="app.js?v=20261107-welcome-back" defer></script>
+  <script src="performance.js?v=20261108-performance" defer></script>
+  <script src="app.js?v=20261108-performance" defer></script>
 </body>
 </html>

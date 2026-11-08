@@ -1,0 +1,13 @@
+.performance-toolbar{display:flex;gap:16px;align-items:end;flex-wrap:wrap;padding:20px;border:1px solid var(--line);border-radius:18px;background:var(--surface);margin-bottom:20px}
+.performance-toolbar label{display:grid;gap:8px;min-width:180px;font-size:13px;color:var(--muted)}
+.performance-toolbar select,.performance-toolbar input{box-sizing:border-box;width:100%;min-height:44px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);padding:10px 12px;font:inherit}
+.performance-toolbar .performance-search{flex:1;min-width:220px}
+.performance-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:16px}
+.performance-metric{padding:18px 20px;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+.performance-metric span{display:block;color:var(--muted);font-size:12px}.performance-metric strong{display:block;margin-top:8px;font-size:26px;font-weight:600;color:var(--text)}
+.performance-table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:18px;background:var(--surface)}
+.performance-table{width:100%;border-collapse:collapse;min-width:820px;text-align:left}.performance-table th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--surface2)}
+.performance-table th,.performance-table td{padding:17px 20px;border-bottom:1px solid var(--line);vertical-align:middle}.performance-table tr:last-child td{border-bottom:0}.performance-table th:first-child{width:28%}
+.performance-table td small{display:block;margin-top:5px;color:var(--muted);font-size:11px}.performance-table td strong{font-weight:600}.performance-table .button{white-space:nowrap;min-height:38px;padding:8px 12px;font-size:12px}
+.performance-note{font-size:12px;line-height:1.7}.performance-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 0}.performance-footer>div{display:flex;gap:8px}
+@media(max-width:600px){.performance-summary{gap:8px}.performance-metric{padding:12px}.performance-metric strong{font-size:22px}.performance-toolbar{padding:14px}.performance-toolbar label{width:100%;min-width:0}.performance-toolbar .performance-search{min-width:0}.performance-footer{align-items:flex-start;flex-direction:column}}

@@ -32,6 +32,7 @@
   const settings = window.MaddsSettings.create({ api, notify });
   const watermark = window.MaddsWatermark.create({ api, notify });
   const homeOrder = window.MaddsHomeOrder.create({ api, notify, onSaved: sections => { state.sections = sections; renderCollections(); } });
+  const performance = window.MaddsPerformance.create({ api, notify, onChanged: loadCatalog });
   const feedback = window.MaddsFeedback.create({ api, notify });
   const bulkStyles = window.MaddsStyleBulk.create({ api, notify, getCatalog: () => state, reload: loadCatalog });
 
@@ -62,6 +63,7 @@
   }
 
   function clearSession() {
+    performance.reset();
     feedback.reset();
     storage.reset();
     settings.reset();
@@ -791,6 +793,7 @@
   byId("refresh-button").addEventListener("click", () => {
     if (state.activePanel === "logs-panel") void loadLogs(1);
     else if (state.activePanel === "notifications-panel") { void notifications.refresh(); void welcomeBack.refresh(); }
+    else if (state.activePanel === "performance-panel") void performance.refresh();
     else if (state.activePanel === "users-panel") void users.refresh();
     else if (state.activePanel === "feedback-panel") void feedback.refresh();
     else if (state.activePanel === "storage-panel") void storage.refresh();
@@ -856,6 +859,7 @@
     document.querySelectorAll(".panel-view").forEach((panel) => { panel.hidden = panel.id !== button.dataset.panel; });
     if (state.activePanel === "logs-panel") void loadLogs(1);
     if (state.activePanel === "notifications-panel") { void notifications.refresh(); void welcomeBack.refresh(); }
+    if (state.activePanel === "performance-panel") void performance.refresh();
     if (state.activePanel === "users-panel") void users.refresh();
     if (state.activePanel === "feedback-panel") void feedback.refresh();
     if (state.activePanel === "storage-panel") void storage.refresh();

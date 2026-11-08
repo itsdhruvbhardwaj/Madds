@@ -75,6 +75,8 @@ const GenerationSchema = new Schema(
 );
 
 GenerationSchema.index({ userId: 1, createdAt: -1 });
+// Cover the bounded Style performance time-window scan, including distinct successful users.
+GenerationSchema.index({ status: 1, createdAt: -1, styleId: 1, userId: 1 });
 GenerationSchema.index({ retentionCompactedAt: 1, createdAt: 1 });
 GenerationSchema.index({ status: 1, createdAt: 1 });
 GenerationSchema.index(

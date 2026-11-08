@@ -19,6 +19,8 @@ import { cloudinaryIsConfigured, createStyleImageUploadSignature } from "../serv
 import { getStyleImageIds, queueStyleImages, activateStyleImageCleanup, retryPendingCloudinaryCleanup } from "../services/styleImageCleanup.js";
 import { OpenRouterImageGenerator } from "../services/openrouter/generation.js";
 
+import { stylePerformanceRouter } from "./stylePerformance.js";
+
 const router = Router();
 const promptTestUpload = multer({
   storage: multer.memoryStorage(),
@@ -39,6 +41,8 @@ router.use(requireAuth, (req: AuthenticatedRequest, res: Response, next: NextFun
   }
   next();
 });
+
+router.use("/catalog/performance", stylePerformanceRouter);
 
 router.post("/catalog/test-generation", promptTestUpload.single("image"), async (req: Request, res: Response) => {
   const prompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
