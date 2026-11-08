@@ -156,7 +156,7 @@ describe("credit accounting transactions", () => {
     });
 
     expect(creditMocks.userCreate).toHaveBeenCalledWith(
-      [expect.objectContaining({ email: "new@example.com", credits: 100 })],
+      [expect.objectContaining({ email: "new@example.com", credits: 100, profileSetupComplete: false, stylePreferenceSetupComplete: false })],
       { session: creditMocks.session },
     );
     expect(creditMocks.transactionCreate).toHaveBeenCalledWith(
@@ -175,7 +175,7 @@ describe("credit accounting transactions", () => {
   it.each([0, 40, 100000])("uses the current configured welcome amount %i for both balance and ledger", async amount => {
     welcome.mockResolvedValue(amount);
     await createUserWithWelcomeCredits({name:"New",email:"new@example.com",googleId:"google-new",emailVerified:true,isActive:true});
-    expect(creditMocks.userCreate).toHaveBeenCalledWith([expect.objectContaining({credits:amount})],{session:creditMocks.session});
+    expect(creditMocks.userCreate).toHaveBeenCalledWith([expect.objectContaining({credits:amount,stylePreferenceSetupComplete:false})],{session:creditMocks.session});
     expect(creditMocks.transactionCreate).toHaveBeenCalledWith([expect.objectContaining({amount,balanceAfter:amount,type:"INITIAL_GRANT"})],{session:creditMocks.session});
     expect(welcome).toHaveBeenCalledTimes(1);
   });

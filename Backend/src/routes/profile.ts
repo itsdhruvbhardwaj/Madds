@@ -21,8 +21,8 @@ router.get("/style-preference", async (req: AuthenticatedRequest, res: Response)
 router.patch("/style-preference", async (req: AuthenticatedRequest, res: Response) => {
   if (!validStylePreference(req.body?.preference)) return res.status(400).json({ error: "Choose a valid style preference." });
   const user = await User.findOneAndUpdate({ _id: req.user!.id, isActive: { $ne: false }, deletionScheduledAt: null },
-    { $set: { stylePreference: req.body.preference } }, { new: true }).select("stylePreference");
-  return user ? res.json({ preference: user.stylePreference }) : res.sendStatus(404);
+    { $set: { stylePreference: req.body.preference, stylePreferenceSetupComplete: true } }, { new: true });
+  return user ? res.json({ ok: true, preference: user.stylePreference, user: sanitizeUser(user) }) : res.sendStatus(404);
 });
 
 router.patch("/appearance", async (req: AuthenticatedRequest, res: Response) => {

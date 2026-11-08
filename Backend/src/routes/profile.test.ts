@@ -117,10 +117,11 @@ describe("style preference", () => {
     expect(response.headers["cache-control"]).toBe("no-store");
   });
   it.each(["all", "male", "female"])("saves %s only to the authenticated active account", async preference => {
-    mocks.findOneAndUpdate.mockReturnValue({ select: async () => ({ stylePreference: preference }) });
+    mocks.findOneAndUpdate.mockResolvedValue({ ...user, stylePreference: preference, stylePreferenceSetupComplete: true });
     const response = await request(app).patch("/profile/style-preference").set("Authorization", "Bearer test").send({ preference, userId: "other-user" });
-    expect(response.body).toEqual({ preference });
-    expect(mocks.findOneAndUpdate).toHaveBeenCalledWith({ _id: "user-a", isActive: { $ne: false }, deletionScheduledAt: null }, { $set: { stylePreference: preference } }, { new: true });
+    expect(response.body).toMatchObject({ preference, user: { id: "user-a", stylePreferenceSetupComplete: true } });
+    expect(response.body.user).not.toHaveProperty("passwordHash");
+    expect(mocks.findOneAndUpdate).toHaveBeenCalledWith({ _id: "user-a", isActive: { $ne: false }, deletionScheduledAt: null }, { $set: { stylePreference: preference, stylePreferenceSetupComplete: true } }, { new: true });
   });
   it.each([null, "him", "", [], true])("rejects invalid preference %j", async preference => {
     expect((await request(app).patch("/profile/style-preference").set("Authorization", "Bearer test").send({ preference })).status).toBe(400);

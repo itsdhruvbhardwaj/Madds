@@ -3,6 +3,7 @@ export type AppearanceFields = {
   avatarId?: string | null;
   avatarBackground?: string | null;
   profileSetupComplete?: boolean;
+  stylePreferenceSetupComplete?: boolean;
 };
 
 export function appearanceFields(user: AppearanceFields) {
@@ -12,5 +13,6 @@ export function appearanceFields(user: AppearanceFields) {
     avatarBackground: user.avatarBackground ?? "gold",
     // Existing accounts without this field retain their current appearance.
     profileSetupComplete: user.profileSetupComplete !== false,
+    stylePreferenceSetupComplete: user.stylePreferenceSetupComplete !== false,
   };
 }
