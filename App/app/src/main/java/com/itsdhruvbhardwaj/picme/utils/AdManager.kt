@@ -37,6 +37,8 @@ object AdManager {
     private var mInterstitialAd: InterstitialAd? = null
     private var isInterstitialLoading = false
     private var isInterstitialShowing = false
+    private var isRewardedShowing = false
+    fun isFullScreenAdShowing(): Boolean = isInterstitialShowing || isRewardedShowing
     private var lastInterstitialShownAt: Long? = null
 
     fun mainScreenInterstitialAllowed(now: Long): Boolean = !isInterstitialShowing &&
@@ -158,6 +160,7 @@ object AdManager {
         onAdDismissed: () -> Unit
     ) {
         if (mRewardedAd != null) {
+            isRewardedShowing = true
             val options = ServerSideVerificationOptions.Builder()
                 .setCustomData(customData)
                 .build()
@@ -165,6 +168,7 @@ object AdManager {
 
             mRewardedAd?.fullScreenContentCallback = object : FullScreenContentCallback() {
                 override fun onAdDismissedFullScreenContent() {
+                    isRewardedShowing = false
                     Log.d(TAG, "Rewarded ad was dismissed.")
                     mRewardedAd = null
                     _rewardedAdState.value = RewardedAdLoadState.Idle
@@ -173,6 +177,7 @@ object AdManager {
                 }
 
                 override fun onAdFailedToShowFullScreenContent(adError: com.google.android.gms.ads.AdError) {
+                    isRewardedShowing = false
                     Log.e(TAG, "Rewarded ad failed to show: $adError")
                     mRewardedAd = null
                     _rewardedAdState.value = RewardedAdLoadState.Error(adError.message, adError.code)

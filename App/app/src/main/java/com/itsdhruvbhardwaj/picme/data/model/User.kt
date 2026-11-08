@@ -25,5 +25,6 @@ data class User(
     val avatarId: String? = null,
     val avatarBackground: String? = null,
     // Nullable so older API responses/cached profiles never trigger setup.
-    val profileSetupComplete: Boolean? = null
+    val profileSetupComplete: Boolean? = null,
+    val stylePreferenceSetupComplete: Boolean? = null
 )

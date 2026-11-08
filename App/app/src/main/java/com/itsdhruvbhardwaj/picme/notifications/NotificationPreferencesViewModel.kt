@@ -16,6 +16,7 @@ class NotificationPreferencesViewModel(private val repository: PushPreferencesRe
     private val mutable = MutableStateFlow(NotificationPreferencesState())
     val state = mutable.asStateFlow()
     private var loadJob: Job? = null
+    private var observeJob: Job? = null
     private val saveJobs = mutableMapOf<String, Job>()
     fun load(userId: String) {
         val current = mutable.value
@@ -23,9 +24,17 @@ class NotificationPreferencesViewModel(private val repository: PushPreferencesRe
         loadJob?.cancel()
         if (current.userId != userId) {
             saveJobs.values.forEach { it.cancel() }; saveJobs.clear()
+            observeJob?.cancel()
         }
         val visible = if (current.userId == userId) current.preferences else repository.cached(userId)
         mutable.value = NotificationPreferencesState(userId, visible, loading = true)
+        if (current.userId != userId) observeJob = viewModelScope.launch {
+            repository.observe(userId).collect { values ->
+                val latest = mutable.value
+                if (latest.userId == userId) mutable.value = latest.copy(
+                    preferences = values + latest.preferences.filterKeys { it in latest.savingCategories })
+            }
+        }
         loadJob = viewModelScope.launch {
             val result = repository.load(userId)
             if (mutable.value.userId != userId) return@launch

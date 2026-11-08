@@ -12,8 +12,8 @@ android {
         applicationId = "com.itsdhruvbhardwaj.picme"
         minSdk = 24
         targetSdk = 37
-        versionCode = 7
-        versionName = "1.1.5"
+        versionCode = 8
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -55,6 +55,7 @@ android {
 }
 
 dependencies {
+    implementation("dev.chrisbanes.haze:haze:1.5.4")
     implementation("androidx.browser:browser:1.9.0")
     implementation(platform("com.google.firebase:firebase-bom:35.1.0"))
     implementation("com.google.firebase:firebase-messaging")

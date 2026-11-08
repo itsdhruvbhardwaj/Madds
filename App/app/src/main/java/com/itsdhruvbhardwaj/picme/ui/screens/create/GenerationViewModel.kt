@@ -272,12 +272,14 @@ class GenerationViewModel(
           try {
             val bitmap = withContext(Dispatchers.IO) { ImageUtils.decodeBase64ToBitmap(state.imageBase64) }
             if (bitmap != null) {
+              try {
                 val result = ImageUtils.saveBitmapToGallery(context, bitmap)
                 if (result.isSuccess) {
                     _eventFlow.emit(GenerationEvent.ShowSnackbar("Image saved to gallery!"))
                 } else {
                     _eventFlow.emit(GenerationEvent.ShowSnackbar("Failed to save image: ${result.exceptionOrNull()?.message}"))
                 }
+              } finally { bitmap.recycle() }
             } else {
                 _eventFlow.emit(GenerationEvent.ShowSnackbar("Failed to decode image for saving."))
             }
@@ -290,18 +292,21 @@ class GenerationViewModel(
         val state = _uiState.value
         if (state !is GenerationUiState.Success || _isActionLoading.value) return
 
+        _isActionLoading.value = true
         viewModelScope.launch {
-            _isActionLoading.value = true
-            val bitmap = ImageUtils.decodeBase64ToBitmap(state.imageBase64)
+          try {
+            val bitmap = withContext(Dispatchers.IO) { ImageUtils.decodeBase64ToBitmap(state.imageBase64) }
             if (bitmap != null) {
+              try {
                 val result = ImageUtils.shareImage(context, bitmap)
                 if (result.isFailure) {
                     _eventFlow.emit(GenerationEvent.ShowSnackbar("Failed to share image: ${result.exceptionOrNull()?.message}"))
                 }
+              } finally { bitmap.recycle() }
             } else {
                 _eventFlow.emit(GenerationEvent.ShowSnackbar("Failed to decode image for sharing."))
             }
-            _isActionLoading.value = false
+          } finally { _isActionLoading.value = false }
         }
     }
     

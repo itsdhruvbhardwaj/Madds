@@ -6,6 +6,7 @@ import android.content.SharedPreferences
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -73,6 +74,10 @@ import com.itsdhruvbhardwaj.picme.ui.components.GenerationHeaderState
 import com.itsdhruvbhardwaj.picme.ui.components.LocalGenerationHeaderState
 import com.itsdhruvbhardwaj.picme.utils.AdManager
 import com.itsdhruvbhardwaj.picme.utils.MainScreenAdTimer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import android.os.SystemClock
 import kotlinx.coroutines.supervisorScope
 
@@ -97,6 +102,11 @@ fun NavGraph(
     val prefs = context.getSharedPreferences("picme_prefs", Context.MODE_PRIVATE)
 
     val authState by authViewModel.authState.collectAsState()
+    val dockHaze = remember { HazeState() }
+    val dockInteraction = remember { com.itsdhruvbhardwaj.picme.ui.components.DockInteractionState() }
+    val stylePreference by styleRepository.stylePreference.collectAsState()
+    val preferenceUserId = (authState as? AuthState.Authenticated)?.user?.id
+    LaunchedEffect(preferenceUserId) { styleRepository.syncStylePreference(preferenceUserId) }
     val passwordSetupState by authViewModel.passwordSetupState.collectAsState()
     val isDeletingAccount by authViewModel.isDeletingAccount.collectAsState()
     val isDeletionCancellationLoading by authViewModel.isDeletionCancellationLoading.collectAsState()
@@ -108,8 +118,8 @@ fun NavGraph(
         val id = pendingNotificationId ?: return@LaunchedEffect
         if (authState is AuthState.Unauthenticated) { onNotificationHandled(); return@LaunchedEffect }
         val signedIn = (authState as? AuthState.Authenticated)?.user ?: return@LaunchedEffect
-        if (currentRoute == null || currentRoute in listOf(Screen.Splash.route, Screen.Login.route, Screen.Signup.route, Screen.Onboarding.route) ||
-            signedIn.profileSetupComplete == false) return@LaunchedEffect
+        if (currentRoute == null || currentRoute in listOf(Screen.Splash.route, Screen.Login.route, Screen.Signup.route, Screen.Onboarding.route, Screen.StylePreferenceSetup.route) ||
+            signedIn.profileSetupComplete == false || signedIn.stylePreferenceSetupComplete == false) return@LaunchedEffect
         val payload = pushLocalState.tap(id, pushAuth)
         if (payload != null) {
             if (payload.deepLink == com.itsdhruvbhardwaj.picme.notifications.APP_UPDATE_LINK) {
@@ -225,6 +235,10 @@ fun NavGraph(
     fun isBottomBarRoute(route: String?) = route != null && route in bottomBarScreens
 
     val isBottomBarVisible = currentRoute in bottomBarScreens
+    val preferenceSetupOpen by rememberUpdatedState(currentRoute == Screen.StylePreferenceSetup.route ||
+        (authState as? AuthState.Authenticated)?.user?.stylePreferenceSetupComplete == false)
+    var engagementOverlayOpen by remember { mutableStateOf(false) }
+    var stylePreferenceSheetOpen by remember { mutableStateOf(false) }
     val mainAdTimer = remember(generationOwner) { MainScreenAdTimer() }
     // Route changes do not restart this timer: all signed-in screens count.
     LaunchedEffect(generationOwner, lifecycleOwner) {
@@ -235,7 +249,7 @@ fun NavGraph(
                 try {
                     while (true) {
                         val now = SystemClock.elapsedRealtime()
-                        val busy = authViewModel.isPurchaseLoading.value || authViewModel.isRewardedAdLoading.value
+                        val busy = engagementOverlayOpen || preferenceSetupOpen || authViewModel.isPurchaseLoading.value || authViewModel.isRewardedAdLoading.value
                         val activity = context as? Activity
                         if (!busy && activity != null && !activity.isFinishing && !activity.isDestroyed) {
                             if (mainAdTimer.isDue(now) && AdManager.mainScreenInterstitialAllowed(now) && AdManager.isInterstitialReady()) {
@@ -264,10 +278,11 @@ fun NavGraph(
     LaunchedEffect(generationOwner) { creditsRequest = null }
     CompositionLocalProvider(LocalGenerationHeaderState provides headerState,
         LocalCreditsLauncher provides { request -> creditsRequest = request }) {
-    // Global Layout: Banner pushes content up physically.
+    // Paint behind the system navigation area before applying safe content insets.
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             // Keep controls clear of navigation bars and landscape cutouts.
             // Screens and headers own the top inset so their backgrounds can
             // continue behind the transparent status bar.
@@ -277,11 +292,20 @@ fun NavGraph(
             )
     ) {
         // Content Area: Occupies all available space above the banner.
-        Box(modifier = Modifier.weight(1f)) {
+        Box(modifier = Modifier.weight(1f).pointerInput(Unit) {
+            // Observe before children without consuming: the first touch still scrolls or clicks normally.
+            awaitPointerEventScope {
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    dockInteraction.lastTouchAt = SystemClock.elapsedRealtime()
+                    dockInteraction.touching = event.changes.any { it.pressed }
+                }
+            }
+        }) {
             NavHost(
                 navController = navController,
                 startDestination = Screen.Splash.route,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().hazeSource(dockHaze),
                 enterTransition = {
                     if (isBottomBarRoute(targetState.destination.route)) EnterTransition.None else fadeIn()
                 },
@@ -389,11 +413,11 @@ fun NavGraph(
 
                 composable(Screen.Home.route) {
                     val profileUser = (authState as? AuthState.Authenticated)?.user
-                    LaunchedEffect(profileUser?.id, profileUser?.profileSetupComplete) {
-                        if (profileUser?.profileSetupComplete == false && profileSetupOfferedForUser != profileUser.id) {
-                            profileSetupOfferedForUser = profileUser.id
-                            navController.navigate(Screen.EditAvatar.route) { launchSingleTop = true }
-                        }
+                    LaunchedEffect(currentRoute, profileUser?.id, profileUser?.profileSetupComplete, profileUser?.stylePreferenceSetupComplete) {
+                        if (currentRoute != Screen.Home.route) return@LaunchedEffect
+                        val next = nextAccountSetup(profileUser, profileSetupOfferedForUser)
+                        if (next == Screen.EditAvatar) profileSetupOfferedForUser = profileUser?.id
+                        if (next != null) navController.navigate(next.route) { launchSingleTop = true }
                     }
                     HomeScreen(
                         authViewModel = authViewModel,
@@ -511,6 +535,23 @@ fun NavGraph(
                 }
                 composable(Screen.CreditHistory.route) {
                     AccountHistoryScreen(authViewModel, purchases = false, onBack = { navController.popBackStack() })
+                }
+
+                composable(Screen.StylePreferenceSetup.route) {
+                    val setupUser = (authState as? AuthState.Authenticated)?.user
+                    LaunchedEffect(setupUser?.id, setupUser?.stylePreferenceSetupComplete) {
+                        if (setupUser != null && setupUser.stylePreferenceSetupComplete != false &&
+                            navController.currentDestination?.route == Screen.StylePreferenceSetup.route) {
+                            navController.popBackStack()
+                        }
+                    }
+                    com.itsdhruvbhardwaj.picme.ui.screens.profile.StylePreferenceSetupScreen(
+                        authViewModel = authViewModel,
+                        onSaved = { userId, preference ->
+                            styleRepository.acceptSavedPreference(userId, preference)
+                            navController.popBackStack()
+                        }
+                    )
                 }
 
                 composable(Screen.EditAvatar.route) {
@@ -852,6 +893,7 @@ fun NavGraph(
                 ) { backStackEntry ->
                     val collection = backStackEntry.arguments?.getString("collection")
                     val gridViewModel: StylesGridViewModel = viewModel(
+                        key = "collection_${collection}_$stylePreference",
                         factory = object : androidx.lifecycle.ViewModelProvider.Factory {
                             override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
                                 @Suppress("UNCHECKED_CAST")
@@ -867,6 +909,17 @@ fun NavGraph(
                 }
             }
 
+            if (preferenceUserId != null && (currentRoute == Screen.Home.route || currentRoute == Screen.Search.route || currentRoute == Screen.StylesGrid.route)) {
+                com.itsdhruvbhardwaj.picme.ui.components.StyleActionDock(
+                    credits = (authState as? AuthState.Authenticated)?.user?.credits ?: 0,
+                    preference = stylePreference,
+                    hazeState = dockHaze,
+                    interaction = dockInteraction,
+                    onBuyCredits = { creditsRequest = CreditsRequest() },
+                    onApply = { styleRepository.saveStylePreference(it) },
+                    onPreferencesVisibleChanged = { stylePreferenceSheetOpen = it }
+                )
+            }
             androidx.compose.animation.AnimatedVisibility(
                 visible = isBottomBarVisible,
                 modifier = Modifier.align(Alignment.BottomCenter),
@@ -892,6 +945,22 @@ fun NavGraph(
             BannerAdView(modifier = Modifier.fillMaxWidth())
         }
     }
+    com.itsdhruvbhardwaj.picme.ui.components.EngagementPromptHost(
+        user = (authState as? AuthState.Authenticated)?.user,
+        authViewModel = authViewModel,
+        homeActive = currentRoute == Screen.Home.route,
+        safeToPrompt = {
+            val signedIn = (authState as? AuthState.Authenticated)?.user
+            val home = homeViewModel.uiState.value as? HomeUiState.Success
+            currentRoute == Screen.Home.route && signedIn?.emailVerified == true &&
+                signedIn.profileSetupComplete != false && signedIn.stylePreferenceSetupComplete != false &&
+                home != null && home.refreshError == null && creditsRequest == null && !stylePreferenceSheetOpen &&
+                !authViewModel.isPurchaseLoading.value && !authViewModel.isRewardedAdLoading.value && !AdManager.isFullScreenAdShowing() &&
+                generationViewModel.operations.value.none { it.status in listOf("processing", "outcome_unknown") }
+        },
+        onOverlayChanged = { engagementOverlayOpen = it },
+        onFeedback = { navController.navigate(Screen.Feedback.route) { launchSingleTop = true } }
+    )
     creditsRequest?.let { request ->
         CreditsOptionsBottomSheet(viewModel = authViewModel, request = request, onDismiss = { creditsRequest = null })
     }

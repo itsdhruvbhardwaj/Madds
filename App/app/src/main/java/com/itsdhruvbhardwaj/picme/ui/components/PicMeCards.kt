@@ -171,7 +171,8 @@ fun EmptyPhotoSlot(
 ) {
     Box(
         modifier = modifier
-            .size(100.dp)
+            .width(100.dp)
+            .aspectRatio(1f)
             .clip(RoundedCornerShape(20.dp))
             .background(Color.White.copy(alpha = 0.4f))
             .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)), RoundedCornerShape(20.dp))
@@ -196,7 +197,8 @@ fun SelectedPhotoCard(
 ) {
     Box(
         modifier = modifier
-            .size(100.dp)
+            .width(100.dp)
+            .aspectRatio(1f)
             .clip(RoundedCornerShape(20.dp))
             .clickable(onClick = onClick)
     ) {

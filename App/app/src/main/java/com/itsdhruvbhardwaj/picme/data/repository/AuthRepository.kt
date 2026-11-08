@@ -24,12 +24,24 @@ import okhttp3.RequestBody.Companion.toRequestBody
 class AuthRepository(
     private val apiService: AuthApiService,
     private val tokenStorage: AuthTokenStorage,
-    private val refreshApiService: AuthApiService = apiService
+    private val refreshApiService: AuthApiService = apiService,
+    private val engagementStore: com.itsdhruvbhardwaj.picme.data.local.EngagementStore? = null
 ) {
     private companion object {
         const val AUTH_LOG_TAG = "MaddsAuth"
         // MainActivity and background registration workers must share one refresh lock.
         val refreshMutex = Mutex()
+    }
+
+    suspend fun completeStylePreferenceSetup(preference: String): Result<User> {
+        val token = tokenStorage.getAccessToken() ?: return Result.failure(Exception("session_expired"))
+        return safeApiCall(
+            call = { apiService.completeStylePreferenceSetup("Bearer $token", com.itsdhruvbhardwaj.picme.data.remote.StylePreferenceResponse(preference)) },
+            onSuccess = { response ->
+                if (response.user.stylePreferenceSetupComplete != true) Result.failure(Exception("Couldn't save your preference. Please try again."))
+                else cacheUpdatedProfile(response.user)
+            }
+        )
     }
 
     suspend fun updateProfileAppearance(request: ProfileAppearanceRequest): Result<User> {
@@ -51,8 +63,15 @@ class AuthRepository(
 
     private fun cacheUpdatedProfile(user: User): Result<User> {
         if (tokenStorage.getUser()?.id != user.id) return Result.failure(Exception("Account changed. Please try again."))
-        tokenStorage.saveUser(user)
-        return Result.success(user)
+        val effective = preserveCompletedStyleSetup(user)
+        tokenStorage.saveUser(effective)
+        return Result.success(effective)
+    }
+
+    private fun preserveCompletedStyleSetup(user: User): User {
+        val cached = tokenStorage.getUser()
+        return if (cached?.id == user.id && cached.stylePreferenceSetupComplete == true)
+            user.copy(stylePreferenceSetupComplete = true) else user
     }
 
     suspend fun login(email: String, password: String): Result<User> {
@@ -320,8 +339,9 @@ class AuthRepository(
                     if (tokenStorage.getAccessToken().isNullOrBlank()) {
                         Result.failure(Exception("session_expired"))
                     } else {
-                        tokenStorage.saveUser(response.user)
-                        Result.success(response.user)
+                        val user = preserveCompletedStyleSetup(response.user)
+                        tokenStorage.saveUser(user)
+                        Result.success(user)
                     }
                 }
             )
@@ -439,8 +459,16 @@ class AuthRepository(
         )
     }
 
-    suspend fun sendFeedback(request: com.itsdhruvbhardwaj.picme.data.model.FeedbackRequest): Result<Boolean> = authenticatedHistoryCall(
-        call = { authorization -> apiService.sendFeedback(authorization, request) }, extract = { it.ok })
+    suspend fun claimEngagementPrompt(ownerId: String, request: EngagementClaimRequest): Result<EngagementClaimResponse> = authenticatedHistoryCall(
+        call = { check(tokenStorage.getUser()?.id == ownerId) { "Account changed." }; apiService.claimEngagementPrompt(it, request) }, extract = { it })
+    suspend fun respondEngagementPrompt(ownerId: String, request: EngagementResponseRequest): Result<Boolean> = authenticatedHistoryCall(
+        call = { check(tokenStorage.getUser()?.id == ownerId) { "Account changed." }; apiService.respondEngagementPrompt(it, request) }, extract = { it.ok })
+    suspend fun sendFeedback(request: com.itsdhruvbhardwaj.picme.data.model.FeedbackRequest): Result<Boolean> {
+        val owner = tokenStorage.getUser()?.id ?: return Result.failure(Exception("session_expired"))
+        return authenticatedHistoryCall(
+            call = { authorization -> check(tokenStorage.getUser()?.id == owner) { "Account changed." }; apiService.sendFeedback(authorization, request) }, extract = { it.ok }
+        ).also { if (it.getOrNull() == true && tokenStorage.getUser()?.id == owner) engagementStore?.feedbackSubmitted(owner) }
+    }
 
     suspend fun getPurchases(page: Int = 1): Result<PurchaseHistoryResponse> {
         return authenticatedHistoryCall(

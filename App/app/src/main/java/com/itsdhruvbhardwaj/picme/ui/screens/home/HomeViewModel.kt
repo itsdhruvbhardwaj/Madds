@@ -14,6 +14,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -80,7 +81,11 @@ class HomeViewModel(private val styleRepository: StyleRepository) : ViewModel() 
         }
     }
 
-    init { loadHomeData() }
+    init { loadHomeData(); viewModelScope.launch { styleRepository.stylePreference.drop(1).collect {
+        loadJob?.cancel()
+        _uiState.value = HomeUiState.Loading
+        loadHomeData()
+    } } }
 
     fun loadHomeData(): Job = startLoad(resetRetryBudget = true)
 

@@ -9,6 +9,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
@@ -45,10 +46,11 @@ class ExploreViewModel(
     private var searchJob: Job? = null
 
     init {
-        viewModelScope.launch {
-            styleRepository.getCollections().onSuccess { _collections.value = it }
-        }
-        loadFirstPage(currentQuery, debounce = false)
+        viewModelScope.launch { styleRepository.stylePreference.collectLatest {
+            loadFirstPage(currentQuery, debounce = false)
+            val selected = styleRepository.stylePreference.value
+            styleRepository.getCollections().onSuccess { if (styleRepository.stylePreference.value == selected) _collections.value = it }
+        } }
     }
 
     fun selectCollection(collection: String?) {
@@ -130,7 +132,7 @@ class ExploreViewModel(
                 onSuccess = { response ->
                     currentPage = response.pagination.currentPage
                     _uiState.value = currentState.copy(
-                        styles = currentState.styles + response.styles,
+                        styles = (currentState.styles + response.styles).distinctBy { it.id },
                         hasMore = response.pagination.hasNextPage,
                         isLoadingMore = false
                     )

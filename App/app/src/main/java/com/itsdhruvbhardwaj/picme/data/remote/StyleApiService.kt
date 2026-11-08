@@ -10,7 +10,14 @@ import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.*
 
+@androidx.annotation.Keep
+data class StylePreferenceResponse(val preference: String)
 interface StyleApiService {
+    @GET("api/profile/style-preference")
+    suspend fun stylePreference(@Header("Authorization") auth: String): Response<StylePreferenceResponse>
+    @PATCH("api/profile/style-preference")
+    suspend fun saveStylePreference(@Header("Authorization") auth: String, @Body body: StylePreferenceResponse): Response<StylePreferenceResponse>
+
     @GET("api/generations")
     suspend fun generationOperations(@Header("Authorization") auth: String): Response<com.itsdhruvbhardwaj.picme.data.model.GenerationOperationsResponse>
     @GET("api/generations/by-key/{key}")
@@ -28,14 +35,16 @@ interface StyleApiService {
         @Query("limit") limit: Int,
         @Query("collection") collection: String? = null,
         @Query("search") search: String? = null,
-        @Query("trendingFirst") trendingFirst: Boolean = false
+        @Query("trendingFirst") trendingFirst: Boolean = false,
+        @Query("gender") gender: String = "all",
+        @Query("shuffleSeed") shuffleSeed: String? = null
     ): Response<StyleResponse>
 
     @GET("api/home/config")
-    suspend fun getHomeConfig(@Query("includeStyles") includeStyles: Boolean = true): Response<HomeConfigResponse>
+    suspend fun getHomeConfig(@Query("includeStyles") includeStyles: Boolean = true, @Query("gender") gender: String = "all", @Query("shuffleSeed") shuffleSeed: String? = null): Response<HomeConfigResponse>
 
     @GET("api/collections")
-    suspend fun getCollections(): Response<CollectionsResponse>
+    suspend fun getCollections(@Query("gender") gender: String = "all"): Response<CollectionsResponse>
 
     @Multipart
     @Headers("X-Generation-Recovery: 1")

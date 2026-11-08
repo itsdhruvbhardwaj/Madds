@@ -3,6 +3,8 @@ package com.itsdhruvbhardwaj.picme.notifications
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Before
@@ -14,8 +16,20 @@ import org.mockito.kotlin.*
 class NotificationPreferencesViewModelTest {
     private val dispatcher = StandardTestDispatcher()
     private val repository = mock<PushPreferencesRepository>()
-    @Before fun before() { Dispatchers.setMain(dispatcher); whenever(repository.cached(any())).thenReturn(emptyMap()) }
+    @Before fun before() {
+        Dispatchers.setMain(dispatcher)
+        whenever(repository.cached(any())).thenReturn(emptyMap())
+        whenever(repository.observe(any())).thenReturn(emptyFlow())
+    }
     @After fun after() { Dispatchers.resetMain() }
+    @Test fun `background Allow sync refreshes visible switches without reopening settings`() = runTest(dispatcher) {
+        val updates = MutableStateFlow(mapOf("offers" to false))
+        whenever(repository.observe(USER_A)).thenReturn(updates)
+        whenever(repository.load(USER_A)).thenReturn(Result.success(updates.value))
+        val vm = NotificationPreferencesViewModel(repository); vm.load(USER_A); runCurrent()
+        updates.value = PushCategory.entries.associate { it.key to true }; runCurrent()
+        assertTrue(PushCategory.entries.all { vm.state.value.preferences[it.key] == true })
+    }
     @Test fun `failed enable does not appear enabled`() = runTest(dispatcher) {
         whenever(repository.load(USER_A)).thenReturn(Result.success(emptyMap()))
         whenever(repository.set(USER_A, PushCategory.UPDATES, true)).thenReturn(Result.failure(Exception("Offline")))

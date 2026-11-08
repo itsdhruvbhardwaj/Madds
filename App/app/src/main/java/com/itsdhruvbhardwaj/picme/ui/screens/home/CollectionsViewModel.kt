@@ -26,19 +26,22 @@ class CollectionsViewModel(
     private val _uiState = MutableStateFlow<CollectionsUiState>(CollectionsUiState.Loading)
     val uiState: StateFlow<CollectionsUiState> = _uiState.asStateFlow()
 
+    init { viewModelScope.launch { styleRepository.stylePreference.collect { _uiState.value = CollectionsUiState.Loading; loadCollections(force = true) } } }
+
     fun loadCollections(force: Boolean = false): Job =
         viewModelScope.launch {
             if (!force && (_uiState.value is CollectionsUiState.Success || loadMutex.isLocked)) return@launch
             loadMutex.withLock {
                 if (!force && _uiState.value is CollectionsUiState.Success) return@withLock
+                val selected = styleRepository.stylePreference.value
                 val previous = _uiState.value
                 if (previous !is CollectionsUiState.Success) _uiState.value = CollectionsUiState.Loading
                 styleRepository.getCollections().fold(
                     onSuccess = { collections ->
-                        _uiState.value = CollectionsUiState.Success(collections.filter { it.styleCount > 0 })
+                        if (selected == styleRepository.stylePreference.value) _uiState.value = CollectionsUiState.Success(collections.filter { it.styleCount > 0 })
                     },
                     onFailure = { error ->
-                        _uiState.value = if (previous is CollectionsUiState.Success) previous else CollectionsUiState.Error(
+                        if (selected == styleRepository.stylePreference.value) _uiState.value = if (previous is CollectionsUiState.Success) previous else CollectionsUiState.Error(
                             error.message ?: "Please check your connection and try again."
                         )
                     }

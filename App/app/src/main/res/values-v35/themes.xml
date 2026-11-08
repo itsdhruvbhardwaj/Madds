@@ -4,6 +4,7 @@
          Do not inherit the legacy system-bar color attributes. -->
     <style name="Theme.PicMe" parent="BaseTheme.PicMe">
         <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
         <item name="android:windowLayoutInDisplayCutoutMode">always</item>
     </style>
 </resources>

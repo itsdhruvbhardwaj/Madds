@@ -64,8 +64,9 @@ class MainActivity : ComponentActivity() {
     private var updatePromptStartedThisSession = false
     private var updateReadyDialogShown = false
     private var notificationPermissionFlowStarted = false
-    private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-        com.itsdhruvbhardwaj.picme.notifications.PushSyncWorker.enqueue(applicationContext)
+    private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) com.itsdhruvbhardwaj.picme.notifications.PushPermissionGrant.onAllowed(applicationContext)
+        else com.itsdhruvbhardwaj.picme.notifications.PushSyncWorker.enqueue(applicationContext)
     }
 
     private val updateFlowLauncher = registerForActivityResult(
@@ -87,6 +88,9 @@ class MainActivity : ComponentActivity() {
         // Android 15+ enforces edge-to-edge. Legacy transparent bars are set
         // by versioned themes, avoiding deprecated Window color setters here.
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        // Android's three-button contrast scrim otherwise darkens the app-painted inset.
+        // Keep the navigation buttons' contrast under MaddsTheme instead.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) window.isNavigationBarContrastEnforced = false
         com.itsdhruvbhardwaj.picme.notifications.PushNotifications.createChannels(this)
         com.itsdhruvbhardwaj.picme.notifications.GenerationNotifications.createChannels(this)
         pendingGeneration = savedInstanceState?.getString("pending_generation")
@@ -125,7 +129,7 @@ class MainActivity : ComponentActivity() {
         val generationApiService = retrofit.newBuilder().client(clients.generation)
             .build().create(StyleApiService::class.java)
 
-        authRepository = AuthRepository(authApiService, tokenStorage, refreshApiService)
+        authRepository = AuthRepository(authApiService, tokenStorage, refreshApiService, com.itsdhruvbhardwaj.picme.data.local.EngagementStore(applicationContext))
         val notificationPreferences = com.itsdhruvbhardwaj.picme.notifications.PushPreferencesRepository(applicationContext, retrofit, tokenStorage, authRepository)
         val styleRepository = StyleRepository(styleApiService, tokenStorage, HomeFeedCache(applicationContext))
         val generationRepository = GenerationRepository(generationApiService, applicationContext.contentResolver, tokenStorage)

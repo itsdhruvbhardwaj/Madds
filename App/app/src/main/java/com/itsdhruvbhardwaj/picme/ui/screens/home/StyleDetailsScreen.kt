@@ -20,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import com.itsdhruvbhardwaj.picme.ui.components.StyleGenderBadge
 import com.itsdhruvbhardwaj.picme.data.model.genderTagLabel
+import com.itsdhruvbhardwaj.picme.data.model.comparisonPreview
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
@@ -127,17 +128,17 @@ fun StyleDetailsScreen(
                         }
                         is StyleDetailsUiState.Success -> {
                             val style = state.style
-                            val beforeUrl = style.exampleBeforeUrl ?: style.previewImages?.getOrNull(0)
-                            val afterUrl = style.exampleAfterUrl ?: style.previewImages?.getOrNull(1)
+                            val comparison = style.comparisonPreview()
                             val comparisonReveal = remember(style.id) { Animatable(0.5f) }
                             var comparisonPaused by remember(style.id) { mutableStateOf(false) }
 
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            if (!beforeUrl.isNullOrBlank() && !afterUrl.isNullOrBlank()) {
+                            key(style.id, comparison, style.thumbnail) {
+                            if (comparison != null) {
                                 BeforeAfterComparison(
-                                    beforeUrl = beforeUrl,
-                                    afterUrl = afterUrl,
+                                    beforeUrl = comparison.first,
+                                    afterUrl = comparison.second,
                                     styleName = style.name,
                                     reveal = comparisonReveal,
                                     animationPaused = comparisonPaused,
@@ -162,6 +163,7 @@ fun StyleDetailsScreen(
                                         .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(20.dp)),
                                     contentScale = ContentScale.Crop
                                 )
+                            }
                             }
 
                             Spacer(modifier = Modifier.height(16.dp))

@@ -28,6 +28,9 @@ class AuthTokenStorage(context: Context) {
 
     private val gson = Gson()
 
+    fun getStylePreference(userId: String): String = sharedPreferences.getString("style_preference_$userId", "all") ?: "all"
+    fun saveStylePreference(userId: String, value: String) { sharedPreferences.edit().putString("style_preference_$userId", value).apply() }
+
     fun pendingGenerationKeys(userId: String): Set<String> =
         sharedPreferences.getStringSet("generation_pending_$userId", emptySet())?.toSet() ?: emptySet()
 

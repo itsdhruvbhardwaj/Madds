@@ -45,6 +45,8 @@ interface PushDeviceApi {
     suspend fun updatePreferences(@Header("Authorization") auth: String, @Body values: Map<String, Boolean>): retrofit2.Response<PushPreferencesResponse>
     @POST("api/notifications/preferences/initialize")
     suspend fun initializePreferences(@Header("Authorization") auth: String): retrofit2.Response<PushPreferencesResponse>
+    @POST("api/notifications/preferences/permission-grant")
+    suspend fun permissionGrant(@Header("Authorization") auth: String, @Body body: Map<String, String>): retrofit2.Response<PushPreferencesResponse>
     @POST("api/notifications/activity")
     suspend fun activity(@Header("Authorization") auth: String): retrofit2.Response<Unit>
     @PUT("api/notifications/device")
@@ -69,7 +71,10 @@ class PushDeviceSync(context: Context, retrofit: Retrofit, private val storage: 
         return localState.nextRequest(token)
     }
 
-    suspend fun syncOnce(userId: String, token: String): Boolean {
+    suspend fun syncOnce(userId: String, token: String?): Boolean {
+        // Category consent must synchronize even when Firebase has no token yet.
+        if (categories.load(userId).isFailure) return false
+        if (token == null) return true
         var access = storage.getAccessToken() ?: return true
         var identity = PushSession.fromToken(access) ?: return true
         if (storage.getUser()?.id != userId || identity.userId != userId) return true
@@ -84,7 +89,6 @@ class PushDeviceSync(context: Context, retrofit: Retrofit, private val storage: 
         }
         if (!response.isSuccessful) return false
         if (PushSession.fromToken(storage.getAccessToken()) != identity || storage.getUser()?.id != userId) return true
-        if (categories.load(userId).isFailure) return false
         if (PushSession.fromToken(storage.getAccessToken()) != identity) return false
         synchronized(PushLocalState.lock) {
             if (PushSession.fromToken(storage.getAccessToken()) == identity && storage.getUser()?.id == userId) localState.accept(identity, body.bindingVersion)
@@ -94,7 +98,7 @@ class PushDeviceSync(context: Context, retrofit: Retrofit, private val storage: 
     }
 
     suspend fun observe(auth: StateFlow<AuthState>) {
-        combine(auth, PushRegistration.token) { state, token -> state to token }.collectLatest { (state, token) ->
+        combine(auth, PushRegistration.token, PushLocalState.permissionGrants) { state, token, _ -> state to token }.collectLatest { (state, token) ->
             if (state is AuthState.Unauthenticated) {
                 val previous = previousAuthorization
                 previousAuthorization = null
@@ -103,7 +107,7 @@ class PushDeviceSync(context: Context, retrofit: Retrofit, private val storage: 
                     catch (cancelled: CancellationException) { throw cancelled }
                     catch (_: Exception) { /* Revoked sessions are excluded by the sender as well. */ }
                 }
-            } else if (state is AuthState.Authenticated && token != null) {
+            } else if (state is AuthState.Authenticated) {
                 while (currentCoroutineContext().isActive) {
                     if (storage.getUser()?.id != state.user.id) break
                     val access = storage.getAccessToken() ?: break

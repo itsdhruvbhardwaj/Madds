@@ -13,6 +13,17 @@ import retrofit2.http.Part
 import okhttp3.MultipartBody
 
 interface AuthApiService {
+    @POST("api/engagement/claim")
+    suspend fun claimEngagementPrompt(@Header("Authorization") authorization: String, @Body request: EngagementClaimRequest): Response<EngagementClaimResponse>
+    @POST("api/engagement/respond")
+    suspend fun respondEngagementPrompt(@Header("Authorization") authorization: String, @Body request: EngagementResponseRequest): Response<MessageResponse>
+
+    @PATCH("api/profile/style-preference")
+    suspend fun completeStylePreferenceSetup(
+        @Header("Authorization") authorization: String,
+        @Body request: com.itsdhruvbhardwaj.picme.data.remote.StylePreferenceResponse
+    ): Response<UserResponse>
+
     @POST("api/feedback")
     suspend fun sendFeedback(@Header("Authorization") authorization: String, @Body request: FeedbackRequest): Response<FeedbackResponse>
 

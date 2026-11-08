@@ -22,16 +22,59 @@ import java.net.SocketTimeoutException
 class StyleRepository(
     private val apiService: StyleApiService,
     private val tokenStorage: AuthTokenStorage,
-    private val homeFeedCache: HomeFeedCache? = null
+    private val homeFeedCache: HomeFeedCache? = null,
+    private val discoverySeed: String = DiscoverySession.seed
 ) {
+    private val _stylePreference = MutableStateFlow(tokenStorage.getUser()?.id?.let { tokenStorage.getStylePreference(it) } ?: "all")
+    val stylePreference = _stylePreference.asStateFlow()
+    private var preferenceOwner: String? = null
+    private var preferenceRevision = 0
+    suspend fun syncStylePreference(userId: String?) {
+        val revision = ++preferenceRevision
+        preferenceOwner = userId
+        _stylePreference.value = userId?.let { tokenStorage.getStylePreference(it) } ?: "all"
+        if (userId == null) return
+        val token = tokenStorage.getAccessToken() ?: return
+        try {
+            val response = apiService.stylePreference("Bearer $token")
+            if (preferenceOwner == userId && revision == preferenceRevision && response.isSuccessful) {
+                _stylePreference.value = response.body()?.preference?.takeIf { it in listOf("all", "male", "female") } ?: "all"
+                tokenStorage.saveStylePreference(userId, _stylePreference.value)
+            }
+        } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+    }
+    suspend fun saveStylePreference(value: String): Result<Unit> {
+        val owner = preferenceOwner ?: return Result.failure(Exception("Please sign in again."))
+        val token = tokenStorage.getAccessToken() ?: return Result.failure(Exception("Please sign in again."))
+        val revision = ++preferenceRevision
+        return try {
+            val response = apiService.saveStylePreference("Bearer $token", com.itsdhruvbhardwaj.picme.data.remote.StylePreferenceResponse(value))
+            if (preferenceOwner != owner || revision != preferenceRevision) Result.failure(Exception("Your account changed."))
+            else if (response.isSuccessful && response.body()?.preference == value) {
+                tokenStorage.saveStylePreference(owner, value)
+                _stylePreference.value = value
+                Result.success(Unit)
+            } else Result.failure(Exception("Couldn't save your preference. Please try again."))
+        } catch (e: CancellationException) { throw e } catch (_: Exception) {
+            Result.failure(Exception("Couldn't save your preference. Check your connection."))
+        }
+    }
+
+    fun acceptSavedPreference(userId: String, value: String) {
+        if (tokenStorage.getUser()?.id != userId || value !in listOf("all", "male", "female")) return
+        ++preferenceRevision // Invalidate an older initial sync response.
+        tokenStorage.saveStylePreference(userId, value)
+        _stylePreference.value = value
+    }
+
     private val _cachedStyles = MutableStateFlow<Map<String, Style>>(emptyMap())
     val cachedStyles: StateFlow<Map<String, Style>> = _cachedStyles.asStateFlow()
 
-    fun getCachedHome(): HomeConfigResponse? = homeFeedCache?.read()?.also { cacheHomeStyles(it) }
+    fun getCachedHome(): HomeConfigResponse? = homeFeedCache?.read(_stylePreference.value)?.also { cacheHomeStyles(it) }
 
     fun saveHomeCache(feed: HomeConfigResponse) {
         cacheHomeStyles(feed)
-        homeFeedCache?.write(feed)
+        homeFeedCache?.write(feed, _stylePreference.value)
     }
 
     private fun cacheHomeStyles(feed: HomeConfigResponse) {
@@ -53,7 +96,7 @@ class StyleRepository(
             try {
                 val token = tokenStorage.getAccessToken()
                 val authHeader = token?.let { "Bearer $it" }
-                val response = apiService.getStyles(authHeader, page, limit, collection, search, trendingFirst)
+                val response = apiService.getStyles(authHeader, page, limit, collection, search, trendingFirst, _stylePreference.value, discoverySeed)
                 
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
@@ -135,7 +178,7 @@ class StyleRepository(
     suspend fun getHomeConfig(): Result<HomeConfigResponse> = withContext(Dispatchers.IO) {
         retryIO {
             try {
-                val response = apiService.getHomeConfig()
+                val response = apiService.getHomeConfig(gender = _stylePreference.value, shuffleSeed = discoverySeed)
                 if (response.isSuccessful && response.body() != null) {
                     val feed = response.body()!!
                     cacheHomeStyles(feed)
@@ -162,15 +205,17 @@ class StyleRepository(
     suspend fun getCollections(): Result<List<StyleCollection>> = withContext(Dispatchers.IO) {
         retryIO {
             try {
-                val response = apiService.getCollections()
+                val response = apiService.getCollections(_stylePreference.value)
                 if (response.isSuccessful && response.body() != null) {
                     Result.success(response.body()!!.collections)
-                } else {
-                    // Older Render deployments may not yet expose /api/collections.
+                } else if (response.code() == 404) {
+                    // Only fall back for older servers, never scan the catalogue during an outage.
                     // Build a usable list from the public styles API while that deploy catches up.
                     val fallback = getCollectionsFromStyles()
                     if (fallback.isSuccess) fallback
                     else Result.failure(Exception("failed_to_load_collections_http_${response.code()}"))
+                } else {
+                    Result.failure(Exception(if (response.code() in 500..599 || response.code() == 429) "server_overloaded" else "failed_to_load_collections"))
                 }
             } catch (e: SocketTimeoutException) {
                 Result.failure(Exception("timeout"))

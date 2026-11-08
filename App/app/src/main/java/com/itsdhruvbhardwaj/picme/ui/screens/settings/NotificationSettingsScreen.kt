@@ -43,9 +43,10 @@ fun NotificationSettingsScreen(userId: String?, viewModel: NotificationPreferenc
     var permission by remember { mutableStateOf(PushNotifications.permissionGranted(context)) }
     var channelRevision by remember { mutableIntStateOf(0) }
     val prefs = remember { context.getSharedPreferences("madds_push_installation", Context.MODE_PRIVATE) }
-    val requestPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+    val requestPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         permission = PushNotifications.permissionGranted(context); channelRevision++
-        PushSyncWorker.enqueue(context)
+        if (granted) PushPermissionGrant.onAllowed(context) else PushSyncWorker.enqueue(context)
+        userId?.let(viewModel::load)
     }
     fun openDeviceSettings(category: PushCategory? = null) {
         val intent = if (category != null && Build.VERSION.SDK_INT >= 26) Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
@@ -73,11 +74,12 @@ fun NotificationSettingsScreen(userId: String?, viewModel: NotificationPreferenc
         }.onFailure { openDeviceSettings() } else openDeviceSettings()
     }
     LaunchedEffect(userId) { userId?.let(viewModel::load) }
-    DisposableEffect(lifecycle, context) {
+    DisposableEffect(lifecycle, context, userId) {
         val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) {
             val updated = PushNotifications.permissionGranted(context)
             if (updated != permission) PushSyncWorker.enqueue(context)
             permission = updated; channelRevision++
+            userId?.let(viewModel::load)
         } }
         lifecycle.lifecycle.addObserver(observer)
         onDispose { lifecycle.lifecycle.removeObserver(observer) }

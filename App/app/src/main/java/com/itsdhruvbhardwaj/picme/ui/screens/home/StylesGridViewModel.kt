@@ -81,7 +81,7 @@ class StylesGridViewModel(
                 onSuccess = { response ->
                     currentPage++
                     _uiState.value = currentState.copy(
-                        styles = currentState.styles + response.styles,
+                        styles = (currentState.styles + response.styles).distinctBy { it.id },
                         isNextPageLoading = false,
                         hasMore = response.pagination.hasNextPage
                     )

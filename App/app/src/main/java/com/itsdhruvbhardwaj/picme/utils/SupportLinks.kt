@@ -8,6 +8,17 @@ import androidx.browser.customtabs.CustomTabsIntent
 
 object SupportLinks {
     const val WEBSITE = "https://maddsofficial.com"
+    private const val INSTAGRAM = "https://www.instagram.com/madds.app/"
+
+    fun instagram(context: Context) {
+        val uri = Uri.parse(INSTAGRAM)
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri).setPackage("com.instagram.android")) }
+            .onFailure {
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+                    .onFailure { Toast.makeText(context, "Couldn't open Instagram. Please visit @madds.app.", Toast.LENGTH_LONG).show() }
+            }
+    }
+
     fun shareApp(context: Context) {
         val share = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
@@ -22,9 +33,12 @@ object SupportLinks {
         runCatching { CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(context, uri) }
             .onFailure { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }.onFailure { Toast.makeText(context, "Please visit $WEBSITE in your browser.", Toast.LENGTH_LONG).show() } }
     }
-    fun rate(context: Context) {
+    fun openRating(context: Context): Boolean {
         val packageName = context.packageName
-        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName")).setPackage("com.android.vending")) }
-            .onFailure { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName"))) }.onFailure { Toast.makeText(context, "Couldn't open Google Play. Please try again.", Toast.LENGTH_LONG).show() } }
+        return runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName")).setPackage("com.android.vending")) }.isSuccess ||
+            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName"))) }.isSuccess
+    }
+    fun rate(context: Context) {
+        if (!openRating(context)) Toast.makeText(context, "Couldn't open Google Play. Please try again.", Toast.LENGTH_LONG).show()
     }
 }

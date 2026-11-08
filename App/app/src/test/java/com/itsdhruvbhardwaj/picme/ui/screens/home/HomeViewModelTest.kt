@@ -21,7 +21,7 @@ class HomeViewModelTest {
         HomeSection("portraits", "Portraits", "collection", "Portraits", styles = styles)
     ))
 
-    @Before fun setup() { Dispatchers.setMain(dispatcher) }
+    @Before fun setup() { Dispatchers.setMain(dispatcher); whenever(repository.stylePreference).thenReturn(kotlinx.coroutines.flow.MutableStateFlow("all")) }
     @After fun cleanup() { Dispatchers.resetMain() }
 
     @Test fun `timeout automatically recovers while cached styles stay visible`() = runTest(dispatcher) {

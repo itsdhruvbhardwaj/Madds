@@ -28,6 +28,8 @@ class PushSyncWorker(context: Context, params: WorkerParameters) : Worker(contex
             val api = retrofit.create(AuthApiService::class.java)
             val auth = AuthRepository(api, storage, api)
             val preferences = PushPreferencesRepository(applicationContext, retrofit, storage, auth)
+            // Persist Allow before attempting Firebase; token acquisition may fail independently.
+            if (preferences.load(user.id).isFailure) return@runBlocking if (runAttemptCount < 5) Result.retry() else Result.failure()
             val token = Tasks.await(FirebaseMessaging.getInstance().token, 15, TimeUnit.SECONDS)
             if (PushDeviceSync(applicationContext, retrofit, storage, auth, preferences).syncOnce(user.id, token)) Result.success()
             else if (runAttemptCount < 5) Result.retry() else Result.failure()

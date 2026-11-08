@@ -77,6 +77,7 @@ fun ProfileScreen(
     val context = LocalContext.current
     val openCredits = LocalCreditsLauncher.current
     var showLogoutConfirm by remember { mutableStateOf(false) }
+    var showFollowUs by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // Blurred Wallpaper Background
@@ -242,6 +243,8 @@ fun ProfileScreen(
                         MenuItem(icon = Icons.Default.StarOutline, title = "Rate Madds", onClick = { SupportLinks.rate(context) })
                         HorizontalDivider(Modifier.padding(horizontal = 24.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
                         MenuItem(icon = Icons.Default.Share, title = "Share app", onClick = { SupportLinks.shareApp(context) })
+                        HorizontalDivider(Modifier.padding(horizontal = 24.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
+                        MenuItem(icon = Icons.Default.Public, title = "Follow us", onClick = { showFollowUs = true })
                     }
                 }
 
@@ -307,6 +310,10 @@ fun ProfileScreen(
                 }
             }
         }
+    }
+
+    if (showFollowUs) {
+        FollowUsBottomSheet(onDismiss = { showFollowUs = false })
     }
 
     if (showLogoutConfirm) {

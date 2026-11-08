@@ -2,6 +2,7 @@
 <resources>
     <style name="Theme.PicMe" parent="LegacyTheme.PicMe">
         <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
         <item name="android:windowLayoutInDisplayCutoutMode">always</item>
     </style>
 </resources>

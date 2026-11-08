@@ -80,6 +80,8 @@ class AuthViewModel(
     val creditProductError = billingManager?.productError ?: MutableStateFlow<String?>(null).asStateFlow()
     fun refreshCreditProduct() { billingManager?.refreshCreditProduct() }
     suspend fun getPurchases(page: Int = 1) = authRepository.getPurchases(page)
+    suspend fun claimEngagementPrompt(ownerId: String, request: com.itsdhruvbhardwaj.picme.data.model.EngagementClaimRequest) = authRepository.claimEngagementPrompt(ownerId, request)
+    suspend fun respondEngagementPrompt(ownerId: String, request: com.itsdhruvbhardwaj.picme.data.model.EngagementResponseRequest) = authRepository.respondEngagementPrompt(ownerId, request)
     suspend fun sendFeedback(request: com.itsdhruvbhardwaj.picme.data.model.FeedbackRequest) = authRepository.sendFeedback(request)
     suspend fun getCreditHistory(page: Int = 1) = authRepository.getCreditHistory(page)
 
@@ -90,6 +92,9 @@ class AuthViewModel(
     private val checkSessionMutex = Mutex()
     private val purchaseVerificationMutex = Mutex()
     private val verifiedPurchases = mutableSetOf<String>()
+
+    suspend fun completeStylePreferenceSetup(preference: String): Result<User> =
+        authRepository.completeStylePreferenceSetup(preference).also { applyProfileUpdate(it) }
 
     suspend fun saveProfileAppearance(request: ProfileAppearanceRequest): Result<User> =
         authRepository.updateProfileAppearance(request).also { applyProfileUpdate(it) }

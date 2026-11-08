@@ -19,9 +19,12 @@ class PushLocalStateTest {
         whenever(preferences.edit()).thenReturn(editor)
         whenever(preferences.getString(any(), anyOrNull())).thenAnswer { data[it.getArgument<String>(0)] as? String ?: it.getArgument<String?>(1) }
         whenever(preferences.getLong(any(), any())).thenAnswer { data[it.getArgument<String>(0)] as? Long ?: it.getArgument<Long>(1) }
+        whenever(preferences.contains(any())).thenAnswer { data.containsKey(it.getArgument<String>(0)) }
+        whenever(preferences.getBoolean(any(), any())).thenAnswer { data[it.getArgument<String>(0)] as? Boolean ?: it.getArgument<Boolean>(1) }
         whenever(preferences.getStringSet(any(), anyOrNull())).thenAnswer { (data[it.getArgument<String>(0)] as? Set<*>)?.map { key -> key.toString() }?.toSet() ?: emptySet<String>() }
         whenever(editor.putString(any(), anyOrNull())).thenAnswer { data[it.getArgument(0)] = it.getArgument<String?>(1); editor }
         whenever(editor.putLong(any(), any())).thenAnswer { data[it.getArgument(0)] = it.getArgument<Long>(1); editor }
+        whenever(editor.putBoolean(any(), any())).thenAnswer { data[it.getArgument(0)] = it.getArgument<Boolean>(1); editor }
         whenever(editor.putStringSet(any(), anyOrNull())).thenAnswer { data[it.getArgument(0)] = it.getArgument<Set<String>?>(1)?.toSet(); editor }
         whenever(editor.remove(any())).thenAnswer { data.remove(it.getArgument<String>(0)); editor }
         whenever(editor.commit()).thenReturn(true)
@@ -33,6 +36,34 @@ class PushLocalStateTest {
     private fun bind(state: PushLocalState) {
         val request = state.nextRequest("token"); state.accept(PushSession(USER_A, SESSION_A), request.bindingVersion)
         state.setPreferences(USER_A, mapOf("productUpdates" to true))
+    }
+    @Test fun `Allow before login survives restart and binds to only the first account`() {
+        val state = state()
+        assertTrue(state.recordPermissionGrant())
+        val restored = PushLocalState(context) { true }
+        val grant = restored.pendingPermissionGrant(USER_A)
+        assertNotNull(grant)
+        restored.invalidateAccount()
+        assertNull(restored.pendingPermissionGrant(USER_B))
+        assertEquals(grant, restored.pendingPermissionGrant(USER_A))
+        restored.acknowledgePermissionGrant(USER_A, grant!!)
+        assertNull(restored.pendingPermissionGrant(USER_A))
+        assertFalse(restored.recordPermissionGrant(USER_A))
+    }
+    @Test fun `permission checks and ordinary registration never create an Allow receipt`() {
+        val state = state(); bind(state)
+        assertNull(state.pendingPermissionGrant(USER_A))
+        state.invalidateAccount(); state.nextRequest("new-token")
+        assertNull(state.pendingPermissionGrant(USER_A))
+    }
+    @Test fun `only a new explicit Allow supersedes old pending opt outs`() {
+        val state = state(); state.queueOff(USER_A, "offers")
+        assertTrue(state.recordPermissionGrant(USER_A))
+        assertTrue(state.pendingOff(USER_A).isEmpty())
+        state.queueOff(USER_A, "offers")
+        assertFalse(state.recordPermissionGrant(USER_A))
+        assertEquals(mapOf("offers" to false), state.pendingOff(USER_A))
+        assertNull(state.pendingPermissionGrant(USER_B))
     }
     @Test fun `generation service messages ignore promotional opt outs but require a current binding`() {
         val state = state(); bind(state)

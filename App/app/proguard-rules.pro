@@ -20,3 +20,4 @@
 # Registration/detachment is serialized reflectively by Gson, outside data.model.
 -keep class com.itsdhruvbhardwaj.picme.notifications.PushDeviceRequest { *; }
 -keep class com.itsdhruvbhardwaj.picme.data.remote.StyleDetailsResponse { *; }
+-keep class com.itsdhruvbhardwaj.picme.utils.WatermarkConfig { *; }
