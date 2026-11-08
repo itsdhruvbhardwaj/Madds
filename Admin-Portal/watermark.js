@@ -23,7 +23,7 @@
       fields.enabled.checked = data.enabled;
       for (const key of ["widthPercent", "opacityPercent", "paddingPercent"]) fields[key].value = String(data[key]);
       saved = JSON.stringify(values());
-      $("watermark-editor").textContent = data.updatedAt ? `Last changed by ${data.updatedByName || "Team member"} · ${new Date(data.updatedAt).toLocaleString()}` : "Not enabled yet. Upload your logo, then save.";
+      $("watermark-editor").textContent = data.updatedAt ? `Last changed by ${data.updatedByName || "Team member"} · ${window.MaddsDates.dateTime(data.updatedAt)}` : "Not enabled yet. Upload your logo, then save.";
     }
     async function refresh() {
       if (busy || (revision !== null && JSON.stringify(values()) !== saved && !window.confirm("Discard unsaved watermark changes and refresh?"))) return;

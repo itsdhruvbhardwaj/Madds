@@ -93,7 +93,7 @@
       </section>
 
       <section id="performance-panel" class="panel-view" hidden>
-        <div class="page-heading"><div><p class="eyebrow">WHAT YOUR COMMUNITY CREATES</p><h1>Style performance</h1><p class="muted">Find popular styles and choose what belongs in Trending.</p></div><button id="performance-refresh" class="button secondary" type="button">Refresh</button></div>
+        <div class="page-heading"><div><p class="eyebrow">WHAT YOUR COMMUNITY CREATES</p><h1>Style performance</h1><p class="muted">Find popular verified styles and choose what belongs in Trending.</p></div><button id="performance-refresh" class="button secondary" type="button">Refresh</button></div>
         <div class="performance-toolbar">
           <label>Period<select id="performance-days"><option value="7">Last 7 days</option><option value="15">Last 15 days</option><option value="30">Last 30 days</option></select></label>
           <label>Rank by<select id="performance-sort"><option value="successful">Successful generations</option><option value="users">Unique users</option><option value="failed">Failed generations</option><option value="recent">Last used</option></select></label>
@@ -104,7 +104,7 @@
         <p id="performance-error" class="form-error" role="alert"></p>
         <div class="performance-table-wrap" id="performance-results" aria-busy="false"><table class="performance-table"><thead><tr><th scope="col">Style</th><th scope="col">Successful</th><th scope="col">Unique users</th><th scope="col">Failed</th><th scope="col">Last used</th><th scope="col">Trending</th></tr></thead><tbody id="performance-rows"></tbody></table></div>
         <div class="performance-footer"><span id="performance-page" class="muted"></span><div><button id="performance-prev" class="button secondary" type="button" disabled>Previous</button><button id="performance-next" class="button secondary" type="button" disabled>Next</button></div></div>
-        <p class="muted performance-note">Counts use retained generation metadata, including history older than the diagnostic cleanup period. Processing and uncertain outcomes are excluded. Unverified styles remain hidden in the app until verified.</p>
+        <p class="muted performance-note">Only currently verified styles are included in these rankings and totals. Counts use retained metadata; processing, uncertain outcomes, unverified and removed styles are excluded.</p>
       </section>
 
       <section id="collections-panel" class="panel-view" hidden>
@@ -240,17 +240,18 @@
     <form id="rename-form" method="dialog"><header class="dialog-header"><div><p class="eyebrow">COLLECTION</p><h2>Rename collection</h2></div><button type="button" class="icon-button" data-close="rename-dialog">×</button></header><label>Collection name<input name="name" maxlength="60" required></label><footer class="dialog-footer"><button type="button" class="button secondary" data-close="rename-dialog">Cancel</button><button class="button primary" type="submit">Save name</button></footer></form>
   </dialog>
   <script src="config.js"></script>
-  <script src="notifications.js?v=20261107-welcome-back" defer></script>
-  <script src="welcome-back.js?v=20261108-low-credits" defer></script>
+  <script src="dates.js?v=20261108-date-format" defer></script>
+  <script src="notifications.js?v=20261108-date-format" defer></script>
+  <script src="welcome-back.js?v=20261108-date-format" defer></script>
   <script src="home-order.js?v=20261105-home-order" defer></script>
-  <script src="settings.js?v=20261107-cursors" defer></script>
-  <script src="watermark.js?v=20261107-cursors" defer></script>
-  <script src="storage.js?v=20261107-cursors" defer></script>
-  <script src="users.js?v=20261105-user-sorting" defer></script>
-  <script src="feedback.js?v=20261101" defer></script>
+  <script src="settings.js?v=20261108-date-format" defer></script>
+  <script src="watermark.js?v=20261108-date-format" defer></script>
+  <script src="storage.js?v=20261108-date-format" defer></script>
+  <script src="users.js?v=20261108-date-format" defer></script>
+  <script src="feedback.js?v=20261108-date-format" defer></script>
   <script src="style-bulk.js?v=20261031-filtered-selection" defer></script>
   <script src="style-uploads.js?v=20261107-preview-reset" defer></script>
-  <script src="performance.js?v=20261108-performance" defer></script>
-  <script src="app.js?v=20261108-performance" defer></script>
+  <script src="performance.js?v=20261108-date-format" defer></script>
+  <script src="app.js?v=20261108-date-format" defer></script>
 </body>
 </html>

@@ -7,6 +7,7 @@ function fixture(){
  const initial={id:"aaaaaaaaaaaaaaaaaaaaaaaa",inactiveDays:15,amount:20,status:"DRAFT",total:2,granted:0,skipped:0,pending:2,creditsGranted:0,
   recipients:[{userId:"bbbbbbbbbbbbbbbbbbbbbbbb",name:"User <one>",credits:9,lastActiveAt:"2026-01-01",status:"PENDING"},{userId:"cccccccccccccccccccccccc",name:"User Two",credits:0,lastActiveAt:"2026-01-01",status:"PENDING"}]};
  let failConfirmation=false,stored=null;const sandbox={module:{exports:{}},crypto:{randomUUID:()=>"b8b1822c-1dfe-4be9-bdc5-9ad7d035b20f"},document:{getElementById:el},window:{confirm:message=>{confirmations.push(message);return true;}},setTimeout(){return 1;},clearTimeout(){}};
+ vm.runInNewContext(require("node:fs").readFileSync(require("node:path").join(__dirname,"../dates.js"),"utf8"), sandbox);
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,"../welcome-back.js"),"utf8"),sandbox);
  const tools=sandbox.module.exports.create({api:async(url,options)=>{
   calls.push({url,options});

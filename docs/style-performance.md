@@ -1,6 +1,6 @@
 # Workspace Style performance
 
-Workspace > Style performance ranks styles by successful generations (default), unique successful
+Workspace > Style performance ranks currently verified styles by successful generations (default), unique successful
 users, failures or last use, for rolling 7/15/30-day periods. Results are searchable by current style
 name, with 50 rows per page. Dates refer to generation request creation time, and only final
 completed/failed operations count; pending and unknown outcomes and custom prompts are excluded.
@@ -11,8 +11,8 @@ styleId, userId, status or createdAt. Reports therefore use already retained met
 existing history. No image data, new tracking events, daily duplicate counters or changes to the
 credit/generation processing path are required. Explicit deletion of generation metadata also
 removes its contribution to these live reports. Unique users is computed across the full window
-per style (not summed daily uniques). Each name comes from the current style catalogue; removed
-styles retain anonymous "Removed style" rows without catalogue actions. User IDs are not returned.
+per style (not summed daily uniques). Each name comes from the current style catalogue. Removed and unverified styles are excluded
+from rows and totals. Verifying a style makes its retained usage eligible again. User IDs are not returned.
 
 GET /api/admin/catalog/performance?days=7&page=1&sort=successful&search=
 PATCH /api/admin/catalog/performance/:id/trending with {"trending":true|false}

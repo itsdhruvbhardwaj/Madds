@@ -22,8 +22,8 @@ export function performancePipeline(since: Date, until: Date): any[] {
 }
 export function buildPerformanceReport(styles: any[], statistics: any[], options: { page: number; search: string; sort: string }) {
   const stats = new Map(statistics.map(row => [String(row._id), row]));
-  const catalogue = new Map(styles.map(style => [style.id, style]));
-  const ids = new Set([...catalogue.keys(), ...stats.keys()]);
+  const catalogue = new Map(styles.filter(style => style.verified === true).map(style => [style.id, style]));
+  const ids = new Set(catalogue.keys());
   const rows = [...ids].map(id => {
     const style = catalogue.get(id), usage = stats.get(id);
     return { id, name: style?.name || "Removed style", available: Boolean(style), verified: style?.verified === true,
@@ -45,7 +45,7 @@ export async function getStylePerformance(days: number, options: { page: number;
   const since = new Date(now.getTime() - days * 86400000);
   const [statistics, styles] = await Promise.all([
     Generation.aggregate(performancePipeline(since, now)).option({ maxTimeMS: 5000 }),
-    CatalogStyle.find({}, null, { maxTimeMS: 5000 }).select("id name collections verified").lean()
+    CatalogStyle.find({ verified: true }, null, { maxTimeMS: 5000 }).select("id name collections verified").lean()
   ]);
   return { ...buildPerformanceReport(styles, statistics, options), days, since, until: now };
 }

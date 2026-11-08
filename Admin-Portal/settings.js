@@ -4,7 +4,7 @@
     let epoch=0,revision=null,saved=null,busy=false,loading=false,ticket=0;
     const form=$("app-settings-form"), input=form.elements.welcomeCredits;
     function controls(){input.disabled=busy||loading||revision===null;$("app-settings-save").disabled=busy||loading||revision===null||input.value.trim()===""||Number(input.value)===saved;$("app-settings-refresh").disabled=busy||loading;$("app-settings-save").ariaBusy=String(busy);$("app-settings-refresh").ariaBusy=String(loading);}
-    function accept(data){revision=data.revision;saved=data.welcomeCredits;input.value=String(saved);$("app-settings-current").textContent=`Current welcome credits: ${saved}`;$("app-settings-editor").textContent=data.updatedAt?`Last changed by ${data.updatedByName||"Team member"} · ${new Date(data.updatedAt).toLocaleString()}`:"Default amount; no Workspace override saved yet.";}
+    function accept(data){revision=data.revision;saved=data.welcomeCredits;input.value=String(saved);$("app-settings-current").textContent=`Current welcome credits: ${saved}`;$("app-settings-editor").textContent=data.updatedAt?`Last changed by ${data.updatedByName||"Team member"} · ${window.MaddsDates.dateTime(data.updatedAt)}`:"Default amount; no Workspace override saved yet.";}
     async function refresh(){
       if(busy||loading)return;
       if(revision!==null&&input.value!==String(saved)&&!window.confirm("Discard your unsaved welcome-credit change and refresh?"))return;

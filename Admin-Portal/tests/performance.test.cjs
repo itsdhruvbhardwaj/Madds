@@ -24,6 +24,7 @@ function fixture(responder) {
   function startTimer(fn, delay) { const id = setTimeout(fn, delay); if (delay === 20000) timeouts.set(id, fn); return id; }
   function stopTimer(id) { timeouts.delete(id); clearTimeout(id); }
   const context = { window: {}, document: { getElementById: el }, URLSearchParams, AbortController, setTimeout: startTimer, clearTimeout: stopTimer, console };
+  vm.runInNewContext(require("node:fs").readFileSync(require("node:path").join(__dirname,"../dates.js"),"utf8"), context);
   vm.runInNewContext(fs.readFileSync("Admin-Portal/performance.js", "utf8"), context);
   const controls = context.window.MaddsPerformance.create({ api, notify: message => notices.push(message), onChanged: async () => { catalogueRefreshes++; } });
   const click = (desired = true) => el("performance-rows").onclick({ target: { closest: () => ({ dataset: { performanceStyle: "portrait", trending: String(desired) }, disabled: false, classList: { add() {}, remove() {} } }) } });

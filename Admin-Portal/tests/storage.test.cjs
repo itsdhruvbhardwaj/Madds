@@ -7,6 +7,7 @@ function fixture(confirm=true){
  const nodes=new Map(), calls=[];
  const el=id=>{if(!nodes.has(id))nodes.set(id,{innerHTML:"",textContent:"",value:"styles",events:{},querySelectorAll:()=>[],addEventListener(name,fn){this.events[name]=fn;}});return nodes.get(id);};
  const box={window:{confirm:()=>confirm},document:{getElementById:el}};
+ vm.runInNewContext(require("node:fs").readFileSync(require("node:path").join(__dirname,"../dates.js"),"utf8"), box);
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,"../storage.js"),"utf8"),box);
  const tools=box.window.MaddsStorage.create({api:async(url,options)=>{calls.push({url,options});return url.endsWith("/image-cleanup")?{total:0,jobs:[]}:url.endsWith("/cleanup")?{ok:true}:{database:{dataBytes:1},policies:[{key:"credits",label:"Credits",description:"Protected",days:15,mode:"delete",eligible:2,total:4}]};},notify(){}});
  return {tools,calls,el};

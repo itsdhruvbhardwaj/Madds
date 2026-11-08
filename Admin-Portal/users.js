@@ -1,6 +1,6 @@
 (() => {
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  const date = v => v ? new Date(v).toLocaleString() : "—";
+  const date = v => window.MaddsDates.dateTime(v);
   function generationDetails(r) {
     const lines = [`Request: ${r._id || "—"}`];
     if (r.failureReason && r.status !== "completed") lines.push(r.failureReason);

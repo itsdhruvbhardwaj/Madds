@@ -4,6 +4,7 @@ function fixture(confirm=true){
  const nodes=new Map(), calls=[];const el=id=>{if(!nodes.has(id))nodes.set(id,{textContent:"",value:"",disabled:false,events:{},addEventListener(name,fn){this.events[name]=fn;}});return nodes.get(id);};
  const input=el("credits-input");el("app-settings-form").elements={welcomeCredits:input};
  const sandbox={window:{confirm:()=>confirm},document:{getElementById:el}};
+ vm.runInNewContext(require("node:fs").readFileSync(require("node:path").join(__dirname,"../dates.js"),"utf8"), sandbox);
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,"../settings.js"),"utf8"),sandbox);
  const tools=sandbox.window.MaddsSettings.create({api:async(url,options)=>{calls.push({url,options});return options?{welcomeCredits:JSON.parse(options.body).welcomeCredits,revision:2,updatedByName:"Editor",updatedAt:"2026-11-05T00:00:00Z"}:{welcomeCredits:100,revision:1};},notify(){}});
  return {tools,el,input,calls};

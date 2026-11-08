@@ -10,6 +10,7 @@ function fixture(){
  el("watermark-logo-file").files=[{type:"image/png",size:400000,slice(){return {arrayBuffer:async()=>bytes};}}];
  let stored={...defaults},fail=null;
  const sandbox={window:{confirm:()=>true},DataView,FormData,document:{getElementById:el,createElement:()=>({getContext:()=>({drawImage(){}}),toBlob:cb=>cb(new Blob(["PNG"],{type:"image/png"}))})},createImageBitmap:async()=>({width:2172,height:724,close(){}})};
+ vm.runInNewContext(require("node:fs").readFileSync(require("node:path").join(__dirname,"../dates.js"),"utf8"), sandbox);
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,"../watermark.js"),"utf8"),sandbox);
  const tools=sandbox.window.MaddsWatermark.create({api:async(url,options)=>{calls.push({url,options});if(fail)throw Error(fail);
   if(options?.method==="POST")return {logoUrl:"https://res.cloudinary.com/test/image/upload/v123/picmee/branding/watermarks/logo-test.png",logoPublicId:"picmee/branding/watermarks/logo-test"};

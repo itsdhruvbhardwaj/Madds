@@ -9,9 +9,11 @@
   };
   const types = { APP_UPDATE: "App update · opens Google Play", PRODUCT_UPDATE: "Product updates", NEW_STYLE: "New styles & trends", OFFER: "Offers & rewards", REENGAGEMENT: "Re-engagement" };
   const escape = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
-  const formatDate = (value) => value && Number.isFinite(new Date(value).getTime()) ? new Date(value).toLocaleString() : "—";
+  const dates = typeof module !== "undefined" && module.exports ? require("./dates.js") : window.MaddsDates;
+  const formatDate = value => dates.dateTime(value);
   const statusLabel = (value) => ({ DRAFT: "Draft", SCHEDULED: "Scheduled", PROCESSING: "Sending", SENT: "Finished", FAILED: "Failed", CANCELLED: "Cancelled" })[value] || value || "Draft";
   function localSchedule(value, now = Date.now()) {
+    value = dates.scheduleISO(value);
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) throw new Error("Choose a date and time.");
     const date = new Date(value);
     const pad = (number) => String(number).padStart(2, "0");
@@ -112,11 +114,6 @@
     const error = (message = "") => { $("push-error").textContent = message; };
     const isDraft = () => !selected || selected.status === "DRAFT";
     const canLeave = () => !busy && (!dirty || window.confirm("Discard unsaved notification changes?"));
-    const scheduleMinimum = () => {
-      const date = new Date(Date.now() + 60_000);
-      const pad = (number) => String(number).padStart(2, "0");
-      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-    };
     function banner() {
       $("push-delivery-status").hidden = available && enabled;
       $("push-delivery-status").textContent = !available ? "Notification controls are unavailable. Refresh to try again." :
@@ -207,7 +204,7 @@
         <p class="field-hint">Only users who allow this category and device notifications are eligible. Inactivity audiences exclude unknown activity.</p>
         <div class="push-actions">${draft ? '<button id="push-send" class="button primary" type="button">Send notification</button><button id="push-save" class="button secondary" type="submit">Save draft (optional)</button><button id="push-clear" class="delete-button" type="button">Clear draft</button>' : ""}<button id="push-preview" class="button secondary" type="button">Check audience (optional)</button></div>
         <div id="push-audience-result" class="push-audience-result" role="status"></div>
-        ${draft ? `<details class="push-sending"><summary>Schedule for later (optional)</summary><div class="push-schedule-content"><p class="field-hint">Your changes are saved and the audience is checked automatically before you confirm. Scheduling is optional.</p><label>Schedule in ${escape(zone)}<input id="push-schedule-time" type="datetime-local" step="60" min="${scheduleMinimum()}"></label><button id="push-schedule" type="button" class="button secondary">Schedule notification</button></div></details>` : `<p class="muted">${escape(item.status === "SCHEDULED" ? `Scheduled: ${formatDate(item.scheduledAt)}` : `Status: ${statusLabel(item.status)}`)}</p>`}
+        ${draft ? `<details class="push-sending"><summary>Schedule for later (optional)</summary><div class="push-schedule-content"><p class="field-hint">Your changes are saved and the audience is checked automatically before you confirm. Scheduling is optional.</p><label>Schedule in ${escape(zone)}<input id="push-schedule-time" type="text" placeholder="DD/MM/YYYY HH:mm" aria-label="Schedule date and time, DD/MM/YYYY HH:mm" maxlength="16" autocomplete="off"><small class="field-hint">DD/MM/YYYY · 24-hour time. Choose a future date and time.</small></label><button id="push-schedule" type="button" class="button secondary">Schedule notification</button></div></details>` : `<p class="muted">${escape(item.status === "SCHEDULED" ? `Scheduled: ${formatDate(item.scheduledAt)}` : `Status: ${statusLabel(item.status)}`)}</p>`}
         ${item._id && ["DRAFT", "SCHEDULED", "PROCESSING"].includes(item.status) ? '<button id="push-cancel" type="button" class="delete-button">Cancel notification</button>' : ""}
         </form><div id="push-stats"></div><div id="push-logs"></div>`;
       catalogChanged(); conditionalFields(); livePreview();
@@ -367,7 +364,7 @@
     function showReview(campaign) {
       $("push-review-dialog")?.remove();
       const dialog = document.createElement("dialog"); dialog.id = "push-review-dialog"; dialog.className = "editor-dialog compact-dialog push-review-dialog";
-      dialog.innerHTML = `<div class="push-review-content"><h2>${review.action === "schedule" ? "Confirm schedule" : "Send notification?"}</h2><span class="push-app-name">${escape(types[campaign.notificationType])}</span><h3>${escape(review.preview?.title || campaign.title)}</h3><p class="push-review-body">${escape(review.preview?.body || campaign.body)}</p><p class="field-hint">Changes saved. Personalized text is a preview; recipients use their own name.</p><p>Audience: <b>${escape(labels[campaign.targetAudience])}</b></p><p>${escape(review.audienceMessage)}</p>${campaign.targetAudience === "SPECIFIC_USERS" ? `<p>${campaign.targetConditions.userIds.length} selected account IDs</p>` : ""}<p>Opens: ${escape(campaign.deepLink)}</p>${campaign.targetAudience === "OLDER_APP_VERSION" ? `<p>Reported version code below ${escape(campaign.targetConditions.minimumVersionCode)}. Unknown versions excluded.</p>` : ""}${review.scheduledAt ? `<p>${escape(formatDate(review.scheduledAt))} · ${escape(zone)}<small class="field-hint">UTC: ${escape(review.scheduledAt)}</small></p>` : "<p>Delivery starts when the worker processes this notification.</p>"}<p class="muted">Only eligible users who opted in will be included. The audience is checked again at delivery.</p><p id="push-review-error" class="form-error" role="alert"></p><div class="push-actions"><button id="push-review-back" type="button" class="button secondary">Back</button><button id="push-review-confirm" type="button" class="button primary">${review.action === "schedule" ? "Confirm schedule" : "Send notification"}</button></div></div>`;
+      dialog.innerHTML = `<div class="push-review-content"><h2>${review.action === "schedule" ? "Confirm schedule" : "Send notification?"}</h2><span class="push-app-name">${escape(types[campaign.notificationType])}</span><h3>${escape(review.preview?.title || campaign.title)}</h3><p class="push-review-body">${escape(review.preview?.body || campaign.body)}</p><p class="field-hint">Changes saved. Personalized text is a preview; recipients use their own name.</p><p>Audience: <b>${escape(labels[campaign.targetAudience])}</b></p><p>${escape(review.audienceMessage)}</p>${campaign.targetAudience === "SPECIFIC_USERS" ? `<p>${campaign.targetConditions.userIds.length} selected account IDs</p>` : ""}<p>Opens: ${escape(campaign.deepLink)}</p>${campaign.targetAudience === "OLDER_APP_VERSION" ? `<p>Reported version code below ${escape(campaign.targetConditions.minimumVersionCode)}. Unknown versions excluded.</p>` : ""}${review.scheduledAt ? `<p>${escape(formatDate(review.scheduledAt))} · ${escape(zone)}<small class="field-hint">UTC: ${escape(dates.dateTime(review.scheduledAt, { utc: true }))}</small></p>` : "<p>Delivery starts when the worker processes this notification.</p>"}<p class="muted">Only eligible users who opted in will be included. The audience is checked again at delivery.</p><p id="push-review-error" class="form-error" role="alert"></p><div class="push-actions"><button id="push-review-back" type="button" class="button secondary">Back</button><button id="push-review-confirm" type="button" class="button primary">${review.action === "schedule" ? "Confirm schedule" : "Send notification"}</button></div></div>`;
       document.body.append(dialog); dialog.showModal();
       $("push-review-back").addEventListener("click", () => { dialog.close(); review = null; });
       dialog.addEventListener("cancel", (event) => { if (busy) event.preventDefault(); else review = null; });

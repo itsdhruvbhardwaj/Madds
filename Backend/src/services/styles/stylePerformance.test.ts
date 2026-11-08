@@ -8,7 +8,7 @@ vi.mock("../home/homeCatalog.js", () => ({ ensureHomeSection: vi.fn().mockResolv
 import { ensureHomeSection } from "../home/homeCatalog.js";
 import { buildPerformanceReport, getStylePerformance, performancePipeline, setStyleTrending } from "./stylePerformance.js";
 const styles = [{ id: "a", name: "Renamed portrait", collections: ["Portraits"], verified: true },
-  { id: "b", name: "Wedding", collections: ["Trending", "Couple"], verified: false }, { id: "zero", name: "Unused", collections: ["Other"] }];
+  { id: "b", name: "Wedding", collections: ["Trending", "Couple"], verified: true }, { id: "zero", name: "Unused", collections: ["Other"], verified: true }];
 const stats = [{ _id: "a", successful: 6, failed: 2, uniqueUsers: 2, lastUsedAt: new Date("2026-11-08") },
   { _id: "b", successful: 3, failed: 4, uniqueUsers: 3, lastUsedAt: new Date("2026-11-07") }];
 const options = { page: 1, search: "", sort: "successful" };
@@ -18,7 +18,7 @@ describe("Style performance reports", () => {
     const report = buildPerformanceReport(styles, stats, options);
     expect(report.items.map(row => row.name)).toEqual(["Renamed portrait", "Wedding", "Unused"]);
     expect(report.summary).toEqual({ successful: 9, failed: 6, stylesUsed: 2 });
-    expect(report.items[1]).toMatchObject({ trending: true, verified: false, uniqueUsers: 3 });
+    expect(report.items[1]).toMatchObject({ trending: true, verified: true, uniqueUsers: 3 });
     expect(report.items[2]).toMatchObject({ successful: 0, failed: 0, uniqueUsers: 0, lastUsedAt: null });
   });
   it("can rank by unique successful users, failures, and last used", () => {
@@ -26,13 +26,16 @@ describe("Style performance reports", () => {
     expect(buildPerformanceReport(styles, stats, { ...options, sort: "failed" }).items[0].id).toBe("b");
     expect(buildPerformanceReport(styles, stats, { ...options, sort: "recent" }).items[0].id).toBe("a");
   });
-  it("identifies removed styles without exposing user records or enabling catalogue actions", () => {
-    const row = buildPerformanceReport([], stats.slice(0,1), options).items[0];
-    expect(row).toMatchObject({ name: "Removed style", available: false });
-    expect(row).not.toHaveProperty("userId");
+  it("excludes unverified and removed styles from rows, totals and pagination", () => {
+    const report = buildPerformanceReport([styles[0], { ...styles[1], verified: false }, styles[2]], [...stats, { _id: "removed", successful: 100, failed: 90, uniqueUsers: 50 }], options);
+    expect(report.items.map(row => row.id)).toEqual(["a", "zero"]);
+    expect(report.total).toBe(2);
+    expect(report.summary).toEqual({ successful: 6, failed: 2, stylesUsed: 1 });
+    expect(report.items[0]).not.toHaveProperty("userId");
+    expect(buildPerformanceReport([], stats, options).items).toEqual([]);
   });
   it("paginates fifty rows, supports literal name search and clamps stale pages", () => {
-    const many = Array.from({ length: 101 }, (_, i) => ({ id: String(i), name: `Style ${String(i).padStart(3,"0")}` }));
+    const many = Array.from({ length: 101 }, (_, i) => ({ id: String(i), name: `Style ${String(i).padStart(3,"0")}`, verified: true }));
     expect(buildPerformanceReport(many, [], options).items).toHaveLength(50);
     const last = buildPerformanceReport(many, [], { ...options, page: 99 });
     expect(last.page).toBe(3); expect(last.items).toHaveLength(1);
@@ -54,6 +57,7 @@ describe("Style performance reports", () => {
     const result = await getStylePerformance(30, options, now);
     expect(result.since.toISOString()).toBe("2026-10-09T12:30:00.000Z");
     expect(aggregate).toHaveBeenCalledWith({ maxTimeMS: 5000 });
+    expect(CatalogStyle.find).toHaveBeenCalledWith({ verified: true }, null, { maxTimeMS: 5000 });
     expect(result.summary.successful).toBe(9);
   });
 });

@@ -192,7 +192,7 @@
     if (!state.logs.length) {
       body.innerHTML = '<tr><td colspan="4" class="logs-empty">No changes match these filters.</td></tr>';
     } else {
-      body.innerHTML = state.logs.map((log) => `<tr><td>${escapeHtml(new Date(log.createdAt).toLocaleString())}</td><td><span class="log-member-name">${escapeHtml(log.actorName || log.actorEmail)}</span><span class="log-member-email">${escapeHtml(log.actorEmail)}</span></td><td><span class="log-action">${escapeHtml(actions[log.action] || log.action)}</span></td><td>${escapeHtml(log.itemName)}<span class="log-item-id">${escapeHtml(log.itemId)}</span></td></tr>`).join("");
+      body.innerHTML = state.logs.map((log) => `<tr><td>${escapeHtml(window.MaddsDates.dateTime(log.createdAt))}</td><td><span class="log-member-name">${escapeHtml(log.actorName || log.actorEmail)}</span><span class="log-member-email">${escapeHtml(log.actorEmail)}</span></td><td><span class="log-action">${escapeHtml(actions[log.action] || log.action)}</span></td><td>${escapeHtml(log.itemName)}<span class="log-item-id">${escapeHtml(log.itemId)}</span></td></tr>`).join("");
     }
     const pagination = state.logPagination || { page: 1, total: 0, totalPages: 0 };
     byId("logs-page-label").textContent = pagination.total ? `Page ${pagination.page} of ${pagination.totalPages} · ${pagination.total} changes` : "No changes recorded yet";

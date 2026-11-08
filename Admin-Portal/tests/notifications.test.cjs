@@ -35,6 +35,7 @@ function historyFixture(confirm = true) {
     return nodes.get(id);
   };
   const sandbox = { window: { confirm: () => confirm, addEventListener() {} }, document: { getElementById: element } };
+  vm.runInNewContext(require("node:fs").readFileSync(require("node:path").join(__dirname,"../dates.js"),"utf8"), sandbox);
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../notifications.js"), "utf8"), sandbox);
   let entries = [{_id: "finished", status: "SENT", title: "Finished"}, {_id: "sending", status: "PROCESSING", title: "Sending"}];
   const controls = sandbox.window.MaddsNotifications.create({api: async (url, options) => {

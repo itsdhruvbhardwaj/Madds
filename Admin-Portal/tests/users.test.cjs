@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 const context = { window: {} };
+vm.runInNewContext(require("node:fs").readFileSync(require("node:path").join(__dirname,"../dates.js"),"utf8"), context);
 vm.runInNewContext(fs.readFileSync(require("node:path").join(__dirname, "../users.js"), "utf8"), context);
 const { generationDetails, generationRecovery } = context.window.MaddsUsers;
 test("endpoint and upstream explanations are separate from status codes", () => {
@@ -47,6 +48,7 @@ function userListFixture() {
   };
   element("users-search").elements = { q: { value: "" }, status: { value: "" }, sort: { value: "joined_desc" } };
   const sandbox = { window: {}, document: { getElementById: element } };
+  vm.runInNewContext(require("node:fs").readFileSync(require("node:path").join(__dirname,"../dates.js"),"utf8"), sandbox);
   vm.runInNewContext(fs.readFileSync(require("node:path").join(__dirname, "../users.js"), "utf8"), sandbox);
   const requests = [];
   const users = sandbox.window.MaddsUsers.create({ api: async url => {
