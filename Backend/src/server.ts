@@ -36,6 +36,8 @@ import { favoritesRouter } from "./routes/favorites.js";
 import { googlePlayBillingRouter } from "./routes/googlePlayBilling.js";
 import { rewardedAdsRouter } from "./routes/rewardedAds.js";
 import { getHomeSectionCatalog, initializeHomeSectionCatalog } from "./services/home/homeCatalog.js";
+import { orderDiscoveryStyles, validDiscoverySeed } from "./services/styles/discoveryOrder.js";
+import { matchesStylePreference, validStylePreference } from "./services/styles/stylePreference.js";
 import { buildHomeFeed } from "./services/home/homeFeed.js";
 import { profileRouter } from "./routes/profile.js";
 import { notificationDevicesRouter } from "./routes/notificationDevices.js";
@@ -168,19 +170,23 @@ app.get("/health", (_req: Request, res: Response) => {
     revision: /^[a-f0-9]{40}$/i.test(process.env.RENDER_GIT_COMMIT || "") ? process.env.RENDER_GIT_COMMIT!.slice(0, 12) : null });
 });
 
+app.use(["/api/home/config", "/api/styles", "/api/collections"], (req, res, next) => {
+  if (req.query.shuffleSeed !== undefined && !validDiscoverySeed(req.query.shuffleSeed)) return res.status(400).json({ error: "Invalid discovery session." });
+  if (req.query.gender !== undefined && !validStylePreference(req.query.gender)) return res.status(400).json({ error: "Invalid style preference." });
+  next();
+});
 app.get("/api/home/config", async (req: Request, res: Response) => {
-  const sections = await getHomeSectionCatalog();
   if (req.query.includeStyles !== "true") {
-    res.json({ sections });
+    res.json({ sections: await getHomeSectionCatalog() });
     return;
   }
   // Public catalogue only: one catalogue read replaces a request per section.
-  const styles = await listCatalogStyles();
-  res.json(buildHomeFeed(sections, styles));
+  const [sections, styles] = await Promise.all([getHomeSectionCatalog(), listCatalogStyles()]);
+  res.json(buildHomeFeed(sections, orderDiscoveryStyles(styles.filter(style => matchesStylePreference(style, String(req.query.gender || "all"))), req.query.shuffleSeed as string | undefined)));
 });
 
-app.get("/api/collections", async (_req: Request, res: Response) => {
-  res.json({ collections: await listCatalogCollectionSummaries() });
+app.get("/api/collections", async (req: Request, res: Response) => {
+  res.json({ collections: await listCatalogCollectionSummaries(String(req.query.gender || "all")) });
 });
 
 app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
@@ -194,8 +200,8 @@ app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Resp
     .filter((value): value is string => typeof value === "string");
 
   // Apply collection filters before pagination
-  const catalogueStyles = await listCatalogStyles();
-  let filteredStyles = catalogueStyles;
+  const [catalogueStyles, catalogueCollections] = await Promise.all([listCatalogStyles(), listCatalogCollections()]);
+  let filteredStyles = catalogueStyles.filter(style => matchesStylePreference(style, String(req.query.gender || "all")));
   if (collections.length > 0) {
     filteredStyles = filteredStyles.filter((style) =>
       style.collections.some((collection) =>
@@ -211,13 +217,7 @@ app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Resp
       style.description.toLowerCase().includes(searchQuery)
     );
   }
-  if (trendingFirst) {
-    filteredStyles = [...filteredStyles].sort((left, right) => {
-      const leftIsTrending = left.collections.some((collection) => collection.toLowerCase() === "trending");
-      const rightIsTrending = right.collections.some((collection) => collection.toLowerCase() === "trending");
-      return Number(rightIsTrending) - Number(leftIsTrending);
-    });
-  }
+  filteredStyles = orderDiscoveryStyles(filteredStyles, req.query.shuffleSeed as string | undefined, trendingFirst);
 
   // Calculate pagination metadata
   const totalCount = filteredStyles.length;
@@ -230,7 +230,7 @@ app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Resp
   const userId = req.user?.id;
   const favoriteIds = userId
     ? new Set(
-        (await FavoriteStyle.find({ userId }).select("styleId -_id").lean())
+        (await FavoriteStyle.find({ userId }, null, { maxTimeMS: 5_000 }).select("styleId -_id").lean())
           .map(({ styleId }) => styleId),
       )
     : new Set<string>();
@@ -241,7 +241,7 @@ app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Resp
       isFavorite: favoriteIds.has(style.id),
     })),
     collections: [...new Set([
-      ...(await listCatalogCollections()).map((collection) => collection.name),
+      ...catalogueCollections.map((collection) => collection.name),
       ...catalogueStyles.flatMap((style) => style.collections),
     ])],
     pagination: {

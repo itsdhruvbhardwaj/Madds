@@ -1,3 +1,4 @@
+import { matchesStylePreference } from "./stylePreference.js";
 import mongoose from "mongoose";
 
 import { CatalogStyle } from "../../models/CatalogStyle.js";
@@ -46,7 +47,7 @@ export async function listCatalogStyles(includeUnverified = false): Promise<Styl
     exampleBeforeUrl: style.exampleBeforeUrl ? optimizeCloudinaryThumbnailUrl(style.exampleBeforeUrl) : null,
     exampleAfterUrl: style.exampleAfterUrl ? optimizeCloudinaryThumbnailUrl(style.exampleAfterUrl) : null,
   }));
-  const records = await CatalogStyle.find(includeUnverified ? {} : { verified: true }).sort({ name: 1 }).lean();
+  const records = await CatalogStyle.find(includeUnverified ? {} : { verified: true }, null, { maxTimeMS: 5_000 }).sort({ name: 1 }).lean();
   return records.map(toStyle);
 }
 
@@ -70,11 +71,11 @@ export async function listCatalogCollections(): Promise<Array<{ id: string; name
       .sort((a, b) => a.localeCompare(b))
       .map((name) => ({ id: slugify(name), name }));
   }
-  const records = await StyleCollection.find().sort({ name: 1 }).lean();
+  const records = await StyleCollection.find({}, null, { maxTimeMS: 5_000 }).sort({ name: 1 }).lean();
   return records.map(({ id, name }) => ({ id, name }));
 }
 
-export async function listCatalogCollectionSummaries(): Promise<Array<{
+export async function listCatalogCollectionSummaries(preference = "all"): Promise<Array<{
   id: string;
   name: string;
   thumbnail: string | null;
@@ -83,13 +84,13 @@ export async function listCatalogCollectionSummaries(): Promise<Array<{
   const [collections, styles] = await Promise.all([
     listCatalogCollections(),
     catalogDatabaseReady()
-      ? CatalogStyle.find({ verified: true }).select("name collections thumbnail").sort({ name: 1 }).lean()
+      ? CatalogStyle.find({ verified: true }, null, { maxTimeMS: 5_000 }).select("name collections thumbnail genderTag").sort({ name: 1 }).lean()
       : Promise.resolve(bundledStyles.filter((style) => style.verified === true)),
   ]);
 
   const summariesByName = new Map<string, { thumbnail: string | null; styleCount: number }>();
   const nameByKey = new Map<string, string>();
-  for (const style of styles) {
+  for (const style of styles.filter(style => matchesStylePreference(style, preference))) {
     for (const rawName of style.collections ?? []) {
       const name = String(rawName).trim();
       const key = name.toLowerCase();

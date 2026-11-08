@@ -102,3 +102,28 @@ describe("profile appearance API", () => {
     expect(mocks.findOneAndUpdate).not.toHaveBeenCalled();
   });
 });
+
+
+describe("style preference", () => {
+  beforeEach(() => vi.resetAllMocks());
+  it("requires a signed-in user", async () => {
+    expect((await request(app).get("/profile/style-preference")).status).toBe(401);
+    expect((await request(app).patch("/profile/style-preference").send({ preference: "male" })).status).toBe(401);
+  });
+  it("defaults existing accounts to everyone", async () => {
+    mocks.findById.mockReturnValue({ select: () => ({ lean: async () => ({}) }) });
+    const response = await request(app).get("/profile/style-preference").set("Authorization", "Bearer test");
+    expect(response.body).toEqual({ preference: "all" });
+    expect(response.headers["cache-control"]).toBe("no-store");
+  });
+  it.each(["all", "male", "female"])("saves %s only to the authenticated active account", async preference => {
+    mocks.findOneAndUpdate.mockReturnValue({ select: async () => ({ stylePreference: preference }) });
+    const response = await request(app).patch("/profile/style-preference").set("Authorization", "Bearer test").send({ preference, userId: "other-user" });
+    expect(response.body).toEqual({ preference });
+    expect(mocks.findOneAndUpdate).toHaveBeenCalledWith({ _id: "user-a", isActive: { $ne: false }, deletionScheduledAt: null }, { $set: { stylePreference: preference } }, { new: true });
+  });
+  it.each([null, "him", "", [], true])("rejects invalid preference %j", async preference => {
+    expect((await request(app).patch("/profile/style-preference").set("Authorization", "Bearer test").send({ preference })).status).toBe(400);
+    expect(mocks.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+});

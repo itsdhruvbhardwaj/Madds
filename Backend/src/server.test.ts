@@ -1420,3 +1420,48 @@ describe("image generation flow", () => {
     expect(generateSpy).not.toHaveBeenCalled();
   });
 });
+
+
+describe("session discovery requests", () => {
+  it("keeps Explore pages stable and Trending first without extra catalogue reads", async () => {
+    const sample = Array.from({ length: 31 }, (_, i) => ({ ...styles[0], id: `shuffle-${i}`, name: `Style ${i}`, genderTag: i % 2 ? "him" as const : "none" as const, collections: i < 3 ? ["Trending", "Shuffle"] : ["Shuffle"] }));
+    const catalogue = vi.spyOn(styleCatalog, "listCatalogStyles").mockResolvedValue(sample);
+    try {
+      const first = await request(app).get("/api/styles").query({ shuffleSeed: "session-one", trendingFirst: true, gender: "male", page: 1, limit: 10 });
+      const second = await request(app).get("/api/styles").query({ shuffleSeed: "session-one", trendingFirst: true, gender: "male", page: 2, limit: 10 });
+      expect(first.status).toBe(200);
+      expect(second.status).toBe(200);
+      expect(first.body.styles.slice(0,3).map((s: any) => s.id)).toEqual(sample.slice(0,3).map(s => s.id));
+      expect(new Set([...first.body.styles, ...second.body.styles].map(s => s.id)).size).toBe(20);
+      expect(catalogue).toHaveBeenCalledTimes(2);
+    } finally { catalogue.mockRestore(); }
+  });
+  it("rejects invalid seeds before reading the catalogue", async () => {
+    const catalogue = vi.spyOn(styleCatalog, "listCatalogStyles");
+    try {
+      expect((await request(app).get("/api/styles?shuffleSeed=bad")).status).toBe(400);
+      expect((await request(app).get("/api/home/config?includeStyles=true&shuffleSeed=bad")).status).toBe(400);
+      expect(catalogue).not.toHaveBeenCalled();
+    } finally { catalogue.mockRestore(); }
+  });
+});
+
+
+describe("shuffled Home discovery", () => {
+  it("selects a fresh ten-card subset while retaining the session order on repeat requests", async () => {
+    const sample = Array.from({ length: 30 }, (_, i) => ({ ...styles[0], id: `home-${i}`, collections: ["Trending"] }));
+    const catalogue = vi.spyOn(styleCatalog, "listCatalogStyles").mockResolvedValue(sample);
+    try {
+      const feed = async (shuffleSeed: string) => {
+        const response = await request(app).get("/api/home/config").query({ includeStyles: true, shuffleSeed });
+        expect(response.status).toBe(200);
+        return response.body.sections.find((s: any) => s.slug === "Trending").styles.map((s: any) => s.id);
+      };
+      const first = await feed("session-one");
+      expect(first).toHaveLength(10);
+      expect(await feed("session-one")).toEqual(first);
+      expect(await feed("session-two")).not.toEqual(first);
+      expect(catalogue).toHaveBeenCalledTimes(3);
+    } finally { catalogue.mockRestore(); }
+  });
+});

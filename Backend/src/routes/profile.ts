@@ -7,9 +7,23 @@ import { sanitizeUser } from "../lib/auth.js";
 import { avatarIds, avatarBackgrounds } from "../services/avatarCatalog.js";
 import { uploadProfileImage, destroyProfileImage } from "../services/profileImages.js";
 
+import { validStylePreference } from "../services/styles/stylePreference.js";
+
 const router = Router();
 router.use(requireAuth);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024, files: 1 } });
+
+router.get("/style-preference", async (req: AuthenticatedRequest, res: Response) => {
+  res.set("Cache-Control", "no-store");
+  const user = await User.findById(req.user!.id).select("stylePreference").lean();
+  return user ? res.json({ preference: user.stylePreference || "all" }) : res.sendStatus(404);
+});
+router.patch("/style-preference", async (req: AuthenticatedRequest, res: Response) => {
+  if (!validStylePreference(req.body?.preference)) return res.status(400).json({ error: "Choose a valid style preference." });
+  const user = await User.findOneAndUpdate({ _id: req.user!.id, isActive: { $ne: false }, deletionScheduledAt: null },
+    { $set: { stylePreference: req.body.preference } }, { new: true }).select("stylePreference");
+  return user ? res.json({ preference: user.stylePreference }) : res.sendStatus(404);
+});
 
 router.patch("/appearance", async (req: AuthenticatedRequest, res: Response) => {
   if (req.body?.skip === true) {

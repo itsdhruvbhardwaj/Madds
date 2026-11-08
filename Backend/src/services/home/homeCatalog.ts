@@ -16,7 +16,7 @@ export async function initializeHomeSectionCatalog(): Promise<void> {
 
 export async function getHomeSectionCatalog(): Promise<HomeSection[]> {
   if (mongoose.connection.readyState !== 1) return homeSections;
-  const rows = await HomeSectionConfig.find().sort({ order: 1, title: 1 }).lean();
+  const rows = await HomeSectionConfig.find({}, null, { maxTimeMS: 5_000 }).sort({ order: 1, title: 1 }).lean();
   return rows.map(({ id, title, slug, visible, order }) => ({
     id: String(id), title: String(title), type: "collection", slug: String(slug),
     visible: Boolean(visible), order: Number(order),

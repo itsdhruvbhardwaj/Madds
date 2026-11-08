@@ -2,6 +2,7 @@ import mongoose, { Schema } from "mongoose";
 
 const UserSchema = new Schema(
   {
+    stylePreference: { type: String, enum: ["all", "male", "female"], default: "all" },
     name: {
       type: String,
       required: true,
