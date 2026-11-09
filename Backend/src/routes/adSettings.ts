@@ -6,10 +6,11 @@ const publicRouter = Router(), adminRouter = Router();
 async function read() {
   return await AdSettings.findById("ads").maxTimeMS(5000).lean() || {...DEFAULT_AD_SETTINGS, revision: 0};
 }
-function publicValues(value: any) {
-  return {enabled:value.enabled, bannersEnabled:value.bannersEnabled, rewardedEnabled:value.rewardedEnabled,
+function publicValues(value: any, effective = false) {
+  const allow = !effective || value.enabled === true;
+  return {enabled:value.enabled, bannersEnabled:allow && value.bannersEnabled, rewardedEnabled:allow && value.rewardedEnabled,
     minGapSeconds:value.minGapSeconds, timedIntervalSeconds:value.timedIntervalSeconds,
-    placements:Object.fromEntries(AD_PLACEMENTS.map(key => [key, value.placements[key]])), revision:value.revision};
+    placements:Object.fromEntries(AD_PLACEMENTS.map(key => [key, allow && value.placements[key]])), revision:value.revision};
 }
 export function validAdSettings(body: any): boolean {
   return !!body && [body.enabled,body.bannersEnabled,body.rewardedEnabled].every(v => typeof v === "boolean") &&
@@ -20,7 +21,7 @@ export function validAdSettings(body: any): boolean {
 }
 publicRouter.get("/", async (_req,res) => {
   res.set("Cache-Control","no-store");
-  return res.json({ok:true,...publicValues(await read())});
+  return res.json({ok:true,...publicValues(await read(), true)});
 });
 // This router is mounted behind adminSettingsRouter's verified administrator check.
 adminRouter.get("/", async (_req,res) => res.json({ok:true,...await read()}));

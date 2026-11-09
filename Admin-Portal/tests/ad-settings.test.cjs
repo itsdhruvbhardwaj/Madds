@@ -31,3 +31,21 @@ test("reset discards editor access on sign out",async()=>{
  const f=fixture();await f.tool.refresh();f.tool.reset();assert.equal(f.form.elements.enabled.disabled,true);
  await f.form.events.submit({preventDefault(){}});assert.equal(f.calls.length,1);
 });
+test("master off disables all child controls but preserves choices and save access",async()=>{
+ const f=fixture();await f.tool.refresh();
+ f.form.elements.enabled.checked=false;f.form.events.input();
+ assert.equal(f.form.elements.enabled.disabled,false);
+ for(const [key,input] of Object.entries(f.form.elements))if(key!=="enabled")assert.equal(input.disabled,true,key);
+ assert.equal(f.el("ad-dependent-controls").disabled,true);
+ assert.match(f.el("ad-master-status").textContent,/will pause after you save/);
+ assert.equal(f.form.elements.bannersEnabled.checked,true);
+ assert.equal(f.el("ad-settings-save").disabled,false);
+ await f.form.events.submit({preventDefault(){}});
+ const payload=JSON.parse(f.calls.at(-1).options.body);
+ assert.equal(payload.enabled,false);assert.equal(payload.bannersEnabled,true);assert.equal(payload.placements.home_see_all,true);
+ assert.match(f.el("ad-master-status").textContent,/All ads paused/);
+ f.form.elements.enabled.checked=true;f.form.events.input();
+ assert.equal(f.el("ad-dependent-controls").disabled,false);
+ assert.equal(f.form.elements.bannersEnabled.disabled,false);assert.equal(f.form.elements.bannersEnabled.checked,true);
+ assert.match(f.el("ad-master-status").textContent,/will resume after you save/);
+});

@@ -3,7 +3,7 @@ import mongoose, { Schema } from "mongoose";
 export const AD_PLACEMENTS = ["generation_continue", "custom_generate", "avatar_saved", "buy_more", "my_generations", "home_see_all", "image_download", "appearance_applied", "timed_navigation"] as const;
 export const DEFAULT_AD_SETTINGS = {
   enabled: true, bannersEnabled: true, rewardedEnabled: true,
-  minGapSeconds: 90, timedIntervalSeconds: 180,
+  minGapSeconds: 90, timedIntervalSeconds: 120,
   placements: Object.fromEntries(AD_PLACEMENTS.map(key => [key, true])) as Record<string, boolean>,
 };
 const schema = new Schema({

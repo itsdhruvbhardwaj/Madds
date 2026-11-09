@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="studio-modern.css?v=20261107-welcome-back">
   <link rel="stylesheet" href="themes.css?v=20261105-themes">
   <link rel="stylesheet" href="performance.css?v=20261108-performance">
-  <link rel="stylesheet" href="ad-settings.css?v=20261109-ad-controls">
+  <link rel="stylesheet" href="ad-settings.css?v=20261109-master-ads">
 </head>
 <body>
   <main id="login-view" class="login-shell">
@@ -153,12 +153,15 @@
         <form id="ad-settings-form" class="app-settings-form">
           <div class="push-section-heading"><h2>Ad placements</h2><button id="ad-settings-refresh" class="button secondary" type="button">Refresh ads</button></div>
           <p class="muted">Control existing Android placements without an app update. Requires the new Android build. Settings refresh about every five minutes while the app is open, or on return when due. Offline devices keep their last saved settings.</p>
-          <label class="watermark-enable"><input type="checkbox" name="enabled"> Enable ads (master switch)</label>
+          <label class="watermark-enable"><input type="checkbox" name="enabled" aria-describedby="ad-master-status" aria-controls="ad-dependent-controls"> Enable all ads</label>
+          <p id="ad-master-status" class="field-hint" role="status"></p>
+          <fieldset id="ad-dependent-controls" aria-label="Individual ad options">
           <label class="watermark-enable"><input type="checkbox" name="bannersEnabled"> Banners on eligible subscreens</label>
           <label class="watermark-enable"><input type="checkbox" name="rewardedEnabled"> Optional rewarded ads for credits</label>
           <div id="ad-placement-options" class="ad-placement-options"></div>
-          <div class="watermark-controls"><label>Minimum gap between interstitials (seconds)<input name="minGapSeconds" type="number" min="60" max="3600" step="1" required></label><label>Usage interval for navigation ads (seconds)<input name="timedIntervalSeconds" type="number" min="60" max="3600" step="1" required></label></div>
-          <p class="field-hint">One ad maximum per event, at least two eligible actions between interstitials, and a shared minimum gap. Usage-based ads wait for a navigation transition. Generation and page loading continue behind the ad. Purchases and credit rewards are never delayed by an interstitial.</p>
+          <div class="watermark-controls"><label>Minimum gap between interstitials (seconds)<input name="minGapSeconds" type="number" min="60" max="3600" step="1" required></label><label>Automatic ad interval (seconds)<input name="timedIntervalSeconds" type="number" min="60" max="3600" step="1" required></label></div>
+          <p class="field-hint">One ad maximum per event and a shared minimum gap. Event ads require at least two eligible actions; automatic usage ads do not wait for navigation. Billing, account setup and other full-screen ads pause the timer. Generation and page loading continue behind the ad. Purchases and credit rewards are never delayed by an interstitial.</p>
+          </fieldset>
           <p id="ad-settings-error" class="form-error" role="alert"></p><button id="ad-settings-save" class="button primary" type="submit" disabled>Save ad settings</button><p id="ad-settings-editor" class="field-hint"></p>
         </form>
         <form id="watermark-form" class="app-settings-form watermark-form">
@@ -256,7 +259,7 @@
   <script src="notifications.js?v=20261108-date-format" defer></script>
   <script src="welcome-back.js?v=20261108-date-format" defer></script>
   <script src="home-order.js?v=20261105-home-order" defer></script>
-  <script src="ad-settings.js?v=20261109-ad-controls" defer></script>
+  <script src="ad-settings.js?v=20261109-master-ads" defer></script>
   <script src="settings.js?v=20261108-date-format" defer></script>
   <script src="watermark.js?v=20261108-date-format" defer></script>
   <script src="storage.js?v=20261108-date-format" defer></script>
@@ -265,6 +268,6 @@
   <script src="style-bulk.js?v=20261031-filtered-selection" defer></script>
   <script src="style-uploads.js?v=20261107-preview-reset" defer></script>
   <script src="performance.js?v=20261108-date-format" defer></script>
-  <script src="app.js?v=20261109-ad-controls" defer></script>
+  <script src="app.js?v=20261109-master-ads" defer></script>
 </body>
 </html>
