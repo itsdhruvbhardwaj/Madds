@@ -4,7 +4,7 @@
     avatar_saved:"Edit avatar: saved successfully", buy_more:"Buy More: open credit options",
     my_generations:"Open My Generations", home_see_all:"Home: See all",
     image_download:"Download image", appearance_applied:"Apply style preference",
-    timed_navigation:"Usage-based ad at navigation transitions",
+    timed_navigation:"Automatic ad after active usage (any screen)",
   };
   function create({api,notify}) {
     const $=id=>document.getElementById(id), form=$("ad-settings-form"), base="/api/admin/settings/ads";
@@ -22,7 +22,13 @@
         placements:Object.fromEntries(Object.keys(placements).map(key=>[key,form.elements[key].checked]))};
     }
     function controls() {
-      for(const input of form.querySelectorAll("input"))input.disabled=busy||loading||revision===null;
+      const locked=busy||loading||revision===null, paused=!form.elements.enabled.checked;
+      for(const input of form.querySelectorAll("input"))input.disabled=locked||(input!==form.elements.enabled&&paused);
+      $("ad-dependent-controls").disabled=locked||paused;
+      const savedEnabled=saved?JSON.parse(saved).enabled:null;
+      $("ad-master-status").textContent=revision===null?"Load ad settings to manage all placements.":paused?
+        `${savedEnabled===false?"All ads paused.":"All ads will pause after you save."} Banner, rewarded and interstitial settings are disabled below. Your selections are preserved for when ads are enabled again.`:
+        `${savedEnabled===false?"Ads will resume after you save.":"Ads enabled."} Only the selected options below can show ads.`;
       $("ad-settings-refresh").disabled=busy||loading;$("ad-settings-refresh").ariaBusy=String(loading);
       $("ad-settings-save").disabled=busy||loading||revision===null||JSON.stringify(values())===saved;
       $("ad-settings-save").ariaBusy=String(busy);

@@ -29,6 +29,14 @@ describe("remote ad settings",()=>{
   expect((await request(app).patch("/admin/ads").set("Authorization","Bearer user").send(payload())).status).toBe(403);
   expect(m.write).not.toHaveBeenCalled();
  });
+ it("master off masks all public placements while preserving admin selections",async()=>{
+  m.read.mockResolvedValue({...DEFAULT_AD_SETTINGS,enabled:false,revision:2});
+  const publicResponse=await request(app).get("/public");
+  expect(publicResponse.body.enabled).toBe(false);expect(publicResponse.body.bannersEnabled).toBe(false);
+  expect(publicResponse.body.rewardedEnabled).toBe(false);expect(Object.values(publicResponse.body.placements).every(v=>v===false)).toBe(true);
+  const adminResponse=await request(app).get("/admin/ads").set("Authorization","Bearer admin");
+  expect(adminResponse.body.bannersEnabled).toBe(true);expect(adminResponse.body.placements.home_see_all).toBe(true);
+ });
  it.each([0,59,3601,90.5,"90",null])("rejects unsafe intervals %j",value=>{
   expect(validAdSettings({...payload(),minGapSeconds:value})).toBe(false);
  });
