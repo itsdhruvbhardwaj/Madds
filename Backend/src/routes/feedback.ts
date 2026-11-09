@@ -1,5 +1,6 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
+import { User } from "../models/User.js";
 import { Feedback } from "../models/Feedback.js";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth.js";
 import { env } from "../config/env.js";
@@ -13,6 +14,8 @@ router.post("/feedback", rateLimit({ windowMs: 60 * 60_000, max: 10, keyGenerato
   const input = { userId: req.user!.id, requestId, category, message: message.trim(), contactEmail: contactEmail.trim(), appVersion, androidVersion };
   const saved = await Feedback.findOneAndUpdate({ userId: req.user!.id, requestId }, { $setOnInsert: input }, { upsert: true, new: true });
   if (["category", "message", "contactEmail", "appVersion", "androidVersion"].some(key => saved[key] !== (input as any)[key])) return res.status(409).json({ error: "This feedback request was already used. Reopen the form to send another message." });
+  const updated = await User.updateOne({ _id: req.user!.id }, { $set: { engagementFeedbackAt: new Date() } }, { maxTimeMS: 5000 });
+  if (updated.matchedCount !== 1) return res.status(503).json({ error: "Could not confirm feedback. Please try again." });
   res.status(201).json({ ok: true });
 });
 router.use("/admin/feedback", (req: AuthenticatedRequest, res, next) => {

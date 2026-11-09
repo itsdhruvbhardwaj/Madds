@@ -1,0 +1,8 @@
+#ad-settings-form{max-width:820px}
+#ad-settings-form .ad-placement-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 24px;margin:18px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 0}
+#ad-settings-form label.watermark-enable{max-width:none;line-height:1.5;margin:12px 0;cursor:pointer}
+#ad-settings-form input[type="checkbox"]{width:18px!important;height:18px!important;min-width:18px;min-height:18px!important;max-height:18px;padding:0!important;flex:0 0 18px;accent-color:#c7a653;cursor:pointer}
+#ad-settings-form input:disabled{cursor:default}
+#ad-settings-form .watermark-controls{grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+#ad-settings-form .watermark-controls label{max-width:none}
+@media(max-width:620px){#ad-settings-form .ad-placement-options,#ad-settings-form .watermark-controls{grid-template-columns:1fr}}

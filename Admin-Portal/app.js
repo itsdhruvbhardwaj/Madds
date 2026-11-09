@@ -30,6 +30,7 @@
   const users = window.MaddsUsers.create({ api, notify });
   const storage = window.MaddsStorage.create({ api, notify });
   const settings = window.MaddsSettings.create({ api, notify });
+  const adSettings = window.MaddsAdSettings.create({ api, notify });
   const watermark = window.MaddsWatermark.create({ api, notify });
   const homeOrder = window.MaddsHomeOrder.create({ api, notify, onSaved: sections => { state.sections = sections; renderCollections(); } });
   const performance = window.MaddsPerformance.create({ api, notify, onChanged: loadCatalog });
@@ -67,6 +68,7 @@
     feedback.reset();
     storage.reset();
     settings.reset();
+    adSettings.reset();
     watermark.reset();
     homeOrder.reset();
     bulkStyles.reset();
@@ -797,7 +799,7 @@
     else if (state.activePanel === "users-panel") void users.refresh();
     else if (state.activePanel === "feedback-panel") void feedback.refresh();
     else if (state.activePanel === "storage-panel") void storage.refresh();
-    else if (state.activePanel === "app-settings-panel") { void settings.refresh(); void watermark.refresh(); }
+    else if (state.activePanel === "app-settings-panel") { void settings.refresh(); void watermark.refresh(); void adSettings.refresh(); }
     else void loadCatalog();
   });
   document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => {
@@ -863,7 +865,7 @@
     if (state.activePanel === "users-panel") void users.refresh();
     if (state.activePanel === "feedback-panel") void feedback.refresh();
     if (state.activePanel === "storage-panel") void storage.refresh();
-    if (state.activePanel === "app-settings-panel") { void settings.refresh(); void watermark.refresh(); }
+    if (state.activePanel === "app-settings-panel") { void settings.refresh(); void watermark.refresh(); void adSettings.refresh(); }
   }));
   byId("log-member-filter").addEventListener("change", () => loadLogs(1));
   byId("log-action-filter").addEventListener("change", () => loadLogs(1));

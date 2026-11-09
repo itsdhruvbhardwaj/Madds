@@ -2,6 +2,15 @@ import mongoose, { Schema } from "mongoose";
 
 const UserSchema = new Schema(
   {
+    engagementPromptCount: { type: Number, default: 0 },
+    engagementPromptIds: { type: [String], default: [], select: false },
+    engagementResponseIds: { type: [String], default: [], select: false },
+    engagementLastPromptId: String,
+    engagementLastPromptAt: Date,
+    engagementNextPromptAt: Date,
+    engagementFeedbackAt: Date,
+    engagementRatingOpenedAt: Date,
+    engagementOptOutAt: Date,
     stylePreferenceSetupComplete: { type: Boolean, default: true },
     stylePreference: { type: String, enum: ["all", "male", "female"], default: "all" },
     name: {
