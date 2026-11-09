@@ -13,7 +13,8 @@ are enabled; newly added placements await server config. Old app versions do
 not support these switches and require an Android update first.
 
 Placements: generation Continue, custom Generate, successfully saved avatar,
-opening credit options (Buy More), My Generations, Home See all, starting an image
+opening credit options (Buy More), My Generations, Home See all, opening a collection
+from Collections, starting an image
 download, successfully applied style preference, and automatic foreground usage.
 Avatar onboarding and other account-setup screens remain excluded. Failed saves
 and failed preference updates never trigger their success placements.
@@ -52,3 +53,34 @@ timer design; it is not a claim of AdMob policy compliance.
 AdMob unit IDs remain compiled into Android; all interstitial placements reuse
 the existing interstitial unit. No new ad unit is required. Separate units could
 be added later for placement-level AdMob reporting, requiring an app update.
+
+The `collection_open` placement has its own switch. Existing saved backend settings
+receive its default without overwriting their other switches; older backends
+without the key leave only that new placement off in updated Android clients.
+
+## Native Home and Explore ads
+
+Release builds use native unit `ca-app-pub-7668637948120420/5549864554`;
+local debug builds use Google's dedicated native test unit. The existing AdMob
+app ID is unchanged. NativeAdView registers media, headline, body, icon,
+advertiser and CTA assets with the SDK. The card displays an Ad label and reserves
+its upper-right corner for SDK AdChoices. No custom ad-click handling is added.
+
+Workspace has separate Home and Explore native switches. Home spacing defaults
+to three collections (2–10 allowed); Explore defaults to twelve styles (12–60 in
+multiples of six to align with the mosaic). Native placements do not reorder or
+consume styles and do not alter backend style pagination. There are no trailing
+ads after the last collection/style. Pagination can continue after an eligible ad.
+
+Home retains at most two native ads and Explore at most three. Slots load only
+when composed near the visible feed, retain ads while scrolling on that screen,
+back off failed requests for at least sixty seconds, and discard expired cached
+ads before reuse. Screen disposal, master/native disable, tour activation on Home
+or spacing changes destroy retained ads; late callbacks destroy their returned
+ad immediately. Failed/unloaded ads render no view or reserved space. Native
+AdViews are destroyed separately when their rendered view leaves composition.
+
+Existing saved settings receive native defaults without overwriting previous
+switches. Old Workspace saves preserve native settings they don't yet know about.
+Older Android clients ignore these fields; updated Android clients connected to
+an older backend keep native ads off until supported settings are available.

@@ -21,6 +21,22 @@ const user = { _id: "user-a", name: "Tester", email: "test@example.com", isActiv
   profileImagePublicId: "profile/user-a-old", profileImage: "https://example.com/old.jpg" };
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5ioAAAAASUVORK5CYII=", "base64");
 
+describe("app tour completion",()=>{
+  beforeEach(()=>{vi.resetAllMocks();mocks.findOneAndUpdate.mockResolvedValue(user);});
+  it("requires authentication and accepts only supported actions and version",async()=>{
+    expect((await request(app).post("/profile/app-tour").send({version:1,action:"COMPLETE"})).status).toBe(401);
+    for(const body of [{version:2,action:"COMPLETE"},{version:1,action:"RESET"},{version:"1",action:"SKIP"}])
+      expect((await request(app).post("/profile/app-tour").set("Authorization","Bearer test").send(body)).status).toBe(400);
+    expect(mocks.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+  it.each(["COMPLETE","SKIP"])("persists %s only for the authenticated active account",async action=>{
+    const result=await request(app).post("/profile/app-tour").set("Authorization","Bearer test").send({version:1,action,userId:"other"});
+    expect(result.body.ok).toBe(true);
+    expect(mocks.findOneAndUpdate).toHaveBeenCalledWith({_id:"user-a",isActive:{$ne:false},deletionScheduledAt:null},
+      {$max:{appTourVersionSeen:1}},{new:true,maxTimeMS:5000});
+  });
+});
+
 describe("profile appearance API", () => {
   beforeEach(() => {
     vi.resetAllMocks();

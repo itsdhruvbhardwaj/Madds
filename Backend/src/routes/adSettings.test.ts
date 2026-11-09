@@ -29,13 +29,34 @@ describe("remote ad settings",()=>{
   expect((await request(app).patch("/admin/ads").set("Authorization","Bearer user").send(payload())).status).toBe(403);
   expect(m.write).not.toHaveBeenCalled();
  });
+ it("adds collection placement to older settings without resetting other choices",async()=>{
+  const {collection_open:_missing,...oldPlacements}=DEFAULT_AD_SETTINGS.placements;
+  m.read.mockResolvedValue({...DEFAULT_AD_SETTINGS,placements:{...oldPlacements,home_see_all:false},revision:4});
+  const result=await request(app).get("/public");
+  expect(result.body.placements.collection_open).toBe(true);
+  expect(result.body.placements.home_see_all).toBe(false);expect(result.body.revision).toBe(4);
+ });
  it("master off masks all public placements while preserving admin selections",async()=>{
   m.read.mockResolvedValue({...DEFAULT_AD_SETTINGS,enabled:false,revision:2});
   const publicResponse=await request(app).get("/public");
   expect(publicResponse.body.enabled).toBe(false);expect(publicResponse.body.bannersEnabled).toBe(false);
   expect(publicResponse.body.rewardedEnabled).toBe(false);expect(Object.values(publicResponse.body.placements).every(v=>v===false)).toBe(true);
+  expect(publicResponse.body.nativeHomeEnabled).toBe(false);expect(publicResponse.body.nativeExploreEnabled).toBe(false);
   const adminResponse=await request(app).get("/admin/ads").set("Authorization","Bearer admin");
   expect(adminResponse.body.bannersEnabled).toBe(true);expect(adminResponse.body.placements.home_see_all).toBe(true);
+ });
+ it("validates native spacing and switches",()=>{
+  for(const value of [0,1,11,2.5,"3"])expect(validAdSettings({...payload(),homeNativeEverySections:value})).toBe(false);
+  for(const value of [6,13,66,"12"])expect(validAdSettings({...payload(),exploreNativeEveryStyles:value})).toBe(false);
+  expect(validAdSettings({...payload(),nativeHomeEnabled:"true"})).toBe(false);
+  expect(validAdSettings({...payload(),homeNativeEverySections:4,exploreNativeEveryStyles:18})).toBe(true);
+ });
+ it("older Workspace saves preserve new native settings",async()=>{
+  m.read.mockResolvedValue({...DEFAULT_AD_SETTINGS,nativeHomeEnabled:false,homeNativeEverySections:6,revision:0});
+  const {nativeHomeEnabled:_,nativeExploreEnabled:_b,homeNativeEverySections:_c,exploreNativeEveryStyles:_d,...legacy}=payload();
+  const result=await request(app).patch("/admin/ads").set("Authorization","Bearer admin").send(legacy);
+  expect(result.status).toBe(200);expect(m.write.mock.calls[0][1].$set.nativeHomeEnabled).toBe(false);
+  expect(m.write.mock.calls[0][1].$set.homeNativeEverySections).toBe(6);
  });
  it.each([0,59,3601,90.5,"90",null])("rejects unsafe intervals %j",value=>{
   expect(validAdSettings({...payload(),minGapSeconds:value})).toBe(false);

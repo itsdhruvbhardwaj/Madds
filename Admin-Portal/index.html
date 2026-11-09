@@ -158,6 +158,12 @@
           <fieldset id="ad-dependent-controls" aria-label="Individual ad options">
           <label class="watermark-enable"><input type="checkbox" name="bannersEnabled"> Banners on eligible subscreens</label>
           <label class="watermark-enable"><input type="checkbox" name="rewardedEnabled"> Optional rewarded ads for credits</label>
+          <h3>Native feed ads</h3>
+          <label class="watermark-enable"><input type="checkbox" name="nativeHomeEnabled"> Native ads on Home</label>
+          <label class="watermark-enable"><input type="checkbox" name="nativeExploreEnabled"> Native ads on Explore</label>
+          <div class="watermark-controls"><label>Home: collections between native ads<input name="homeNativeEverySections" type="number" min="2" max="10" step="1" required></label><label>Explore: styles between native ads<input name="exploreNativeEveryStyles" type="number" min="12" max="60" step="6" required></label></div>
+          <p class="field-hint">Defaults: after 3 Home collections and every 12 Explore styles. Capped at 2 loaded native ads on Home and 3 on Explore. Native cards are labelled Ad; unavailable ads leave no empty space.</p>
+          <h3>Interstitial placements</h3>
           <div id="ad-placement-options" class="ad-placement-options"></div>
           <div class="watermark-controls"><label>Minimum gap between interstitials (seconds)<input name="minGapSeconds" type="number" min="60" max="3600" step="1" required></label><label>Automatic ad interval (seconds)<input name="timedIntervalSeconds" type="number" min="60" max="3600" step="1" required></label></div>
           <p class="field-hint">One ad maximum per event and a shared minimum gap. Event ads require at least two eligible actions; automatic usage ads do not wait for navigation. Billing, account setup and other full-screen ads pause the timer. Generation and page loading continue behind the ad. Purchases and credit rewards are never delayed by an interstitial.</p>
@@ -259,7 +265,7 @@
   <script src="notifications.js?v=20261108-date-format" defer></script>
   <script src="welcome-back.js?v=20261108-date-format" defer></script>
   <script src="home-order.js?v=20261105-home-order" defer></script>
-  <script src="ad-settings.js?v=20261109-master-ads" defer></script>
+  <script src="ad-settings.js?v=20261109-native-ads" defer></script>
   <script src="settings.js?v=20261108-date-format" defer></script>
   <script src="watermark.js?v=20261108-date-format" defer></script>
   <script src="storage.js?v=20261108-date-format" defer></script>

@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { appearanceFields } from "./profileAppearance.js";
 describe("account setup compatibility", () => {
   it("does not enroll older accounts with missing flags", () => {
-    expect(appearanceFields({})).toMatchObject({ profileSetupComplete: true, stylePreferenceSetupComplete: true });
+    expect(appearanceFields({})).toMatchObject({ profileSetupComplete: true, stylePreferenceSetupComplete: true, appTourVersionSeen: 1 });
   });
   it("keeps a newly created account pending until it explicitly saves or skips", () => {
-    expect(appearanceFields({ profileSetupComplete: false, stylePreferenceSetupComplete: false })).toMatchObject({ profileSetupComplete: false, stylePreferenceSetupComplete: false });
+    expect(appearanceFields({ profileSetupComplete: false, stylePreferenceSetupComplete: false, appTourVersionSeen: 0 })).toMatchObject({ profileSetupComplete: false, stylePreferenceSetupComplete: false, appTourVersionSeen: 0 });
   });
 });

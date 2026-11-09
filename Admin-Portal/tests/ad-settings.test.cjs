@@ -2,15 +2,15 @@ const {test}=require("node:test"),assert=require("node:assert/strict"),vm=requir
 function fixture() {
  const nodes=new Map(),calls=[],form={elements:{},events:{},reportValidity:()=>true,reset(){},addEventListener(name,fn){this.events[name]=fn;},querySelectorAll(){return Object.values(this.elements);}};
  const input=()=>({value:"",checked:false,disabled:false});
- for(const key of ["enabled","bannersEnabled","rewardedEnabled","minGapSeconds","timedIntervalSeconds"])form.elements[key]=input();
+ for(const key of ["enabled","bannersEnabled","rewardedEnabled","minGapSeconds","timedIntervalSeconds","nativeHomeEnabled","nativeExploreEnabled","homeNativeEverySections","exploreNativeEveryStyles"])form.elements[key]=input();
  const el=id=>{if(id==="ad-settings-form")return form;if(!nodes.has(id))nodes.set(id,{events:{},textContent:"",addEventListener(name,fn){this.events[name]=fn;},append(label){form.elements[label.input.name]=label.input;}});return nodes.get(id);};
  const sandbox={window:{confirm:()=>true,MaddsDates:{dateTime:()=>"09/11/2026"}},document:{getElementById:el,
  createTextNode:text=>text,createElement:tag=>tag==="input"?input():{append(value){this.input=value;}}}};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,"../ad-settings.js"),"utf8"),sandbox);
  const tool=sandbox.window.MaddsAdSettings.create({api:async(url,options)=>{
   calls.push({url,options});if(options)return {...JSON.parse(options.body),revision:2};
-  return {enabled:true,bannersEnabled:true,rewardedEnabled:true,minGapSeconds:90,timedIntervalSeconds:180,revision:1,
-    placements:Object.fromEntries(Object.keys(form.elements).filter(k=>!["enabled","bannersEnabled","rewardedEnabled","minGapSeconds","timedIntervalSeconds"].includes(k)).map(k=>[k,true]))};
+  return {enabled:true,bannersEnabled:true,rewardedEnabled:true,minGapSeconds:90,timedIntervalSeconds:180,nativeHomeEnabled:true,nativeExploreEnabled:true,homeNativeEverySections:3,exploreNativeEveryStyles:12,revision:1,
+    placements:Object.fromEntries(Object.keys(form.elements).filter(k=>!["enabled","bannersEnabled","rewardedEnabled","minGapSeconds","timedIntervalSeconds","nativeHomeEnabled","nativeExploreEnabled","homeNativeEverySections","exploreNativeEveryStyles"].includes(k)).map(k=>[k,true]))};
  },notify(){}});
  return {form,el,tool,calls};
 }
@@ -48,4 +48,18 @@ test("master off disables all child controls but preserves choices and save acce
  assert.equal(f.el("ad-dependent-controls").disabled,false);
  assert.equal(f.form.elements.bannersEnabled.disabled,false);assert.equal(f.form.elements.bannersEnabled.checked,true);
  assert.match(f.el("ad-master-status").textContent,/will resume after you save/);
+});
+test("collection click placement can be saved independently",async()=>{
+ const f=fixture();await f.tool.refresh();f.form.elements.collection_open.checked=false;f.form.events.input();
+ await f.form.events.submit({preventDefault(){}});
+ const payload=JSON.parse(f.calls.at(-1).options.body);
+ assert.equal(payload.placements.collection_open,false);assert.equal(payload.placements.home_see_all,true);
+});
+test("native screen switches and spacing are saved independently",async()=>{
+ const f=fixture();await f.tool.refresh();f.form.elements.nativeHomeEnabled.checked=false;
+ f.form.elements.exploreNativeEveryStyles.value="18";f.form.events.input();
+ await f.form.events.submit({preventDefault(){}});
+ const payload=JSON.parse(f.calls.at(-1).options.body);
+ assert.equal(payload.nativeHomeEnabled,false);assert.equal(payload.nativeExploreEnabled,true);
+ assert.equal(payload.homeNativeEverySections,3);assert.equal(payload.exploreNativeEveryStyles,18);
 });
