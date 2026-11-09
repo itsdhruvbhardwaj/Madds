@@ -156,7 +156,7 @@ describe("credit accounting transactions", () => {
     });
 
     expect(creditMocks.userCreate).toHaveBeenCalledWith(
-      [expect.objectContaining({ email: "new@example.com", credits: 100, profileSetupComplete: false, stylePreferenceSetupComplete: false })],
+      [expect.objectContaining({ email: "new@example.com", credits: 100, profileSetupComplete: false, stylePreferenceSetupComplete: false, appTourVersionSeen: 0 })],
       { session: creditMocks.session },
     );
     expect(creditMocks.transactionCreate).toHaveBeenCalledWith(

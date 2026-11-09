@@ -11,6 +11,7 @@ const UserSchema = new Schema(
     engagementFeedbackAt: Date,
     engagementRatingOpenedAt: Date,
     engagementOptOutAt: Date,
+    appTourVersionSeen: { type: Number, default: 1, min: 0, max: 1 },
     stylePreferenceSetupComplete: { type: Boolean, default: true },
     stylePreference: { type: String, enum: ["all", "male", "female"], default: "all" },
     name: {

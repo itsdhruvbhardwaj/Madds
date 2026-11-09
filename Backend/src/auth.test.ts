@@ -235,6 +235,7 @@ describe("email verification", () => {
       avatarBackground: "gold",
       profileSetupComplete: true,
       stylePreferenceSetupComplete: true,
+      appTourVersionSeen: 1,
       credits: 500,
       hasPassword: true,
       hasGoogleLogin: true,

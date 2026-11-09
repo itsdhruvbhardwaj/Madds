@@ -13,6 +13,15 @@ const router = Router();
 router.use(requireAuth);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024, files: 1 } });
 
+router.post("/app-tour", async (req: AuthenticatedRequest, res: Response) => {
+  res.set("Cache-Control", "no-store");
+  if (req.body?.version !== 1 || !["COMPLETE", "SKIP"].includes(req.body?.action))
+    return res.status(400).json({error:"Invalid app tour response."});
+  const user = await User.findOneAndUpdate({_id:req.user!.id,isActive:{$ne:false},deletionScheduledAt:null},
+    {$max:{appTourVersionSeen:1}}, {new:true,maxTimeMS:5000});
+  return user ? res.json({ok:true}) : res.sendStatus(404);
+});
+
 router.get("/style-preference", async (req: AuthenticatedRequest, res: Response) => {
   res.set("Cache-Control", "no-store");
   const user = await User.findById(req.user!.id).select("stylePreference").lean();

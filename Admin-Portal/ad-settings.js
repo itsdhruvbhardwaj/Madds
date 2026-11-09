@@ -2,7 +2,7 @@
   const placements = {
     generation_continue:"Continue after photo selection", custom_generate:"Custom creation: Generate",
     avatar_saved:"Edit avatar: saved successfully", buy_more:"Buy More: open credit options",
-    my_generations:"Open My Generations", home_see_all:"Home: See all",
+    my_generations:"Open My Generations", home_see_all:"Home: See all", collection_open:"Collections: open a collection",
     image_download:"Download image", appearance_applied:"Apply style preference",
     timed_navigation:"Automatic ad after active usage (any screen)",
   };
@@ -17,7 +17,8 @@
     let revision=null,saved="",busy=false,loading=false,epoch=0;
     function values() {
       return {enabled:form.elements.enabled.checked,bannersEnabled:form.elements.bannersEnabled.checked,
-        rewardedEnabled:form.elements.rewardedEnabled.checked,minGapSeconds:Number(form.elements.minGapSeconds.value),
+        rewardedEnabled:form.elements.rewardedEnabled.checked,nativeHomeEnabled:form.elements.nativeHomeEnabled.checked,nativeExploreEnabled:form.elements.nativeExploreEnabled.checked,
+        homeNativeEverySections:Number(form.elements.homeNativeEverySections.value),exploreNativeEveryStyles:Number(form.elements.exploreNativeEveryStyles.value),minGapSeconds:Number(form.elements.minGapSeconds.value),
         timedIntervalSeconds:Number(form.elements.timedIntervalSeconds.value),
         placements:Object.fromEntries(Object.keys(placements).map(key=>[key,form.elements[key].checked]))};
     }
@@ -35,8 +36,8 @@
     }
     function accept(data) {
       revision=data.revision;
-      for(const key of ["enabled","bannersEnabled","rewardedEnabled"])form.elements[key].checked=data[key];
-      for(const key of ["minGapSeconds","timedIntervalSeconds"])form.elements[key].value=data[key];
+      for(const key of ["enabled","bannersEnabled","rewardedEnabled","nativeHomeEnabled","nativeExploreEnabled"])form.elements[key].checked=data[key]??false;
+      for(const key of ["minGapSeconds","timedIntervalSeconds","homeNativeEverySections","exploreNativeEveryStyles"])form.elements[key].value=data[key]??(key==="homeNativeEverySections"?3:key==="exploreNativeEveryStyles"?12:120);
       for(const key of Object.keys(placements))form.elements[key].checked=data.placements[key];
       saved=JSON.stringify(values());
       $("ad-settings-editor").textContent=data.updatedAt?`Last changed by ${data.updatedByName||"Team member"} · ${window.MaddsDates.dateTime(data.updatedAt)}`:"Default settings; no Workspace override saved yet.";
