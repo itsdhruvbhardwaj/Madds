@@ -10,6 +10,7 @@ App-ready destinations:
 - `help.html`: FAQs and troubleshooting
 - `contact.html`: support, feedback, and privacy contact
 - `about.html`: About Madds
+- `delete-account.html`: public Madds account and data deletion instructions; use this URL in Google Play Data safety
 - `privacy.html`: Privacy Policy
 - `terms.html`: Terms of Service
 
