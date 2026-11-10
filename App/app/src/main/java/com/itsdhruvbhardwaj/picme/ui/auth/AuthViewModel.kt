@@ -80,6 +80,7 @@ class AuthViewModel(
     val creditProductError = billingManager?.productError ?: MutableStateFlow<String?>(null).asStateFlow()
     fun refreshCreditProduct() { billingManager?.refreshCreditProduct() }
     suspend fun getPurchases(page: Int = 1) = authRepository.getPurchases(page)
+    suspend fun finishAppTour(ownerId: String, request: com.itsdhruvbhardwaj.picme.data.model.AppTourResponse) = authRepository.finishAppTour(ownerId, request)
     suspend fun claimEngagementPrompt(ownerId: String, request: com.itsdhruvbhardwaj.picme.data.model.EngagementClaimRequest) = authRepository.claimEngagementPrompt(ownerId, request)
     suspend fun respondEngagementPrompt(ownerId: String, request: com.itsdhruvbhardwaj.picme.data.model.EngagementResponseRequest) = authRepository.respondEngagementPrompt(ownerId, request)
     suspend fun sendFeedback(request: com.itsdhruvbhardwaj.picme.data.model.FeedbackRequest) = authRepository.sendFeedback(request)
@@ -278,6 +279,7 @@ class AuthViewModel(
     }
 
     fun startRewardedAdFlow(activity: Activity) {
+        if (!com.itsdhruvbhardwaj.picme.utils.AdPolicy.config.value.let { it.enabled && it.rewardedEnabled }) return
         if (_isRewardedAdLoading.value || _isPurchaseLoading.value) return
         val displayedReward = _rewardedAdConfig.value?.takeIf { it.validReward }?.credits
         if (displayedReward == null) { refreshRewardConfig(); return }

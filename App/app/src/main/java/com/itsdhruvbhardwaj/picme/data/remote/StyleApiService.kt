@@ -56,16 +56,6 @@ interface StyleApiService {
         @Part images: List<MultipartBody.Part>
     ): Response<GenerationResponse>
 
-    @Multipart
-    @Headers("X-Generation-Recovery: 1")
-    @POST("api/generate")
-    suspend fun generateCustomImage(
-        @Header("Authorization") authorization: String,
-        @Header("Idempotency-Key") idempotencyKey: String,
-        @Part("customPrompt") prompt: RequestBody,
-        @Part images: List<MultipartBody.Part>
-    ): Response<GenerationResponse>
-
     @GET("api/me/favorites")
     suspend fun getFavorites(
         @Header("Authorization") authorization: String

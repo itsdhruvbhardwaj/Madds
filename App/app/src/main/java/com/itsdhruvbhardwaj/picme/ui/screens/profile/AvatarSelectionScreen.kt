@@ -51,7 +51,7 @@ import kotlin.math.min
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AvatarSelectionScreen(authViewModel: AuthViewModel, onBack: () -> Unit) {
+fun AvatarSelectionScreen(authViewModel: AuthViewModel, onBack: () -> Unit, onSaved: () -> Unit = onBack) {
     val auth by authViewModel.authState.collectAsState()
     val user = (auth as? AuthState.Authenticated)?.user ?: return
     val context = LocalContext.current
@@ -117,7 +117,7 @@ fun AvatarSelectionScreen(authViewModel: AuthViewModel, onBack: () -> Unit) {
                                 } else authViewModel.saveProfileAppearance(ProfileAppearanceRequest(
                                     profileAppearance = mode, avatarId = selectedAvatar, avatarBackground = background
                                 ))
-                                result.fold(onSuccess = { onBack() }, onFailure = { error = it.message ?: "Couldn't save. Please try again." })
+                                result.fold(onSuccess = { onSaved() }, onFailure = { error = it.message ?: "Couldn't save. Please try again." })
                             } catch (cancelled: CancellationException) {
                                 throw cancelled
                             } catch (_: Exception) {

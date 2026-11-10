@@ -143,7 +143,8 @@ fun CategoryChip(
 fun SectionHeader(
     title: String,
     onSeeAllClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    seeAllModifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -165,7 +166,7 @@ fun SectionHeader(
                 brush = com.itsdhruvbhardwaj.picme.ui.theme.MaddsPalette.goldShine,
                 fontWeight = FontWeight.Bold
             ),
-            modifier = Modifier.clickable(onClick = onSeeAllClick)
+            modifier = seeAllModifier.clickable(onClick = onSeeAllClick)
         )
     }
 }

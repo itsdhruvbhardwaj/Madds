@@ -459,6 +459,9 @@ class AuthRepository(
         )
     }
 
+    suspend fun finishAppTour(ownerId: String, request: com.itsdhruvbhardwaj.picme.data.model.AppTourResponse): Result<Boolean> = authenticatedHistoryCall(
+        call = { check(tokenStorage.getUser()?.id == ownerId) { "Account changed." }; apiService.finishAppTour(it, request) }, extract = { it.ok })
+
     suspend fun claimEngagementPrompt(ownerId: String, request: EngagementClaimRequest): Result<EngagementClaimResponse> = authenticatedHistoryCall(
         call = { check(tokenStorage.getUser()?.id == ownerId) { "Account changed." }; apiService.claimEngagementPrompt(it, request) }, extract = { it })
     suspend fun respondEngagementPrompt(ownerId: String, request: EngagementResponseRequest): Result<Boolean> = authenticatedHistoryCall(

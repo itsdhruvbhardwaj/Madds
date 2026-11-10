@@ -20,6 +20,8 @@ import com.itsdhruvbhardwaj.picme.BuildConfig
 fun BannerAdView(
     modifier: Modifier = Modifier
 ) {
+    val adConfig by com.itsdhruvbhardwaj.picme.utils.AdPolicy.config.collectAsState()
+    if (!adConfig.enabled || !adConfig.bannersEnabled) return
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp

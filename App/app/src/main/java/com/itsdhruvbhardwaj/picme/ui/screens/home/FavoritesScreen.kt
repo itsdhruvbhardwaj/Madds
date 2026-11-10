@@ -21,7 +21,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
@@ -123,7 +122,7 @@ fun FavoritesScreen(
                             }
                         } else {
                             LazyVerticalGrid(
-                                columns = GridCells.Fixed(3),
+                                columns = GridCells.Adaptive(minSize = 140.dp),
                                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 120.dp),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -136,8 +135,7 @@ fun FavoritesScreen(
                                         genderTag = style.genderTag,
                                         onClick = { onStyleClick(style.id) },
                                         modifier = Modifier.fillMaxWidth(),
-                                        width = Dp.Unspecified,
-                                        height = 160.dp,
+                                        aspectRatio = 5f / 7f,
                                         internalPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp),
                                     )
                                 }

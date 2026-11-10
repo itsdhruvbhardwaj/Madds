@@ -138,6 +138,10 @@ interface AuthApiService {
         @Body request: GooglePlayPurchaseRequest
     ): Response<PurchaseVerificationResponse>
 
+    @POST("api/profile/app-tour")
+    suspend fun finishAppTour(@Header("Authorization") authorization: String,
+        @Body request: com.itsdhruvbhardwaj.picme.data.model.AppTourResponse): Response<MessageResponse>
+
     @GET("api/me/purchases")
     suspend fun getPurchases(@Header("Authorization") authorization: String, @Query("page") page: Int = 1, @Query("limit") limit: Int = 20): Response<PurchaseHistoryResponse>
 

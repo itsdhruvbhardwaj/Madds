@@ -11,11 +11,15 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import com.itsdhruvbhardwaj.picme.ui.components.StyleGenderBadge
+import com.itsdhruvbhardwaj.picme.ui.components.NativeFeedAd
+import com.itsdhruvbhardwaj.picme.ui.components.rememberNativeFeedSlots
+import com.itsdhruvbhardwaj.picme.ui.components.nativeFeedSlotIndex
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -38,6 +42,7 @@ import com.itsdhruvbhardwaj.picme.ui.components.PicMeMainHeader
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeSearchBar
 import kotlinx.coroutines.flow.collect
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExploreScreen(
     authViewModel: AuthViewModel,
@@ -46,6 +51,10 @@ fun ExploreScreen(
     onProfileClick: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val adConfig by com.itsdhruvbhardwaj.picme.utils.AdPolicy.config.collectAsState()
+    val nativeEnabled = adConfig.enabled && adConfig.nativeExploreEnabled
+    val nativeSlots = rememberNativeFeedSlots(nativeEnabled,3,adConfig.exploreNativeEveryStyles)
+    val refreshing by viewModel.isRefreshing.collectAsState()
     val authState by authViewModel.authState.collectAsState()
     var query by rememberSaveable { mutableStateOf("") }
     var isSearchFocused by remember { mutableStateOf(false) }
@@ -87,10 +96,10 @@ fun ExploreScreen(
         previousQuery = query
     }
 
-    LaunchedEffect(listState, successState?.styles?.size, successState?.hasMore, successState?.isLoadingMore, successState?.loadMoreError, showSuggestions) {
+    LaunchedEffect(listState, successState?.styles?.size, successState?.hasMore, successState?.isLoadingMore, successState?.loadMoreError, showSuggestions, refreshing) {
         val state = successState ?: return@LaunchedEffect
         val groupCount = state.styles.chunked(6).size
-        if (groupCount == 0 || !state.hasMore || state.isLoadingMore || state.loadMoreError != null) {
+        if (refreshing || groupCount == 0 || !state.hasMore || state.isLoadingMore || state.loadMoreError != null) {
             return@LaunchedEffect
         }
         val headerItems = 1
@@ -114,7 +123,13 @@ fun ExploreScreen(
                 )
             }
         ) { innerPadding ->
-            Box(
+            PullToRefreshBox(
+                isRefreshing = refreshing,
+                onRefresh = {
+                    keyboardController?.hide()
+                    focusManager.clearFocus(force = true)
+                    viewModel.refresh()
+                },
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = innerPadding.calculateTopPadding())
@@ -158,6 +173,11 @@ fun ExploreScreen(
                         }
 
                         is ExploreUiState.Success -> {
+                            state.refreshError?.let { message ->
+                                item(key = "explore-refresh-error") {
+                                    Text(message,color=MaterialTheme.colorScheme.error,modifier=Modifier.padding(horizontal=20.dp,vertical=12.dp))
+                                }
+                            }
                             val groups = state.styles.chunked(6)
                             itemsIndexed(
                                 items = groups,
@@ -168,6 +188,11 @@ fun ExploreScreen(
                                     blockIndex = index,
                                     onStyleClick = onStyleClick
                                 )
+                                if (nativeEnabled) {
+                                    nativeFeedSlotIndex(index,groups.size,adConfig.exploreNativeEveryStyles/6,3,state.hasMore)?.let { slotIndex ->
+                                        NativeFeedAd(nativeSlots[slotIndex])
+                                    }
+                                }
                             }
 
                             if (state.isLoadingMore) {

@@ -61,6 +61,8 @@ fun StyleActionDock(
     interaction: DockInteractionState,
     onBuyCredits: () -> Unit,
     onApply: suspend (String) -> Result<Unit>,
+    onApplied: () -> Unit = {},
+    tourActive: Boolean = false,
     onPreferencesVisibleChanged: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -70,6 +72,11 @@ fun StyleActionDock(
         targetValue = if (expanded) 1f else 0f,
         animationSpec = tween(180, easing = FastOutSlowInEasing), label = "dockMorph"
     )
+    DisposableEffect(tourActive) {
+        val previous = expanded
+        if (tourActive) expanded = true
+        onDispose { if (tourActive) expanded = previous }
+    }
     var position by rememberSaveable { mutableFloatStateOf(.5f) }
     var showPreferences by rememberSaveable { mutableStateOf(false) }
     DisposableEffect(showPreferences) {
@@ -80,9 +87,9 @@ fun StyleActionDock(
     var localInteractionAt by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     var dragging by remember { mutableStateOf(false) }
     fun interact() { localInteractionAt = SystemClock.elapsedRealtime() }
-    LaunchedEffect(interaction.lastTouchAt, localInteractionAt, interaction.touching, dragging, showPreferences) {
+    LaunchedEffect(interaction.lastTouchAt, localInteractionAt, interaction.touching, dragging, showPreferences, tourActive) {
         visible = true
-        if (!interaction.touching && !dragging && !showPreferences) {
+        if (!tourActive && !interaction.touching && !dragging && !showPreferences) {
             delay(4_000)
             visible = false
         }
@@ -106,17 +113,9 @@ fun StyleActionDock(
                 expanded = expanded,
                 onToggle = { interact(); expanded = !expanded },
                 modifier = Modifier
+                    .appTourTarget("dock")
                     .onSizeChanged { dockHeight = it.height }
-                    .clip(shape)
-                    .hazeEffect(hazeState, style = HazeStyle(
-                        backgroundColor = Color.Black,
-                        tints = listOf(HazeTint(Color.White.copy(alpha = .06f)), HazeTint(Color.Black.copy(alpha = .12f))),
-                        blurRadius = 36.dp,
-                        noiseFactor = .025f,
-                        fallbackTint = HazeTint(Color.Black.copy(alpha = .86f))
-                    ))
-                    .background(Brush.linearGradient(listOf(Color.White.copy(alpha = .08f), Color.Transparent, Color.White.copy(alpha = .02f))), shape)
-                    .border(1.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = .36f), Color.White.copy(alpha = .06f), Color.White.copy(alpha = .18f))), shape)
+                    .actionGlass(hazeState, shape)
                     .pointerInput(travel) {
                         detectVerticalDragGestures(
                             onDragStart = { dragging = true; interact() },
@@ -146,7 +145,7 @@ fun StyleActionDock(
                     Column(Modifier.fillMaxWidth().clickable(enabled = expanded) { interact(); showPreferences = true }.padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Outlined.Tune, "Style preference", tint = Color.White, modifier = Modifier.size(22.dp))
                         Text("Filter", color = Color.White, fontSize = 11.sp)
-                        Text(when(preference) { "male" -> "Males"; "female" -> "Females"; else -> "Everyone" }, color = Color.White.copy(alpha = .7f), fontSize = 9.sp, maxLines = 1)
+                        Text(when(preference) { "male" -> "For Him"; "female" -> "For Her"; else -> "Everyone" }, color = Color.White.copy(alpha = .7f), fontSize = 9.sp, maxLines = 1)
                     }
                     IconButton(enabled = expanded, onClick = { interact(); expanded = false }, modifier = Modifier.height(40.dp).fillMaxWidth()) {
                         Icon(Icons.Outlined.KeyboardArrowDown, "Collapse action bar", tint = Color.White, modifier = Modifier.size(22.dp))
@@ -164,7 +163,7 @@ fun StyleActionDock(
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Style preference", style = MaterialTheme.typography.headlineSmall, color = Color.White, modifier = Modifier.align(Alignment.CenterHorizontally))
                 Text("Choose the styles you want to see.", color = Color.LightGray)
-                listOf("male" to "For males", "female" to "For females", "all" to "For everyone").forEach { (value, label) ->
+                listOf("male" to "For Him", "female" to "For Her", "all" to "For Everyone").forEach { (value, label) ->
                     Row(Modifier.fillMaxWidth().border(1.dp, if (selected == value) gold else Color.White.copy(alpha = .15f), RoundedCornerShape(18.dp))
                         .background(if (selected == value) gold.copy(alpha = .1f) else Color.Transparent, RoundedCornerShape(18.dp))
                         .clickable(enabled = !saving) { selected = value; error = null }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -178,7 +177,7 @@ fun StyleActionDock(
                     scope.launch {
                         val result = onApply(selected)
                         saving = false
-                        result.fold(onSuccess = { showPreferences = false }, onFailure = { error = it.message })
+                        result.fold(onSuccess = { showPreferences = false; onApplied() }, onFailure = { error = it.message })
                     }
                 }, colors = ButtonDefaults.buttonColors(containerColor = gold, contentColor = Color.Black), modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                     Text(if (saving) "Saving…" else "Apply preference")

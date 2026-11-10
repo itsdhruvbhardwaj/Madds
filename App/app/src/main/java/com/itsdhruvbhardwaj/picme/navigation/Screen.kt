@@ -9,7 +9,6 @@ sealed class Screen(val route: String) {
     data object Search : Screen("search")
     data object Collections : Screen("collections")
     data object Favorites : Screen("favorites")
-    data object Create : Screen("create")
     data object History : Screen("history")
     data object Profile : Screen("profile")
     data object Purchases : Screen("purchases")
@@ -33,14 +32,8 @@ sealed class Screen(val route: String) {
     data object SelectPhotos : Screen("select_photos/{styleId}") {
         fun createRoute(styleId: String) = "select_photos/$styleId"
     }
-    data object Generation : Screen("generation/{styleId}?prompt={prompt}") {
-        fun createRoute(styleId: String, prompt: String? = null): String {
-            return if (prompt != null) {
-                "generation/$styleId?prompt=${java.net.URLEncoder.encode(prompt, "UTF-8")}"
-            } else {
-                "generation/$styleId"
-            }
-        }
+    data object Generation : Screen("generation/{styleId}") {
+        fun createRoute(styleId: String) = "generation/$styleId"
     }
     data object Result : Screen("result")
     

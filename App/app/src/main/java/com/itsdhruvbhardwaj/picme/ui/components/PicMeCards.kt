@@ -41,12 +41,15 @@ fun StyleCard(
     width: Dp = 168.dp,
     height: Dp = 236.dp,
     internalPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
-    genderTag: String? = null
+    genderTag: String? = null,
+    aspectRatio: Float? = null
 ) {
     Surface(
         modifier = modifier
-            .width(width)
-            .height(height)
+            .then(
+                if (aspectRatio != null) Modifier.aspectRatio(aspectRatio)
+                else Modifier.width(width).height(height)
+            )
             .shadow(
                 elevation = 12.dp,
                 shape = RoundedCornerShape(16.dp),
@@ -102,13 +105,6 @@ fun StyleCard(
                             letterSpacing = 0.5.sp
                         ),
                         maxLines = 1
-                    )
-                    Text(
-                        text = "Try now",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            color = Color.White.copy(alpha = 0.8f),
-                            fontWeight = FontWeight.Medium
-                        )
                     )
                 }
             }

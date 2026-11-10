@@ -59,7 +59,7 @@ fun StylePreferenceSetupScreen(authViewModel: AuthViewModel, onSaved: (String, S
                 Text("Choose the styles you'd like to see. You can change this later using Filter.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    listOf("male" to "For males", "female" to "For females", "all" to "For everyone").forEach { (value, label) ->
+                    listOf("male" to "For Him", "female" to "For Her", "all" to "For Everyone").forEach { (value, label) ->
                         val chosen = selected == value
                         Row(Modifier.fillMaxWidth()
                             .border(1.dp, if (chosen) gold else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(20.dp))

@@ -10,6 +10,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.invisibleToUser
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,6 +31,10 @@ import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
 import com.itsdhruvbhardwaj.picme.ui.auth.GoogleAuthHelper
 import com.itsdhruvbhardwaj.picme.ui.auth.PasswordSetupState
+import com.itsdhruvbhardwaj.picme.ui.components.AppTourTargets
+import com.itsdhruvbhardwaj.picme.ui.components.LocalAppTourTargets
+import com.itsdhruvbhardwaj.picme.ui.components.AppTourOverlay
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.itsdhruvbhardwaj.picme.ui.components.BannerAdView
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeBottomNavigationBar
 import com.itsdhruvbhardwaj.picme.ui.screens.auth.ForgotPasswordScreen
@@ -36,7 +42,6 @@ import com.itsdhruvbhardwaj.picme.ui.screens.auth.LoginScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.auth.ResetPasswordScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.auth.SignupScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.auth.VerifyEmailScreen
-import com.itsdhruvbhardwaj.picme.ui.screens.create.CreateScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.create.GenerationScreen
 import com.itsdhruvbhardwaj.picme.ui.screens.create.GenerationUiState
 import com.itsdhruvbhardwaj.picme.ui.screens.create.GenerationViewModel
@@ -72,6 +77,8 @@ import com.itsdhruvbhardwaj.picme.ui.components.LocalCreditsLauncher
 import com.itsdhruvbhardwaj.picme.ui.components.CreditsOptionsBottomSheet
 import com.itsdhruvbhardwaj.picme.ui.components.GenerationHeaderState
 import com.itsdhruvbhardwaj.picme.ui.components.LocalGenerationHeaderState
+import com.itsdhruvbhardwaj.picme.utils.AdPolicy
+import com.itsdhruvbhardwaj.picme.utils.AdPlacement
 import com.itsdhruvbhardwaj.picme.utils.AdManager
 import com.itsdhruvbhardwaj.picme.utils.MainScreenAdTimer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -81,7 +88,7 @@ import dev.chrisbanes.haze.hazeSource
 import android.os.SystemClock
 import kotlinx.coroutines.supervisorScope
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun NavGraph(
     navController: NavHostController,
@@ -239,32 +246,115 @@ fun NavGraph(
         (authState as? AuthState.Authenticated)?.user?.stylePreferenceSetupComplete == false)
     var engagementOverlayOpen by remember { mutableStateOf(false) }
     var stylePreferenceSheetOpen by remember { mutableStateOf(false) }
-    val mainAdTimer = remember(generationOwner) { MainScreenAdTimer() }
-    // Route changes do not restart this timer: all signed-in screens count.
+    val tourStore = remember { com.itsdhruvbhardwaj.picme.data.local.AppTourStore(context.applicationContext) }
+    val tourTargets = remember { AppTourTargets() }
+    var tourShowing by rememberSaveable(generationOwner) { mutableStateOf(false) }
+    var replayTour by rememberSaveable(generationOwner) { mutableStateOf(false) }
+    var tourLocallySeen by remember(generationOwner) { mutableStateOf(generationOwner?.let { tourStore.seen(it) } == true) }
+    val tourUser = (authState as? AuthState.Authenticated)?.user
+    val tourPending = replayTour || (tourUser?.appTourVersionSeen == 0 && !tourLocallySeen)
+    val pauseAdsForTour by rememberUpdatedState(tourShowing || tourPending)
+    val homeTourState by homeViewModel.uiState.collectAsState()
+    LaunchedEffect(generationOwner, currentRoute, tourPending, homeTourState, tourUser?.profileSetupComplete, tourUser?.stylePreferenceSetupComplete,
+        engagementOverlayOpen, stylePreferenceSheetOpen, isAppRefreshing) {
+        if (currentRoute == Screen.Home.route && tourPending && tourUser?.emailVerified == true &&
+            tourUser.profileSetupComplete != false && tourUser.stylePreferenceSetupComplete != false &&
+            homeTourState is HomeUiState.Success && !isAppRefreshing && !engagementOverlayOpen && !stylePreferenceSheetOpen &&
+            !authViewModel.isPurchaseLoading.value && !AdManager.isFullScreenAdShowing()) tourShowing = true
+    }
     LaunchedEffect(generationOwner, lifecycleOwner) {
-        if (generationOwner != null) {
-            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-                mainAdTimer.enter(SystemClock.elapsedRealtime())
-                var nextLoadAt = 0L
-                try {
-                    while (true) {
-                        val now = SystemClock.elapsedRealtime()
-                        val busy = engagementOverlayOpen || preferenceSetupOpen || authViewModel.isPurchaseLoading.value || authViewModel.isRewardedAdLoading.value
-                        val activity = context as? Activity
-                        if (!busy && activity != null && !activity.isFinishing && !activity.isDestroyed) {
-                            if (mainAdTimer.isDue(now) && AdManager.mainScreenInterstitialAllowed(now) && AdManager.isInterstitialReady()) {
-                                mainAdTimer.reset(now)
-                                AdManager.showInterstitial(activity) { }
-                            } else if (!AdManager.isInterstitialReady() && now >= nextLoadAt) {
-                                AdManager.loadInterstitial(context)
-                                nextLoadAt = now + 30_000L
-                            }
-                        }
-                        delay(1_000)
-                    }
-                } finally { mainAdTimer.leave(SystemClock.elapsedRealtime()) }
+        val owner = generationOwner ?: return@LaunchedEffect
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                val action = tourStore.pending(owner)
+                if (action != null && authViewModel.finishAppTour(owner, com.itsdhruvbhardwaj.picme.data.model.AppTourResponse(action=action)).getOrNull() == true)
+                    tourStore.acknowledged(owner, action)
+                delay(60_000)
             }
         }
+    }
+    fun finishTour(action: String) {
+        val owner = generationOwner ?: return
+        tourStore.finish(owner, action)
+        tourLocallySeen = true; tourShowing = false; replayTour = false
+        scope.launch {
+            if (authViewModel.finishAppTour(owner, com.itsdhruvbhardwaj.picme.data.model.AppTourResponse(action=action)).getOrNull() == true)
+                tourStore.acknowledged(owner, action)
+        }
+    }
+    val mainAdTimer = remember(generationOwner) { MainScreenAdTimer() }
+    var creditsRequest by remember { mutableStateOf<CreditsRequest?>(null) }
+    val adRoute by rememberUpdatedState(currentRoute)
+    val adConfig by AdPolicy.config.collectAsState()
+    LaunchedEffect(generationOwner, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            AdManager.setForeground(context, true)
+            val configRefresh = launch {
+                while (true) {
+                    AdPolicy.refresh(context.applicationContext)
+                    AdManager.loadInterstitial(context)
+                    delay(30_000)
+                }
+            }
+            try {
+                while (true) {
+                    val user = (authState as? AuthState.Authenticated)?.user
+                    val pauseReason = when {
+                        user?.emailVerified != true -> "SIGNED_OUT_OR_UNVERIFIED"
+                        user.profileSetupComplete == false || user.stylePreferenceSetupComplete == false -> "ACCOUNT_SETUP"
+                        pauseAdsForTour -> "APP_TOUR"
+                        AdManager.isDiagnosticOverlayVisible() -> "DIAGNOSTICS_OPEN"
+                        engagementOverlayOpen -> "FEEDBACK_PROMPT"
+                        stylePreferenceSheetOpen -> "PREFERENCE_SHEET"
+                        creditsRequest != null || authViewModel.isPurchaseLoading.value || authViewModel.isRewardedAdLoading.value -> "CREDITS_OR_PURCHASE_FLOW"
+                        AdManager.isFullScreenAdShowing() -> "FULL_SCREEN_AD"
+                        adRoute in listOf(Screen.Splash.route, Screen.StylePreferenceSetup.route,Screen.DeleteAccount.route, Screen.CreatePassword.route, Screen.ResetPassword.route) -> "PROTECTED_SCREEN"
+                        !AdPolicy.config.value.allows(AdPlacement.TIMED_NAVIGATION) -> "DISABLED_BY_WORKSPACE"
+                        else -> null
+                    }
+                    val paused = pauseReason != null
+                    val now = SystemClock.elapsedRealtime()
+                    if (paused) mainAdTimer.leave(now) else {
+                        mainAdTimer.enter(now)
+                        val config = AdPolicy.config.value
+                        val activity = context as? Activity
+                        if (activity != null && mainAdTimer.isDue(now, config.timedIntervalSeconds * 1000L)) {
+                            AdManager.showPlacement(activity, AdPlacement.TIMED_NAVIGATION) {
+                                mainAdTimer.reset(SystemClock.elapsedRealtime())
+                            }
+                        }
+                    }
+                    AdManager.updateUsageDiagnostics((mainAdTimer.remainingMillis(now,AdPolicy.config.value.timedIntervalSeconds*1000L)+999)/1000,pauseReason)
+                    delay(1_000)
+                }
+            } finally {
+                AdManager.setForeground(context, false)
+                configRefresh.cancel()
+                mainAdTimer.leave(SystemClock.elapsedRealtime())
+            }
+        }
+    }
+
+    fun showEventAd(placement: AdPlacement) {
+        val user = (authState as? AuthState.Authenticated)?.user ?: return
+        val blocked = when {
+            user.emailVerified != true -> "UNVERIFIED_ACCOUNT"
+            user.profileSetupComplete == false || user.stylePreferenceSetupComplete == false -> "ACCOUNT_SETUP"
+            tourShowing || tourPending -> "APP_TOUR"
+            engagementOverlayOpen -> "FEEDBACK_PROMPT"
+            authViewModel.isPurchaseLoading.value || authViewModel.isRewardedAdLoading.value -> "PURCHASE_OR_REWARD_FLOW"
+            !lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) -> "SCREEN_NOT_RESUMED"
+            else -> null
+        }
+        if (blocked != null) { AdManager.notePlacementBlocked(placement, blocked); return }
+        val config = AdPolicy.config.value
+        val now = SystemClock.elapsedRealtime()
+        val actual = if (placement == AdPlacement.TIMED_NAVIGATION) {
+            if (!mainAdTimer.isDue(now, config.timedIntervalSeconds * 1000L)) return
+            AdPlacement.TIMED_NAVIGATION
+        } else placement
+        val activity = context as? Activity ?: return
+        AdManager.showPlacement(activity, actual) { mainAdTimer.reset(SystemClock.elapsedRealtime()) }
     }
 
     val headerState = GenerationHeaderState(
@@ -274,14 +364,16 @@ fun NavGraph(
             navController.navigate(Screen.Generation.createRoute("recovery")) { launchSingleTop = true }
         }
     )
-    var creditsRequest by remember { mutableStateOf<CreditsRequest?>(null) }
     LaunchedEffect(generationOwner) { creditsRequest = null }
-    CompositionLocalProvider(LocalGenerationHeaderState provides headerState,
-        LocalCreditsLauncher provides { request -> creditsRequest = request }) {
+    CompositionLocalProvider(LocalAppTourTargets provides tourTargets, LocalGenerationHeaderState provides headerState,
+        LocalCreditsLauncher provides { request ->
+            if (creditsRequest == null) { showEventAd(AdPlacement.BUY_MORE); creditsRequest = request }
+        }) {
     // Paint behind the system navigation area before applying safe content insets.
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .semantics { if (tourShowing) invisibleToUser() }
             .background(MaterialTheme.colorScheme.background)
             // Keep controls clear of navigation bars and landscape cutouts.
             // Screens and headers own the top inset so their backgrounds can
@@ -423,9 +515,14 @@ fun NavGraph(
                         authViewModel = authViewModel,
                         viewModel = homeViewModel,
                         isRefreshing = isAppRefreshing,
+                        tourActive = tourShowing,
                         onRefresh = refreshApp,
-                        onStyleClick = { id -> navController.navigate(Screen.StyleDetails.createRoute(id)) },
-                        onSeeAllClick = { collection -> navController.navigate(Screen.StylesGrid.createRoute(collection)) },
+                        onStyleClick = { id -> navController.navigate(Screen.StyleDetails.createRoute(id)) { launchSingleTop = true } },
+                        onSeeAllClick = seeAll@{ collection ->
+                            if (navController.currentDestination?.route != Screen.Home.route) return@seeAll
+                            showEventAd(AdPlacement.HOME_SEE_ALL)
+                            navController.navigate(Screen.StylesGrid.createRoute(collection)) { launchSingleTop = true }
+                        },
                         onProfileClick = {
                             navController.navigate(Screen.Profile.route) {
                                 popUpTo(Screen.Home.route) { saveState = true }
@@ -440,7 +537,7 @@ fun NavGraph(
                     ExploreScreen(
                         authViewModel = authViewModel,
                         viewModel = exploreViewModel,
-                        onStyleClick = { id -> navController.navigate(Screen.StyleDetails.createRoute(id)) },
+                        onStyleClick = { id -> navController.navigate(Screen.StyleDetails.createRoute(id)) { launchSingleTop = true } },
                         onProfileClick = {
                             navController.navigate(Screen.Profile.route) {
                                 popUpTo(Screen.Home.route) { saveState = true }
@@ -455,8 +552,10 @@ fun NavGraph(
                     CollectionsScreen(
                         authViewModel = authViewModel,
                         viewModel = collectionsViewModel,
-                        onCollectionClick = { collection ->
-                            navController.navigate(Screen.StylesGrid.createRoute(collection))
+                        onCollectionClick = collectionClick@{ collection ->
+                            if (navController.currentDestination?.route != Screen.Collections.route) return@collectionClick
+                            showEventAd(AdPlacement.COLLECTION_OPEN)
+                            navController.navigate(Screen.StylesGrid.createRoute(collection)) { launchSingleTop = true }
                         },
                         onProfileClick = {
                             navController.navigate(Screen.Profile.route) {
@@ -472,25 +571,7 @@ fun NavGraph(
                     FavoritesScreen(
                         authViewModel = authViewModel,
                         viewModel = favoritesViewModel,
-                        onStyleClick = { id -> navController.navigate(Screen.StyleDetails.createRoute(id)) },
-                        onProfileClick = {
-                            navController.navigate(Screen.Profile.route) {
-                                popUpTo(Screen.Home.route) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        }
-                    )
-                }
-
-                composable(Screen.Create.route) {
-                    CreateScreen(
-                        authViewModel = authViewModel,
-                        onGenerateClick = { prompt, uris ->
-                            generationViewModel.setSelectedPhotos(uris)
-                            generationViewModel.generateCustomImage(prompt)
-                            navController.navigate(Screen.Generation.createRoute("custom", prompt)) { launchSingleTop = true }
-                        },
+                        onStyleClick = { id -> navController.navigate(Screen.StyleDetails.createRoute(id)) { launchSingleTop = true } },
                         onProfileClick = {
                             navController.navigate(Screen.Profile.route) {
                                 popUpTo(Screen.Home.route) { saveState = true }
@@ -506,6 +587,7 @@ fun NavGraph(
                         authViewModel = authViewModel,
                         onEditAvatar = { navController.navigate(Screen.EditAvatar.route) },
                         onSendFeedback = { navController.navigate(Screen.Feedback.route) },
+                        onReplayTour = { replayTour = true; navController.navigate(Screen.Home.route) { popUpTo(Screen.Home.route); launchSingleTop = true } },
                         onLogoutClick = {
                             // Navigate first to avoid flicker of "User" state on Profile screen
                             navController.navigate(Screen.Login.route) {
@@ -521,7 +603,7 @@ fun NavGraph(
                                 restoreState = true
                             }
                         },
-                        onNavigateToMyGenerations = { navController.navigate(Screen.History.route) },
+                        onNavigateToMyGenerations = { showEventAd(AdPlacement.MY_GENERATIONS); navController.navigate(Screen.History.route) { launchSingleTop = true } },
                         onNavigateToPurchases = { navController.navigate(Screen.Purchases.route) },
                         onNavigateToCreditHistory = { navController.navigate(Screen.CreditHistory.route) }
                     )
@@ -555,7 +637,10 @@ fun NavGraph(
                 }
 
                 composable(Screen.EditAvatar.route) {
-                    AvatarSelectionScreen(authViewModel, onBack = { navController.popBackStack() })
+                    AvatarSelectionScreen(authViewModel, onBack = { navController.popBackStack() }, onSaved = {
+                        showEventAd(AdPlacement.AVATAR_SAVED)
+                        navController.popBackStack()
+                    })
                 }
 
                 composable(Screen.History.route) {
@@ -706,25 +791,8 @@ fun NavGraph(
                           if (navController.currentBackStackEntry?.id == backStackEntry.id) {
                             generationViewModel.setSelectedPhotos(uris)
                             generationViewModel.generateImage(styleId)
+                            showEventAd(AdPlacement.GENERATION_CONTINUE)
                             navController.navigate(Screen.Generation.createRoute(styleId)) { launchSingleTop = true }
-                            val generationEntry = navController.currentBackStackEntry
-                            // Generation is already running; ad availability never gates submission.
-                            scope.launch {
-                                val activity = context as? Activity ?: return@launch
-                                AdManager.loadInterstitial(activity)
-                                withTimeoutOrNull(2_500) {
-                                    while (!AdManager.isInterstitialReady() &&
-                                        navController.currentBackStackEntry?.id == generationEntry?.id) delay(100)
-                                }
-                                if (generationEntry != null && navController.currentBackStackEntry?.id == generationEntry.id &&
-                                    lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
-                                    !activity.isFinishing && !activity.isDestroyed &&
-                                    AdManager.isInterstitialReady() &&
-                                    (generationViewModel.uiState.value is GenerationUiState.Uploading ||
-                                        generationViewModel.uiState.value is GenerationUiState.Processing)) {
-                                    AdManager.showInterstitial(activity) { }
-                                }
-                            }
                           }
                         }
                     )
@@ -733,12 +801,10 @@ fun NavGraph(
                 composable(
                     route = Screen.Generation.route,
                     arguments = listOf(
-                        navArgument("styleId") { type = NavType.StringType },
-                        navArgument("prompt") { type = NavType.StringType; nullable = true }
+                        navArgument("styleId") { type = NavType.StringType }
                     )
                 ) { backStackEntry ->
                     val styleId = backStackEntry.arguments?.getString("styleId") ?: ""
-                    val prompt = backStackEntry.arguments?.getString("prompt")
                     val genState by generationViewModel.uiState.collectAsState()
                     val statusMsg by generationViewModel.statusMessage.collectAsState()
                     val selectedPhotos by generationViewModel.selectedPhotos.collectAsState()
@@ -759,11 +825,7 @@ fun NavGraph(
                             navController.popBackStack()
                         },
                         onRetryClick = {
-                            if (styleId == "custom" && prompt != null) {
-                                generationViewModel.generateCustomImage(prompt, isRetry = true)
-                            } else {
-                                generationViewModel.generateImage(styleId, isRetry = true)
-                            }
+                            generationViewModel.generateImage(styleId, isRetry = true)
                         },
                         onSuccess = { _ ->
                           if (navController.currentBackStackEntry?.destination?.route == Screen.Generation.route) {
@@ -791,6 +853,7 @@ fun NavGraph(
                         onSaveClick = {
                             if (generationViewModel.saveImageToGallery(context)) {
                                 Toast.makeText(context, "Your image is being saved to gallery", Toast.LENGTH_SHORT).show()
+                                showEventAd(AdPlacement.IMAGE_DOWNLOAD)
                             }
                         },
                         onShareClick = { generationViewModel.shareImage(context) },
@@ -904,7 +967,7 @@ fun NavGraph(
                     StylesGridScreen(
                         viewModel = gridViewModel,
                         onBackClick = { navController.popBackStack() },
-                        onStyleClick = { id -> navController.navigate(Screen.StyleDetails.createRoute(id)) }
+                        onStyleClick = { id -> navController.navigate(Screen.StyleDetails.createRoute(id)) { launchSingleTop = true } }
                     )
                 }
             }
@@ -915,8 +978,10 @@ fun NavGraph(
                     preference = stylePreference,
                     hazeState = dockHaze,
                     interaction = dockInteraction,
-                    onBuyCredits = { creditsRequest = CreditsRequest() },
+                    onBuyCredits = { if (creditsRequest == null) { showEventAd(AdPlacement.BUY_MORE); creditsRequest = CreditsRequest() } },
                     onApply = { styleRepository.saveStylePreference(it) },
+                    onApplied = { showEventAd(AdPlacement.APPEARANCE_APPLIED) },
+                    tourActive = tourShowing,
                     onPreferencesVisibleChanged = { stylePreferenceSheetOpen = it }
                 )
             }
@@ -940,7 +1005,7 @@ fun NavGraph(
         }
 
         // Shared Banner Slot: Takes physical space ONLY when visible.
-        if (bannerAllowed(currentRoute, isBottomBarVisible,
+        if (!tourShowing && adConfig.enabled && adConfig.bannersEnabled && bannerAllowed(currentRoute, isBottomBarVisible,
             (authState as? AuthState.Authenticated)?.user?.profileSetupComplete == false)) {
             BannerAdView(modifier = Modifier.fillMaxWidth())
         }
@@ -952,7 +1017,7 @@ fun NavGraph(
         safeToPrompt = {
             val signedIn = (authState as? AuthState.Authenticated)?.user
             val home = homeViewModel.uiState.value as? HomeUiState.Success
-            currentRoute == Screen.Home.route && signedIn?.emailVerified == true &&
+            currentRoute == Screen.Home.route && !tourShowing && !tourPending && signedIn?.emailVerified == true &&
                 signedIn.profileSetupComplete != false && signedIn.stylePreferenceSetupComplete != false &&
                 home != null && home.refreshError == null && creditsRequest == null && !stylePreferenceSheetOpen &&
                 !authViewModel.isPurchaseLoading.value && !authViewModel.isRewardedAdLoading.value && !AdManager.isFullScreenAdShowing() &&
@@ -961,6 +1026,9 @@ fun NavGraph(
         onOverlayChanged = { engagementOverlayOpen = it },
         onFeedback = { navController.navigate(Screen.Feedback.route) { launchSingleTop = true } }
     )
+    if (tourShowing && currentRoute == Screen.Home.route) {
+        AppTourOverlay(tourTargets, dockHaze, onFinish = ::finishTour)
+    }
     creditsRequest?.let { request ->
         CreditsOptionsBottomSheet(viewModel = authViewModel, request = request, onDismiss = { creditsRequest = null })
     }

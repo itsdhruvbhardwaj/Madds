@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -33,9 +34,15 @@ fun HomeScreen(
     onSeeAllClick: (String?) -> Unit,
     onProfileClick: () -> Unit,
     isRefreshing: Boolean = false,
-    onRefresh: () -> Unit = { viewModel.loadHomeData() }
+    onRefresh: () -> Unit = { viewModel.loadHomeData() },
+    tourActive: Boolean = false
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val adConfig by com.itsdhruvbhardwaj.picme.utils.AdPolicy.config.collectAsState()
+    val nativeEnabled = adConfig.enabled && adConfig.nativeHomeEnabled && !tourActive
+    val nativeSlots = rememberNativeFeedSlots(nativeEnabled,2,adConfig.homeNativeEverySections)
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    LaunchedEffect(tourActive) { if (tourActive) listState.scrollToItem(0) }
     val autoRetrying by viewModel.isAutoRetrying.collectAsState()
     ObserveHomeRecovery(viewModel)
     val authState by authViewModel.authState.collectAsState()
@@ -60,6 +67,7 @@ fun HomeScreen(
                     .padding(top = innerPadding.calculateTopPadding())
             ) {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 100.dp)
                 ) {
@@ -78,15 +86,22 @@ fun HomeScreen(
                             if (state.sections.isEmpty()) item {
                                 Text("No styles available yet. Pull down to refresh.", modifier = Modifier.padding(24.dp))
                             }
-                            items(state.sections, key = { it.config.id }) { sectionData ->
+                            itemsIndexed(state.sections, key = { _, section -> section.config.id }) { sectionIndex, sectionData ->
                                 if (sectionData.styles == null) {
                                     SectionSkeleton()
                                 } else if (sectionData.styles.isNotEmpty()) {
                                     HomeSectionRow(
                                         sectionData = sectionData,
                                         onStyleClick = onStyleClick,
-                                        onSeeAllClick = onSeeAllClick
+                                        onSeeAllClick = onSeeAllClick,
+                                        tourSection = sectionData.config.id == state.sections.firstOrNull { !it.styles.isNullOrEmpty() }?.config?.id,
+                                        tourActive = tourActive
                                     )
+                                }
+                                if (nativeEnabled) {
+                                    nativeFeedSlotIndex(sectionIndex,state.sections.size,adConfig.homeNativeEverySections,2)?.let { slotIndex ->
+                                        NativeFeedAd(nativeSlots[slotIndex])
+                                    }
                                 }
                                 if (sectionData.error != null) {
                                     TextButton(onClick = onRefresh) {
@@ -106,21 +121,28 @@ fun HomeScreen(
 fun HomeSectionRow(
     sectionData: HomeSectionData,
     onStyleClick: (String) -> Unit,
-    onSeeAllClick: (String?) -> Unit
+    onSeeAllClick: (String?) -> Unit,
+    tourSection: Boolean = false,
+    tourActive: Boolean = false
 ) {
+    val rowState = androidx.compose.foundation.lazy.rememberLazyListState()
+    LaunchedEffect(tourActive) { if (tourActive && tourSection) rowState.scrollToItem(0) }
     Column {
         SectionHeader(
             title = sectionData.config.title,
             onSeeAllClick = { onSeeAllClick(sectionData.config.slug) },
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            seeAllModifier = if (tourSection) Modifier.appTourTarget("see_all") else Modifier
         )
         LazyRow(
+            state = rowState,
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(sectionData.styles!!, key = { it.id }) { style ->
                 StyleCard(
                     name = style.name,
+                    modifier = if (tourSection && style.id == sectionData.styles?.firstOrNull()?.id) Modifier.appTourTarget("style") else Modifier,
                     thumbnailUrl = style.thumbnail,
                     genderTag = style.genderTag,
                     onClick = { onStyleClick(style.id) },

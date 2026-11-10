@@ -74,6 +74,13 @@ fun PicMeBottomNavigationBar(
 
                     Box(
                         modifier = Modifier
+                            .then(when (item.route) {
+                                Screen.Search.route -> Modifier.appTourTarget("explore")
+                                Screen.Collections.route -> Modifier.appTourTarget("collections")
+                                Screen.Favorites.route -> Modifier.appTourTarget("favourites")
+                                Screen.Profile.route -> Modifier.appTourTarget("profile")
+                                else -> Modifier
+                            })
                             .size(54.dp, 50.dp)
                             .clip(RoundedCornerShape(23.dp))
                             .clickable(

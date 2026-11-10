@@ -17,6 +17,8 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,7 +62,8 @@ fun ProfileScreen(
     onNavigateToCreditHistory: () -> Unit,
     onProfileClick: () -> Unit,
     onEditAvatar: () -> Unit,
-    onSendFeedback: () -> Unit = {}
+    onSendFeedback: () -> Unit = {},
+    onReplayTour: () -> Unit = {}
 ) {
     val authState by authViewModel.authState.collectAsState()
 
@@ -78,6 +81,8 @@ fun ProfileScreen(
     val openCredits = LocalCreditsLauncher.current
     var showLogoutConfirm by remember { mutableStateOf(false) }
     var showFollowUs by remember { mutableStateOf(false) }
+    val refreshScope = rememberCoroutineScope()
+    var refreshing by remember(user?.id) { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // Blurred Wallpaper Background
@@ -93,10 +98,22 @@ fun ProfileScreen(
                 )
             }
         ) { innerPadding ->
+            PullToRefreshBox(
+                isRefreshing = refreshing,
+                onRefresh = {
+                    if (!refreshing) {
+                        refreshing = true
+                        refreshScope.launch {
+                            try { authViewModel.checkSession().join() }
+                            finally { refreshing = false }
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxSize().padding(top = innerPadding.calculateTopPadding())
+            ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = innerPadding.calculateTopPadding())
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp)
                     .padding(bottom = 160.dp),
@@ -238,6 +255,8 @@ fun ProfileScreen(
                             onClick = { SupportLinks.website(context, "help") }
                         )
                         HorizontalDivider(Modifier.padding(horizontal = 24.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
+                        MenuItem(icon = Icons.Default.Help, title = "Replay app tour", onClick = onReplayTour)
+                        HorizontalDivider(Modifier.padding(horizontal = 24.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
                         MenuItem(icon = Icons.Default.Feedback, title = "Send Feedback", onClick = onSendFeedback)
                         HorizontalDivider(Modifier.padding(horizontal = 24.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
                         MenuItem(icon = Icons.Default.StarOutline, title = "Rate Madds", onClick = { SupportLinks.rate(context) })
@@ -310,6 +329,7 @@ fun ProfileScreen(
                 }
             }
         }
+    }
     }
 
     if (showFollowUs) {

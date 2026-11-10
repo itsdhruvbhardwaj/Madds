@@ -101,10 +101,13 @@ class MainActivity : ComponentActivity() {
         appUpdateManager = AppUpdateManagerFactory.create(this)
         appUpdateManager.registerListener(updateStateListener)
 
+        com.itsdhruvbhardwaj.picme.utils.AdPolicy.initialize(applicationContext)
         // Initialize Google Mobile Ads SDK
         MobileAds.initialize(this) {
-            AdManager.loadInterstitial(this)
-            AdManager.loadRewardedAd(this)
+            runOnUiThread {
+                AdManager.onSdkInitialized(applicationContext)
+                AdManager.loadRewardedAd(this)
+            }
         }
 
         // Initialize Billing Manager

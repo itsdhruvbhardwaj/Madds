@@ -63,23 +63,6 @@ class GenerationRepository(
         }
     }
 
-    /**
-     * Sends a request to generate an image from a custom text prompt.
-     */
-    suspend fun generateCustomImage(
-        prompt: String,
-        imageUris: List<Uri>,
-        idempotencyKey: String
-    ): Result<GenerationResponse> = withContext(Dispatchers.IO) {
-        val promptBody = prompt.toRequestBody("text/plain".toMediaTypeOrNull())
-        executeGeneration(idempotencyKey) { auth, key ->
-            val imageParts = imageUris.map { uri ->
-                preparePhoto(contentResolver, uri, "images")
-            }
-            apiService.generateCustomImage(auth, key, promptBody, imageParts)
-        }
-    }
-
     private suspend fun executeGeneration(
         idempotencyKey: String,
         call: suspend (auth: String, key: String) -> retrofit2.Response<GenerationResponse>
@@ -109,7 +92,7 @@ class GenerationRepository(
                         else Result.failure(DuplicateOperationException("Duplicate request"))
                     }
                     400 -> {
-                        if (errorBodyString.contains("TOO_MANY_IMAGES")) Result.failure(Exception("Please select at most 2 images for custom generation."))
+                        if (errorBodyString.contains("TOO_MANY_IMAGES")) Result.failure(Exception("Too many photos selected for this style."))
                         else Result.failure(Exception("Invalid request: $errorBodyString"))
                     }
                     else -> Result.failure(AmbiguousOutcomeException("The request status needs to be checked. No new generation will be started."))

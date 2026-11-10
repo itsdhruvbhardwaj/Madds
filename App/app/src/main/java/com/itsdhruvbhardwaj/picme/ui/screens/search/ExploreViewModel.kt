@@ -6,6 +6,7 @@ import com.itsdhruvbhardwaj.picme.data.model.Style
 import com.itsdhruvbhardwaj.picme.data.model.StyleCollection
 import com.itsdhruvbhardwaj.picme.data.repository.StyleRepository
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,7 +20,8 @@ sealed interface ExploreUiState {
         val styles: List<Style>,
         val hasMore: Boolean,
         val isLoadingMore: Boolean = false,
-        val loadMoreError: String? = null
+        val loadMoreError: String? = null,
+        val refreshError: String? = null
     ) : ExploreUiState
     data class Error(val message: String) : ExploreUiState
 }
@@ -37,6 +39,9 @@ class ExploreViewModel(
     val uiState: StateFlow<ExploreUiState> = _uiState.asStateFlow()
     private val _collections = MutableStateFlow<List<StyleCollection>>(emptyList())
     val collections: StateFlow<List<StyleCollection>> = _collections.asStateFlow()
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+    private var refreshJob: Job? = null
 
     private var currentQuery = ""
     private var currentCollection: String? = null
@@ -70,19 +75,32 @@ class ExploreViewModel(
         loadFirstPage(currentQuery, debounce = false)
     }
 
-    fun refresh(): Job = viewModelScope.launch {
-        launch { styleRepository.getCollections().onSuccess { _collections.value = it } }
-        loadFirstPage(currentQuery, debounce = false).join()
+    fun refresh(): Job {
+        refreshJob?.takeIf { it.isActive }?.let { return it }
+        _isRefreshing.value = true
+        return viewModelScope.launch {
+            try {
+              coroutineScope {
+                val selected = styleRepository.stylePreference.value
+                launch { styleRepository.getCollections().onSuccess {
+                    if (styleRepository.stylePreference.value == selected) _collections.value = it
+                } }
+                loadFirstPage(currentQuery, debounce = false, keepContent = true).join()
+              }
+            } finally { _isRefreshing.value = false }
+        }.also { refreshJob = it }
     }
 
-    private fun loadFirstPage(query: String, debounce: Boolean): Job {
+    private fun loadFirstPage(query: String, debounce: Boolean, keepContent: Boolean = false): Job {
         searchJob?.cancel()
+        val previous = if (keepContent) _uiState.value as? ExploreUiState.Success else null
+        val previousPage = currentPage
         val requestGeneration = ++generation
         currentPage = 0
         isLoadingMore = false
         val job = viewModelScope.launch {
             if (debounce) delay(SEARCH_DEBOUNCE_MS)
-            _uiState.value = ExploreUiState.Loading
+            _uiState.value = previous?.copy(isLoadingMore = false, loadMoreError = null, refreshError = null) ?: ExploreUiState.Loading
             val result = styleRepository.getStyles(
                 page = 1,
                 limit = PAGE_SIZE,
@@ -100,7 +118,10 @@ class ExploreViewModel(
                     )
                 },
                 onFailure = { error ->
-                    _uiState.value = ExploreUiState.Error(error.message ?: "Failed to load styles.")
+                    if (previous != null) {
+                        currentPage = previousPage
+                        _uiState.value = previous.copy(isLoadingMore = false, refreshError = error.message ?: "Couldn't refresh styles. Pull down to retry.")
+                    } else _uiState.value = ExploreUiState.Error(error.message ?: "Failed to load styles.")
                 }
             )
         }
@@ -110,7 +131,7 @@ class ExploreViewModel(
 
     fun loadNextPage() {
         val state = _uiState.value as? ExploreUiState.Success ?: return
-        if (!state.hasMore || state.isLoadingMore || isLoadingMore) return
+        if (_isRefreshing.value || !state.hasMore || state.isLoadingMore || isLoadingMore) return
 
         val requestGeneration = generation
         val nextPage = currentPage + 1

@@ -12,8 +12,8 @@ android {
         applicationId = "com.itsdhruvbhardwaj.picme"
         minSdk = 24
         targetSdk = 37
-        versionCode = 8
-        versionName = "1.2.0"
+        versionCode = 9
+        versionName = "1.2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -23,6 +23,7 @@ android {
 
     buildTypes {
         release {
+            buildConfigField("String", "AD_UNIT_ID_NATIVE", "\"ca-app-pub-7668637948120420/5549864554\"")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -34,6 +35,7 @@ android {
             buildConfigField("String", "AD_UNIT_ID_REWARDED", "\"ca-app-pub-7668637948120420/1843520466\"")
         }
         debug {
+            buildConfigField("String", "AD_UNIT_ID_NATIVE", "\"ca-app-pub-3940256099942544/2247696110\"")
             buildConfigField("String", "AD_UNIT_ID_BANNER", "\"ca-app-pub-3940256099942544/9214589741\"")
             buildConfigField("String", "AD_UNIT_ID_INTERSTITIAL", "\"ca-app-pub-3940256099942544/1033173712\"")
             //buildConfigField("String", "AD_UNIT_ID_REWARDED", "\"ca-app-pub-3940256099942544/5224354917\"")

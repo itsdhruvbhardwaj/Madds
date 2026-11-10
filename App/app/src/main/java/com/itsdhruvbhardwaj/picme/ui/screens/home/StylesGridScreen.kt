@@ -17,7 +17,6 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.ui.components.PicMeCompactHeader
@@ -69,7 +68,7 @@ fun StylesGridScreen(
                         } else {
                             LazyVerticalGrid(
                                 state = gridState,
-                                columns = GridCells.Fixed(3),
+                                columns = GridCells.Adaptive(minSize = 140.dp),
                                 // Content padding to start below floating pill and leave room at bottom
                                 contentPadding = PaddingValues(
                                     start = 12.dp,
@@ -98,8 +97,7 @@ fun StylesGridScreen(
                                         genderTag = style.genderTag,
                                         onClick = { onStyleClick(style.id) },
                                         modifier = Modifier.fillMaxWidth(),
-                                        width = Dp.Unspecified,
-                                        height = 160.dp,
+                                        aspectRatio = 5f / 7f,
                                         internalPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp),
                                     )
                                 }

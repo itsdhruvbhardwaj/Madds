@@ -42,6 +42,8 @@ fun CreditsOptionsBottomSheet(
     sheetState: SheetState = rememberModalBottomSheetState(),
     request: CreditsRequest = CreditsRequest()
 ) {
+    val adConfig by com.itsdhruvbhardwaj.picme.utils.AdPolicy.config.collectAsState()
+    val rewardsEnabled = adConfig.enabled && adConfig.rewardedEnabled
     val context = LocalContext.current
     val rewardConfig by viewModel.rewardedAdConfig.collectAsState()
     val rewardLoading by viewModel.rewardConfigLoading.collectAsState()
@@ -113,7 +115,7 @@ fun CreditsOptionsBottomSheet(
                         else viewModel.refreshRewardConfig()
                     }
                 },
-                enabled = !isAdLoading && !isPurchaseLoading && !rewardLoading && rewardConfig?.available != false,
+                enabled = rewardsEnabled && !isAdLoading && !isPurchaseLoading && !rewardLoading && rewardConfig?.available != false,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(64.dp),
@@ -153,6 +155,7 @@ fun CreditsOptionsBottomSheet(
                         )
                         Text(
                             text = when {
+                                !rewardsEnabled -> "Rewarded ads are temporarily unavailable"
                                 rewardLoading -> "Checking reward…"
                                 rewardConfig?.validReward == true -> "1 Ad = ${rewardConfig!!.credits} ${if (rewardConfig!!.credits == 1) "Credit" else "Credits"}"
                                 rewardConfig?.available == false -> "Rewarded ads are temporarily unavailable"

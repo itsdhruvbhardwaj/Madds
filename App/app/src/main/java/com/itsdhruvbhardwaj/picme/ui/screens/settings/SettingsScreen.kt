@@ -82,6 +82,7 @@ fun SettingsScreen(
     val resetState by authViewModel.passwordResetEmailState.collectAsState()
     var passwordRequiredFor by remember { mutableStateOf<String?>(null) }
     var confirmReset by remember { mutableStateOf(false) }
+    var showAdDiagnostics by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { authViewModel.checkSession() }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -125,6 +126,11 @@ fun SettingsScreen(
                             onClick = onNotificationsClick
                         )
                     }
+                }
+
+                if (BuildConfig.DEBUG) {
+                    GlassCard { SettingsRow(icon=Icons.Default.Info,title="Ad diagnostics",
+                        subtitle="Interstitial readiness and recent events",onClick={showAdDiagnostics=true}) }
                 }
 
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -195,6 +201,7 @@ fun SettingsScreen(
             dismissButton = { TextButton(onClick = { passwordRequiredFor = null; authViewModel.clearSettingsPasswordResetState() }) { Text("Cancel") } }
         )
     }
+    if (showAdDiagnostics) com.itsdhruvbhardwaj.picme.ui.components.InterstitialDiagnosticsDialog { showAdDiagnostics=false }
     if (confirmReset) {
         AlertDialog(onDismissRequest = { confirmReset = false },
             title = { Text("Reset password?") },

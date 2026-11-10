@@ -131,7 +131,6 @@ class GenerationViewModelTest {
         assertTrue(error.message.contains("clear, well-lit photograph"))
         assertTrue(!error.canRetryWithNewKey)
         verify(repository, never()).generateImage(any(), any(), any())
-        verify(repository, never()).generateCustomImage(any(), any(), any())
     }
 
     @Test fun `server insufficient credits exposes the shared top-up request without retrying generation`() = runTest {

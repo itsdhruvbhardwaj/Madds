@@ -87,24 +87,16 @@ class GenerationViewModel(
 
     fun generateImage(styleId: String, isRetry: Boolean = false) {
         if (isRetry) { viewModelScope.launch { refreshOperations() }; return }
-        startGeneration(styleId, null)
+        startGeneration(styleId)
     }
 
-    fun generateCustomImage(prompt: String, isRetry: Boolean = false) {
-        if (isRetry) { viewModelScope.launch { refreshOperations() }; return }
-        if (prompt.isBlank() || prompt.trim().split("\\s+".toRegex()).size > 150) {
-            _uiState.value = GenerationUiState.Error("Enter a prompt of up to 150 words."); return
-        }
-        startGeneration("custom-prompt", prompt)
-    }
-
-    private fun startGeneration(styleId: String, prompt: String?) {
+    private fun startGeneration(styleId: String) {
         // Set the guard synchronously, before navigation or launching a coroutine.
         if (_uiState.value is GenerationUiState.Uploading || _uiState.value is GenerationUiState.Processing) return
         val owner = account ?: generationRepository.accountId() ?: return
         if (account != owner) bindAccount(owner)
         val photos = _selectedPhotos.value.toList()
-        if (prompt == null && photos.isEmpty()) {
+        if (photos.isEmpty()) {
             _uiState.value = GenerationUiState.Error("No photos selected. Please select your photos."); return
         }
         val key = UUID.randomUUID().toString()
@@ -119,8 +111,7 @@ class GenerationViewModel(
         jobs.removeAll { it.isCompleted }
         jobs += viewModelScope.launch {
             try {
-                val response = if (prompt == null) generationRepository.generateImage(styleId, photos, key)
-                    else generationRepository.generateCustomImage(prompt, photos, key)
+                val response = generationRepository.generateImage(styleId, photos, key)
                 if (ticket != epoch) return@launch
                 response.fold(onSuccess = { body ->
                     val id = body.generationId ?: key
