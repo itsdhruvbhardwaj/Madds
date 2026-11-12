@@ -47,7 +47,9 @@ fun FavoritesScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        val gridColumns = if (maxWidth < 600.dp) GridCells.Fixed(3)
+            else GridCells.Adaptive(minSize = 140.dp)
         // Shared Glassmorphism Background
 
 
@@ -122,7 +124,7 @@ fun FavoritesScreen(
                             }
                         } else {
                             LazyVerticalGrid(
-                                columns = GridCells.Adaptive(minSize = 140.dp),
+                                columns = gridColumns,
                                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 120.dp),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp),

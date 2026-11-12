@@ -88,7 +88,7 @@ fun GenerationScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = innerPadding.calculateTopPadding())
+                    .padding(innerPadding)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -110,8 +110,9 @@ fun GenerationScreen(
                 // Main Preview Area - Visual Focus
                 Box(
                     modifier = Modifier
+                        .widthIn(max = 520.dp)
                         .fillMaxWidth()
-                        .aspectRatio(0.85f)
+                        .aspectRatio(5f / 7f)
                         .shadow(
                             elevation = 20.dp,
                             shape = RoundedCornerShape(32.dp),
@@ -324,7 +325,10 @@ fun GenerationDots() {
 @Composable
 fun GenerationErrorView(message: String, onRetry: () -> Unit, actionLabel: String = "Check status") {
     Column(
-        modifier = Modifier.padding(32.dp).fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {

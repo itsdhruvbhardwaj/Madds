@@ -7,6 +7,16 @@ class GenerationReadyGateTest {
     private val id = "6aea074afb8cb4bbdd350b96"
     private val other = "6aea074afb8cb4bbdd350b97"
 
+    @Test fun `viewing a result suppresses late alerts after leaving the screen`() {
+        val gate = GenerationReadyGate()
+        gate.watch("owner", id)
+        gate.imageDisplayed("owner", id)
+        gate.watch(null, null)
+        assertTrue(gate.hasDisplayed("owner", id))
+        assertFalse(gate.hasDisplayed("owner", other))
+        assertFalse(gate.hasDisplayed("different-owner", id))
+    }
+
     @Test fun `completion waits until focused image is displayed`() {
         val gate = GenerationReadyGate()
         gate.watch("owner", id)

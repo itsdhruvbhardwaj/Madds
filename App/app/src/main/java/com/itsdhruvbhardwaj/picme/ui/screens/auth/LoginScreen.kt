@@ -43,14 +43,15 @@ fun LoginScreen(
     onCancelDeletion: () -> Unit = {},
     onKeepDeletion: () -> Unit = {},
     onDismissDeletionDialog: () -> Unit = {},
-    isDeletionCancellationLoading: Boolean = false
+    isDeletionCancellationLoading: Boolean = false,
+    isGoogleSigningIn: Boolean = false
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
 
-    val isLoading = authState is AuthState.Authenticating
-    val errorMessage = (authState as? AuthState.Error)?.message
+    val isLoading = authState is AuthState.Authenticating || isGoogleSigningIn
+    val errorMessage = (authState as? AuthState.Error)?.message?.takeUnless { isGoogleSigningIn }
     val isUnverified = errorMessage?.contains("hasn't been verified yet", ignoreCase = true) == true
     val isInvalidCredentials = errorMessage?.contains("Incorrect email or password", ignoreCase = true) == true
 
@@ -79,7 +80,7 @@ fun LoginScreen(
         Spacer(modifier = Modifier.height(48.dp))
 
         PicMeSocialButton(
-            text = "Continue with Google",
+            text = if (isGoogleSigningIn) "Connecting to Google…" else "Continue with Google",
             iconRes = R.drawable.google_icon_logo_svgrepo_com,
             onClick = onGoogleClick,
             enabled = !isLoading

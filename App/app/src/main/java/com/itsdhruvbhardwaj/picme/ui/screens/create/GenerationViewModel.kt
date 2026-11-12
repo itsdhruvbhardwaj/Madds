@@ -59,6 +59,18 @@ class GenerationViewModel(
     private val _eventFlow = MutableSharedFlow<GenerationEvent>()
     val eventFlow: SharedFlow<GenerationEvent> = _eventFlow.asSharedFlow()
 
+    private val _savedResults = MutableStateFlow<Set<String>>(emptySet())
+    val savedResults = _savedResults.asStateFlow()
+    private val dismissedResults = mutableSetOf<String>()
+    fun resultKey(image: String, id: String? = focusedId): String = "${account}:${id ?: image}"
+
+    fun discardFocusedResult(expectedId: String?) {
+        if (expectedId == null || focusedId != expectedId) return
+        dismissedResults += expectedId
+        _operations.value = _operations.value.filterNot { it.id == expectedId }
+        markFocusedViewed(expectedId)
+    }
+
     private var currentIdempotencyKey: String? = null
     var onProfileRefreshRequested: (() -> Unit)? = null
     fun notificationOwner(): String? = account
@@ -79,6 +91,7 @@ class GenerationViewModel(
     fun bindAccount(owner: String?) {
         if (account == owner) return
         epoch++; account = owner
+        _savedResults.value = emptySet(); dismissedResults.clear()
         jobs.forEach { it.cancel() }; jobs.clear(); fetching.clear(); refreshing = false
         _operations.value = emptyList(); resetState(); _selectedPhotos.value = emptyList()
     }
@@ -172,7 +185,7 @@ class GenerationViewModel(
                 } else pending += com.itsdhruvbhardwaj.picme.data.model.RecoverableGeneration(key, status = "checking")
             }
             if (ticket != epoch) return
-            _operations.value = (remote + pending).distinctBy { it.id }
+            _operations.value = (remote + pending).distinctBy { it.id }.filterNot { it.id in dismissedResults }
             val focused = _operations.value.find { it.id == focusedId }
             if (focused != null && _uiState.value !is GenerationUiState.Success) {
                 when (focused.status) {
@@ -253,28 +266,41 @@ class GenerationViewModel(
         }
     }
 
-    fun saveImageToGallery(context: Context): Boolean {
+    fun saveImageToGallery(context: Context, onComplete: (Boolean) -> Unit = {}): Boolean {
         val state = _uiState.value
         if (state !is GenerationUiState.Success || _isActionLoading.value) return false
-
-        // Lock before launching work so rapid save taps cannot create duplicate files.
+        val key = resultKey(state.imageBase64)
+        val owner = account
+        val id = focusedId
+        val ticket = epoch
         _isActionLoading.value = true
         viewModelScope.launch {
-          try {
-            val bitmap = withContext(Dispatchers.IO) { ImageUtils.decodeBase64ToBitmap(state.imageBase64) }
-            if (bitmap != null) {
-              try {
-                val result = ImageUtils.saveBitmapToGallery(context, bitmap)
-                if (result.isSuccess) {
-                    _eventFlow.emit(GenerationEvent.ShowSnackbar("Image saved to gallery!"))
-                } else {
-                    _eventFlow.emit(GenerationEvent.ShowSnackbar("Failed to save image: ${result.exceptionOrNull()?.message}"))
+            var saved = false
+            try {
+                val bitmap = withContext(Dispatchers.IO) { ImageUtils.decodeBase64ToBitmap(state.imageBase64) }
+                if (bitmap != null) {
+                    try {
+                        saved = ImageUtils.saveBitmapToGallery(context, bitmap).isSuccess
+                    } finally { bitmap.recycle() }
                 }
-              } finally { bitmap.recycle() }
-            } else {
-                _eventFlow.emit(GenerationEvent.ShowSnackbar("Failed to decode image for saving."))
+                if (saved && ticket == epoch) {
+                    _savedResults.value = _savedResults.value + key
+                    runCatching {
+                        com.itsdhruvbhardwaj.picme.notifications.GenerationNotifications.imageDisplayed(context, owner, id)
+                    }
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                saved = false
+            } finally {
+                if (ticket == epoch) _isActionLoading.value = false
             }
-          } finally { _isActionLoading.value = false }
+            if (ticket != epoch) return@launch
+            if (focusedId == id && _uiState.value == state) onComplete(saved)
+            _eventFlow.emit(GenerationEvent.ShowSnackbar(
+                if (saved) "Image saved to gallery!" else "Couldn't save your photo. Please try again."
+            ))
         }
         return true
     }

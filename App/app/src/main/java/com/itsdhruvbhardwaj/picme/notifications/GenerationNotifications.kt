@@ -35,6 +35,14 @@ object GenerationNotifications {
         if (owner == null || id == null) return
         synchronized(PushLocalState.lock) {
             readyGate.imageDisplayed(owner, id)
+            context.getSharedPreferences("madds_generation_alerts", Context.MODE_PRIVATE)
+                .edit().putBoolean("handled_$owner:$id", true).commit()
+            deferredReady.remove(owner to id)
+            val manager = NotificationManagerCompat.from(context)
+            runCatching {
+                manager.cancel("${PREFIX}progress:$owner:$id", 0)
+                manager.cancel("${PREFIX}result:$owner:$id", 0)
+            }
             flushReady(context)
         }
     }
@@ -96,13 +104,14 @@ object GenerationNotifications {
         if (stage !in setOf("processing", "completed", "failed", "outcome_unknown")) return
         if (!PushNotifications.permissionGranted(context)) return
         if (expiresAt <= System.currentTimeMillis()) return
+        val prefs = context.getSharedPreferences("madds_generation_alerts", Context.MODE_PRIVATE)
+        if (readyGate.hasDisplayed(owner, id) || prefs.getBoolean("handled_$owner:$id", false)) return
         createChannels(context)
         if (stage == "completed" && readyGate.shouldDefer(owner, id)) {
             deferredReady[owner to id] = expiresAt
             return
         }
         val terminal = stage != "processing"
-        val prefs = context.getSharedPreferences("madds_generation_alerts", Context.MODE_PRIVATE)
         val key = "$owner:$id"
         if (stage == "processing" && prefs.contains("terminal_$key")) return
         if (terminal && prefs.getBoolean("shown_$key:$stage", false)) return

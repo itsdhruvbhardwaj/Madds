@@ -28,6 +28,23 @@ import retrofit2.Response
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class GenerationViewModelTest {
+    @Test fun `discard removes only the viewed result and does not resubmit generation`() = runTest {
+        val first = RecoverableGeneration("operation", status = "completed", resultAvailable = true)
+        val second = RecoverableGeneration("other", status = "processing")
+        whenever(repository.operations()).thenReturn(Response.success(GenerationOperationsResponse(listOf(first, second))))
+        whenever(repository.result("operation")).thenReturn(Response.success(GenerationResponse(true, image = "photo")))
+        whenever(repository.viewed("operation")).thenReturn(Response.error(503, okhttp3.ResponseBody.create(null, "offline")))
+        viewModel.openOperation("operation")
+        advanceUntilIdle()
+        viewModel.discardFocusedResult("stale-result")
+        assertEquals(2, viewModel.operations.value.size)
+        viewModel.discardFocusedResult("operation")
+        advanceUntilIdle()
+        viewModel.refreshOperations()
+        assertEquals(listOf("other"), viewModel.operations.value.map { it.id })
+        verify(repository, never()).generateImage(any(), any(), any())
+    }
+
     @Test fun `unknown outcome explains cause and can be acknowledged without another generation`() = runTest {
         whenever(repository.operations()).thenReturn(Response.success(GenerationOperationsResponse(listOf(
             RecoverableGeneration("operation", status = "outcome_unknown", failureReason = "Provider timed out")

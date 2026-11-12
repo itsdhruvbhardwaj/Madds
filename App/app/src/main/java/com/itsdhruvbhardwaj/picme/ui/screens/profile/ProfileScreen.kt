@@ -255,7 +255,7 @@ fun ProfileScreen(
                             onClick = { SupportLinks.website(context, "help") }
                         )
                         HorizontalDivider(Modifier.padding(horizontal = 24.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
-                        MenuItem(icon = Icons.Default.Help, title = "Replay app tour", onClick = onReplayTour)
+                        MenuItem(icon = Icons.Default.Explore, title = "App Tour", onClick = onReplayTour)
                         HorizontalDivider(Modifier.padding(horizontal = 24.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
                         MenuItem(icon = Icons.Default.Feedback, title = "Send Feedback", onClick = onSendFeedback)
                         HorizontalDivider(Modifier.padding(horizontal = 24.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)

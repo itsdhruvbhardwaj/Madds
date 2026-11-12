@@ -31,7 +31,9 @@ fun StylesGridScreen(
     val uiState by viewModel.uiState.collectAsState()
     val gridState = rememberLazyGridState()
 
-    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        val gridColumns = if (maxWidth < 600.dp) GridCells.Fixed(3)
+            else GridCells.Adaptive(minSize = 140.dp)
         // Softly Blurred Glassmorphism Background
 
 
@@ -68,7 +70,7 @@ fun StylesGridScreen(
                         } else {
                             LazyVerticalGrid(
                                 state = gridState,
-                                columns = GridCells.Adaptive(minSize = 140.dp),
+                                columns = gridColumns,
                                 // Content padding to start below floating pill and leave room at bottom
                                 contentPadding = PaddingValues(
                                     start = 12.dp,

@@ -169,6 +169,7 @@ fun NavGraph(
         }
     }
     val googleAuthHelper = remember { GoogleAuthHelper(context) }
+    val isGoogleSigningIn by googleAuthHelper.isSigningIn.collectAsState()
 
     // Unified UI Event Handling (Toasts for success/failure)
     LaunchedEffect(Unit) {
@@ -446,6 +447,7 @@ fun NavGraph(
 
                 composable(Screen.Login.route) {
                     LoginScreen(
+                        isGoogleSigningIn = isGoogleSigningIn,
                         authState = authState,
                         onLoginClick = { e, p -> authViewModel.login(e, p) },
                         onResendVerificationClick = { e -> authViewModel.resendVerification(e) },
@@ -454,7 +456,7 @@ fun NavGraph(
                             googleAuthHelper.signIn(
                                 scope = scope,
                                 onSuccess = { idToken -> authViewModel.loginWithGoogle(idToken) },
-                                onError = { error -> Toast.makeText(context, error, Toast.LENGTH_LONG).show() }
+                                onError = { error -> authViewModel.googleSignInFailed(error) }
                             )
                         },
                         onForgotPasswordClick = { email ->
@@ -476,6 +478,7 @@ fun NavGraph(
 
                 composable(Screen.Signup.route) {
                     SignupScreen(
+                        isGoogleSigningIn = isGoogleSigningIn,
                         authState = authState,
                         onSignupClick = { n, e, p -> authViewModel.signup(n, e, p) },
                         onSignInClick = { navController.navigate(Screen.Login.route) },
@@ -484,7 +487,7 @@ fun NavGraph(
                             googleAuthHelper.signIn(
                                 scope = scope,
                                 onSuccess = { idToken -> authViewModel.loginWithGoogle(idToken) },
-                                onError = { error -> Toast.makeText(context, error, Toast.LENGTH_LONG).show() }
+                                onError = { error -> authViewModel.googleSignInFailed(error) }
                             )
                         }
                     )
@@ -850,17 +853,13 @@ fun NavGraph(
                             generationViewModel.resetState()
                             navController.navigate(Screen.Home.route) { popUpTo(Screen.Home.route) { inclusive = true } }
                         },
-                        onSaveClick = {
-                            if (generationViewModel.saveImageToGallery(context)) {
+                        onSaveClick = { onComplete ->
+                            if (generationViewModel.saveImageToGallery(context, onComplete)) {
                                 Toast.makeText(context, "Your image is being saved to gallery", Toast.LENGTH_SHORT).show()
                                 showEventAd(AdPlacement.IMAGE_DOWNLOAD)
                             }
                         },
-                        onShareClick = { generationViewModel.shareImage(context) },
-                        onGenerateAgainClick = {
-                            generationViewModel.resetState()
-                            navController.popBackStack()
-                        }
+                        onShareClick = { generationViewModel.shareImage(context) }
                     )
                 }
 

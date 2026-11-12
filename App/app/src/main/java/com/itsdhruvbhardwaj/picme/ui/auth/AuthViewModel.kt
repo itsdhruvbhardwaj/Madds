@@ -570,10 +570,27 @@ class AuthViewModel(
     }
 
     fun loginWithGoogle(idToken: String) {
+        if (_authState.value is AuthState.Authenticating || _authState.value is AuthState.Authenticated) return
+        _authState.value = AuthState.Authenticating
         viewModelScope.launch {
-            _authState.value = AuthState.Authenticating
-            val result = authRepository.googleAuth(idToken)
+            android.util.Log.i("MaddsGoogleSignIn", "BACKEND_SIGN_IN_STARTED")
+            val result = kotlinx.coroutines.withTimeoutOrNull(45_000) { authRepository.googleAuth(idToken) }
+                ?: Result.failure(Exception("timeout"))
+            val failure = result.exceptionOrNull()?.message
+            val diagnostic = when {
+                result.isSuccess -> "SUCCESS"
+                failure in setOf("timeout", "network_failure", "google_authentication_failed", "rate_limited", "invalid_credentials") -> failure
+                failure?.startsWith("deletion_pending") == true -> "DELETION_PENDING"
+                else -> "OTHER_FAILURE"
+            }
+            android.util.Log.i("MaddsGoogleSignIn", "BACKEND_SIGN_IN_RESULT kind=$diagnostic")
             handleAuthResult(result, googleIdToken = idToken)
+        }
+    }
+
+    fun googleSignInFailed(message: String) {
+        if (_authState.value !is AuthState.Authenticated && _authState.value !is AuthState.Authenticating) {
+            _authState.value = AuthState.Error(message)
         }
     }
 
@@ -613,7 +630,9 @@ class AuthViewModel(
                     pendingDeletionGoogleIdToken = googleIdToken
                     _authState.value = AuthState.DeletionPending(date.takeIf { it.isNotEmpty() })
                 } else {
-                    _authState.value = AuthState.Error(mapError(message))
+                    _authState.value = AuthState.Error(
+                        if (googleIdToken != null) GoogleSignInErrors.backendMessage(message) else mapError(message)
+                    )
                 }
             }
         )

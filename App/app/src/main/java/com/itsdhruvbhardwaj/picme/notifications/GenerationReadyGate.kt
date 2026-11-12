@@ -16,6 +16,8 @@ internal class GenerationReadyGate {
         while (displayed.size > 256) displayed.remove(displayed.first())
     }
 
+    fun hasDisplayed(owner: String, id: String): Boolean = (owner to id) in displayed
+
     fun shouldDefer(owner: String, id: String): Boolean {
         val focused = focusedId ?: return false
         // Before submission resolves, focus is a local UUID rather than the server ID.

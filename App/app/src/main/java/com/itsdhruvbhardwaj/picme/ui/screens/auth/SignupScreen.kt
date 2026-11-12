@@ -44,7 +44,8 @@ fun SignupScreen(
     onSignupClick: (String, String, String) -> Unit,
     onSignInClick: () -> Unit,
     onBackClick: () -> Unit,
-    onGoogleClick: () -> Unit = {}
+    onGoogleClick: () -> Unit = {},
+    isGoogleSigningIn: Boolean = false
 ) {
     var name by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
@@ -53,10 +54,10 @@ fun SignupScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
 
-    val isLoading = authState is AuthState.Authenticating
+    val isLoading = authState is AuthState.Authenticating || isGoogleSigningIn
 
     // Determine the error message and whether it's an "Email Already Exists" case
-    val (errorMessage, isEmailAlreadyExists) = when (authState) {
+    val (errorMessage, isEmailAlreadyExists) = if (isGoogleSigningIn) null to false else when (authState) {
         is AuthState.EmailAlreadyExists ->
             "An account with this email already exists. Please sign in instead." to true
         is AuthState.Error ->
@@ -263,7 +264,7 @@ fun SignupScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             PicMeSocialButton(
-                text = "Continue with Google",
+                text = if (isGoogleSigningIn) "Connecting to Google…" else "Continue with Google",
                 iconRes = R.drawable.google_icon_logo_svgrepo_com,
                 onClick = onGoogleClick,
                 enabled = !isLoading

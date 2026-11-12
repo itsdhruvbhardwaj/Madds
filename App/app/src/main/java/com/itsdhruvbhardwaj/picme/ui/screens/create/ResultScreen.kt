@@ -4,6 +4,8 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
@@ -43,9 +45,8 @@ fun ResultScreen(
     isActionLoading: Boolean,
     viewModel: GenerationViewModel,
     onBackClick: () -> Unit,
-    onSaveClick: () -> Unit,
-    onShareClick: () -> Unit,
-    onGenerateAgainClick: () -> Unit
+    onSaveClick: ((Boolean) -> Unit) -> Unit,
+    onShareClick: () -> Unit
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -53,6 +54,20 @@ fun ResultScreen(
     var imageFailed by remember(imageBase64) { mutableStateOf(false) }
     val resultOwner = remember(imageBase64) { viewModel.notificationOwner() }
     val resultId = remember(imageBase64) { viewModel.focusedGenerationId.value }
+    val savedResults by viewModel.savedResults.collectAsState()
+    val resultKey = remember(imageBase64, resultId) { viewModel.resultKey(imageBase64, resultId) }
+    val isSaved = resultKey in savedResults
+    var pendingExit by remember(imageBase64, resultId) { mutableStateOf<(() -> Unit)?>(null) }
+    var saveFailed by remember { mutableStateOf(false) }
+    val requestExit: (() -> Unit) -> Unit = { exit ->
+        if (!isActionLoading) {
+            if (imageReady && !isSaved) { saveFailed = false; pendingExit = exit }
+            else exit()
+        }
+    }
+    val savePhoto: () -> Unit = { onSaveClick {} }
+    BackHandler { requestExit(onBackClick) }
+
     // Coil success means decoded; wait for the next frame before announcing readiness.
     LaunchedEffect(imageBase64, imageReady) {
         if (imageReady) {
@@ -140,12 +155,12 @@ fun ResultScreen(
             TopAppBar(
                 title = { Text("Your Creation", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
+                    IconButton(onClick = { requestExit(onBackClick) }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    IconButton(onClick = onSaveClick, enabled = !isActionLoading && imageReady) {
+                    IconButton(onClick = savePhoto, enabled = !isActionLoading && imageReady) {
                         Icon(Icons.Default.Download, contentDescription = "Save")
                     }
                     IconButton(onClick = onShareClick, enabled = !isActionLoading && imageReady) {
@@ -160,14 +175,16 @@ fun ResultScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Main Generated Image
             Card(
                 modifier = Modifier
+                    .widthIn(max = 520.dp)
                     .fillMaxWidth()
-                    .aspectRatio(1f)
+                    .aspectRatio(5f / 7f)
                     .clip(MaterialTheme.shapes.extraLarge)
                     .clickable(enabled = imageReady) { showFullscreenPreview = true },
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
@@ -228,7 +245,7 @@ fun ResultScreen(
                 modifier = Modifier.padding(top = 8.dp)
             )
             
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(24.dp))
             
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -236,7 +253,7 @@ fun ResultScreen(
             ) {
                 PicMeSecondaryButton(
                     text = "Save",
-                    onClick = onSaveClick,
+                    onClick = savePhoto,
                     isLoading = isActionLoading,
                     modifier = Modifier.weight(1f),
                     enabled = imageReady
@@ -250,17 +267,38 @@ fun ResultScreen(
                 )
             }
             
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            PicMeSecondaryButton(
-                text = "Generate Again",
-                onClick = onGenerateAgainClick,
-                enabled = !isActionLoading,
-                modifier = Modifier.fillMaxWidth()
-            )
-            
             Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+
+    if (pendingExit != null) {
+        AlertDialog(
+            onDismissRequest = { if (!isActionLoading) pendingExit = null },
+            title = { Text("Save your photo?") },
+            text = { Text(if (saveFailed) "Couldn't save your photo. Please try again, or discard it to leave."
+                else "This photo hasn't been saved to My Generations or your gallery. Save it before leaving to keep a copy.") },
+            confirmButton = {
+                TextButton(enabled = !isActionLoading, onClick = {
+                    saveFailed = false
+                    onSaveClick { saved ->
+                        if (saved) {
+                            val exit = pendingExit
+                            pendingExit = null
+                            exit?.invoke()
+                        } else saveFailed = true
+                    }
+                }) { Text(if (isActionLoading) "Saving…" else "Save photo") }
+            },
+            dismissButton = {
+                TextButton(enabled = !isActionLoading, onClick = {
+                    viewModel.discardFocusedResult(resultId)
+                    com.itsdhruvbhardwaj.picme.notifications.GenerationNotifications.imageDisplayed(context, resultOwner, resultId)
+                    val exit = pendingExit
+                    pendingExit = null
+                    exit?.invoke()
+                }) { Text("Discard") }
+            }
+        )
     }
 
     if (showFullscreenPreview && imageBytes != null) {
@@ -329,7 +367,7 @@ fun ResultScreen(
                 )
 
                 Button(
-                    onClick = onSaveClick,
+                    onClick = savePhoto,
                     enabled = !isActionLoading,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
