@@ -55,6 +55,23 @@ class AuthViewModelTest {
         Dispatchers.resetMain()
     }
 
+    @Test fun `uncertain refresh failure keeps an existing login`() = runTest(testDispatcher) {
+        whenever(authRepository.getCurrentUser()).thenReturn(Result.failure(Exception("invalid_token")))
+        whenever(authRepository.refreshSession()).thenReturn(Result.failure(Exception("refresh_failed")))
+        viewModel.checkSession().join()
+        advanceUntilIdle()
+        org.junit.Assert.assertTrue(viewModel.authState.value is AuthState.Authenticated)
+        verify(authRepository, never()).logout()
+    }
+
+    @Test fun `confirmed expired session still requires sign in`() = runTest(testDispatcher) {
+        whenever(authRepository.getCurrentUser()).thenReturn(Result.failure(Exception("invalid_token")))
+        whenever(authRepository.refreshSession()).thenReturn(Result.failure(Exception("session_expired")))
+        viewModel.checkSession().join()
+        advanceUntilIdle()
+        assertEquals(AuthState.Unauthenticated, viewModel.authState.value)
+    }
+
     @Test fun `reward label refreshes from remote configuration on each opening`() = runTest {
         whenever(authRepository.getRewardedAdConfig()).thenReturn(
             Result.success(com.itsdhruvbhardwaj.picme.data.model.RewardedAdConfigResponse(true, true, 2)),

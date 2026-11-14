@@ -17,6 +17,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import com.itsdhruvbhardwaj.picme.ui.components.StyleGenderBadge
+import com.itsdhruvbhardwaj.picme.ui.components.PreloadNativeFeedAds
 import com.itsdhruvbhardwaj.picme.ui.components.NativeFeedAd
 import com.itsdhruvbhardwaj.picme.ui.components.rememberNativeFeedSlots
 import com.itsdhruvbhardwaj.picme.ui.components.nativeFeedSlotIndex
@@ -53,13 +54,20 @@ fun ExploreScreen(
     val uiState by viewModel.uiState.collectAsState()
     val adConfig by com.itsdhruvbhardwaj.picme.utils.AdPolicy.config.collectAsState()
     val nativeEnabled = adConfig.enabled && adConfig.nativeExploreEnabled
-    val nativeSlots = rememberNativeFeedSlots(nativeEnabled,3,adConfig.exploreNativeEveryStyles)
+    val nativeSlots = rememberNativeFeedSlots(nativeEnabled,3,adConfig.exploreNativeEveryStyles, "explore")
     val refreshing by viewModel.isRefreshing.collectAsState()
     val authState by authViewModel.authState.collectAsState()
     var query by rememberSaveable { mutableStateOf("") }
     var isSearchFocused by remember { mutableStateOf(false) }
     var wasImeVisible by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val feed = uiState as? ExploreUiState.Success
+    val groupsForAds = feed?.styles?.chunked(6).orEmpty()
+    val adPlacements = groupsForAds.indices.mapNotNull { index ->
+        nativeFeedSlotIndex(index, groupsForAds.size, adConfig.exploreNativeEveryStyles / 6, 3, feed?.hasMore == true)?.let { (index + 1) to it }
+    }
+    PreloadNativeFeedAds(nativeSlots, nativeEnabled, adPlacements, listState)
+
     var previousQuery by rememberSaveable { mutableStateOf<String?>(null) }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current

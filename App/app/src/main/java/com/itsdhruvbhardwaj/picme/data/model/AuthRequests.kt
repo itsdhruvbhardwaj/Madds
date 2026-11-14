@@ -16,7 +16,8 @@ data class GoogleAuthRequest(
 )
 
 data class RefreshTokenRequest(
-    val refreshToken: String
+    val refreshToken: String,
+    val refreshAttemptId: String? = null
 )
 
 data class ResendVerificationRequest(

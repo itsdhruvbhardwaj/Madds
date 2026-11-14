@@ -204,7 +204,8 @@ class AuthViewModel(
         }
 
     private fun handleSessionFailure(error: String?) {
-        if (isTemporarySessionError(error)) {
+        if (error == "session_changed") return
+        if (error !in setOf("session_expired", "No refresh token available")) {
             if (_authState.value !is AuthState.Authenticated) {
                 _authState.value = AuthState.SessionCheckNetworkError
             }

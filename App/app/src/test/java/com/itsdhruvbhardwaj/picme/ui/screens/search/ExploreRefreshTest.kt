@@ -20,6 +20,31 @@ class ExploreRefreshTest {
     private val style=Style(id="one",name="First style")
     @Before fun setup(){Dispatchers.setMain(dispatcher);whenever(repo.stylePreference).thenReturn(MutableStateFlow("all"))}
     @After fun cleanup(){Dispatchers.resetMain()}
+    @Test fun `cached list appears before network and stays usable offline without stale pagination`()=runTest(dispatcher){
+        whenever(repo.getCollections()).thenReturn(Result.success(emptyList()))
+        whenever(repo.getCachedExplore("all",null,"")).thenReturn(listOf(style))
+        val pending=CompletableDeferred<Result<StyleResponse>>()
+        whenever(repo.getStyles(1,30,null,null,true)).doSuspendableAnswer { pending.await() }
+        val model=ExploreViewModel(repo);runCurrent()
+        assertEquals(listOf(style),(model.uiState.value as ExploreUiState.Success).styles)
+        assertFalse((model.uiState.value as ExploreUiState.Success).hasMore)
+        pending.complete(Result.failure(Exception("offline")));advanceUntilIdle()
+        model.loadNextPage();advanceUntilIdle()
+        assertEquals(listOf(style),(model.uiState.value as ExploreUiState.Success).styles)
+        verify(repo,never()).getStyles(2,30,null,null,true)
+        assertNotNull((model.uiState.value as ExploreUiState.Success).refreshError)
+    }
+    @Test fun `online refresh replaces cached shuffle before pagination resumes`()=runTest(dispatcher){
+        whenever(repo.getCollections()).thenReturn(Result.success(emptyList()))
+        whenever(repo.getCachedExplore("all",null,"")).thenReturn(listOf(Style(id="old-one"),Style(id="old-two")))
+        val fresh=Style(id="new-one")
+        val next=Style(id="new-two")
+        whenever(repo.getStyles(1,30,null,null,true)).thenReturn(Result.success(StyleResponse(listOf(fresh),PaginationMetadata(hasNextPage=true))))
+        whenever(repo.getStyles(2,30,null,null,true)).thenReturn(Result.success(StyleResponse(listOf(next),PaginationMetadata(currentPage=2))))
+        val model=ExploreViewModel(repo);advanceUntilIdle();model.loadNextPage();advanceUntilIdle()
+        assertEquals(listOf(fresh,next),(model.uiState.value as ExploreUiState.Success).styles)
+        verify(repo).saveExploreCache("all",null,"",listOf(fresh,next))
+    }
     @Test fun `refresh retains content and repeated pulls share a single request`()=runTest(dispatcher){
         whenever(repo.getCollections()).thenReturn(Result.success(emptyList()))
         val response=StyleResponse(listOf(style),PaginationMetadata(currentPage=1,totalPages=1,totalCount=1,hasNextPage=false))

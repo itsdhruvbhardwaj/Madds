@@ -134,7 +134,8 @@ class MainActivity : ComponentActivity() {
 
         authRepository = AuthRepository(authApiService, tokenStorage, refreshApiService, com.itsdhruvbhardwaj.picme.data.local.EngagementStore(applicationContext))
         val notificationPreferences = com.itsdhruvbhardwaj.picme.notifications.PushPreferencesRepository(applicationContext, retrofit, tokenStorage, authRepository)
-        val styleRepository = StyleRepository(styleApiService, tokenStorage, HomeFeedCache(applicationContext))
+        val styleRepository = StyleRepository(styleApiService, tokenStorage, HomeFeedCache(applicationContext),
+            exploreFeedCache = com.itsdhruvbhardwaj.picme.data.local.ExploreFeedCache(java.io.File(cacheDir, "explore_catalog")))
         val generationRepository = GenerationRepository(generationApiService, applicationContext.contentResolver, tokenStorage)
 
         val viewModelFactory = object : ViewModelProvider.Factory {

@@ -23,7 +23,8 @@ class StyleRepository(
     private val apiService: StyleApiService,
     private val tokenStorage: AuthTokenStorage,
     private val homeFeedCache: HomeFeedCache? = null,
-    private val discoverySeed: String = DiscoverySession.seed
+    private val discoverySeed: String = DiscoverySession.seed,
+    private val exploreFeedCache: com.itsdhruvbhardwaj.picme.data.local.ExploreFeedCache? = null
 ) {
     private val _stylePreference = MutableStateFlow(tokenStorage.getUser()?.id?.let { tokenStorage.getStylePreference(it) } ?: "all")
     val stylePreference = _stylePreference.asStateFlow()
@@ -69,6 +70,19 @@ class StyleRepository(
 
     private val _cachedStyles = MutableStateFlow<Map<String, Style>>(emptyMap())
     val cachedStyles: StateFlow<Map<String, Style>> = _cachedStyles.asStateFlow()
+
+    suspend fun getCachedExplore(preference: String, collection: String?, query: String): List<Style>? =
+        withContext(Dispatchers.IO) {
+            exploreFeedCache?.read(preference, collection, query)?.also { styles ->
+                _cachedStyles.update { existing ->
+                    existing + styles.associate { it.id to it.copy(isFavorite = existing[it.id]?.isFavorite ?: false) }
+                }
+            }
+        }
+
+    suspend fun saveExploreCache(preference: String, collection: String?, query: String, styles: List<Style>) {
+        withContext(Dispatchers.IO) { exploreFeedCache?.write(preference, collection, query, styles) }
+    }
 
     fun getCachedHome(): HomeConfigResponse? = homeFeedCache?.read(_stylePreference.value)?.also { cacheHomeStyles(it) }
 

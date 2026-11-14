@@ -9,8 +9,6 @@ import androidx.work.WorkerParameters
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.itsdhruvbhardwaj.picme.data.local.AuthTokenStorage
-import java.net.HttpURLConnection
-import java.net.URL
 
 /** Image failure never prevents delivery of the notification's text. */
 @Keep
@@ -24,32 +22,7 @@ class PushImageWorker(context: Context, params: WorkerParameters) : Worker(conte
         fun stillVisible(): Boolean = state.eligible(payload, auth, false) && PushNotifications.channelAllowed(context, payload.category) &&
             context.getSystemService(NotificationManager::class.java).activeNotifications.any { it.tag == PushLocalState.TAG_PREFIX + payload.deliveryId }
         if (!stillVisible()) return Result.success()
-        val bytes = runCatching {
-            var address = url
-            val deadline = System.nanoTime() + 8_000_000_000L
-            repeat(3) {
-                require(isSafePushImage(address))
-                val connection = URL(address).openConnection() as HttpURLConnection
-                try {
-                    connection.instanceFollowRedirects = false; connection.connectTimeout = 2500; connection.readTimeout = 2500
-                    val code = connection.responseCode
-                    if (code in 300..399) { address = URL(URL(address), connection.getHeaderField("Location")).toString() }
-                    else {
-                        require(code == 200 && connection.contentLengthLong <= 2_000_000)
-                        connection.inputStream.use { input ->
-                            val output = java.io.ByteArrayOutputStream(); val buffer = ByteArray(8192)
-                            while (true) {
-                                require(System.nanoTime() < deadline && !isStopped)
-                                val count = input.read(buffer); if (count == -1) break
-                                require(output.size() + count <= 2_000_000); output.write(buffer, 0, count)
-                            }
-                            return@runCatching output.toByteArray()
-                        }
-                    }
-                } finally { connection.disconnect() }
-            }
-            error("Image redirect limit")
-        }.getOrNull() ?: return Result.success()
+        val bytes = PushImageDownloader.get(context).load(url) { isStopped } ?: return Result.success()
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return Result.success()

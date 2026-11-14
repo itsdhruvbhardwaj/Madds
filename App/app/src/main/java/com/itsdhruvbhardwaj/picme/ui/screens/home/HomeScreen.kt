@@ -40,8 +40,13 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     val adConfig by com.itsdhruvbhardwaj.picme.utils.AdPolicy.config.collectAsState()
     val nativeEnabled = adConfig.enabled && adConfig.nativeHomeEnabled && !tourActive
-    val nativeSlots = rememberNativeFeedSlots(nativeEnabled,2,adConfig.homeNativeEverySections)
+    val nativeSlots = rememberNativeFeedSlots(nativeEnabled,2,adConfig.homeNativeEverySections, "home")
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val sections = (uiState as? HomeUiState.Success)?.sections.orEmpty()
+    val adPlacements = sections.indices.mapNotNull { index ->
+        nativeFeedSlotIndex(index, sections.size, adConfig.homeNativeEverySections, 2)?.let { index to it }
+    }
+    PreloadNativeFeedAds(nativeSlots, nativeEnabled, adPlacements, listState)
     LaunchedEffect(tourActive) { if (tourActive) listState.scrollToItem(0) }
     val autoRetrying by viewModel.isAutoRetrying.collectAsState()
     ObserveHomeRecovery(viewModel)

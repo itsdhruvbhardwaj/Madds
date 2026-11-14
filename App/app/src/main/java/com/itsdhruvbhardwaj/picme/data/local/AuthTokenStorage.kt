@@ -61,6 +61,17 @@ class AuthTokenStorage(context: Context) {
     /**
      * Saves both access and refresh tokens.
      */
+    fun refreshAttempt(token: String): String = synchronized(com.itsdhruvbhardwaj.picme.notifications.PushLocalState.lock) {
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(token.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        val existing = sharedPreferences.getString("refresh_attempt", null)
+        val attempt = if (sharedPreferences.getString("refresh_attempt_token", null) == hash && existing != null) existing
+            else java.util.UUID.randomUUID().toString()
+        if (!sharedPreferences.edit().putString("refresh_attempt_token", hash).putString("refresh_attempt", attempt).commit())
+            throw java.io.IOException("session_storage_error")
+        attempt
+    }
+
     fun saveTokens(accessToken: String, refreshToken: String) = storeTokens(accessToken, refreshToken, false)
 
     fun saveRefreshedTokens(accessToken: String, refreshToken: String) = storeTokens(accessToken, refreshToken, true)
@@ -74,10 +85,12 @@ class AuthTokenStorage(context: Context) {
             if (fromRefresh && previous != null && next != null && previous.userId == next.userId) pushState.rotateSession(previous, next)
             else pushState.invalidateAccount()
         }
-        sharedPreferences.edit()
+        val editor = sharedPreferences.edit()
             .putString(KEY_ACCESS_TOKEN, accessToken)
             .putString(KEY_REFRESH_TOKEN, refreshToken)
-            .apply()
+            .remove("refresh_attempt").remove("refresh_attempt_token")
+        if (!fromRefresh) editor.putLong("session_revision", sessionRevision() + 1)
+        if (!editor.commit()) throw java.io.IOException("session_storage_error")
         if (changed) com.itsdhruvbhardwaj.picme.notifications.PushSyncWorker.enqueue(appContext)
       }
     }
@@ -146,6 +159,8 @@ class AuthTokenStorage(context: Context) {
     /**
      * Removes all authentication tokens and cached user data.
      */
+    fun sessionRevision(): Long = sharedPreferences.getLong("session_revision", 0)
+
     fun clearTokens() {
       synchronized(com.itsdhruvbhardwaj.picme.notifications.PushLocalState.lock) {
         pushState.invalidateAccount()
@@ -153,7 +168,9 @@ class AuthTokenStorage(context: Context) {
             .remove(KEY_ACCESS_TOKEN)
             .remove(KEY_REFRESH_TOKEN)
             .remove(KEY_USER_CACHE)
-            .apply()
+            .remove("refresh_attempt").remove("refresh_attempt_token")
+            .putLong("session_revision", sessionRevision() + 1)
+            .commit()
       }
     }
 }

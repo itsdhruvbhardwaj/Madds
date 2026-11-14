@@ -40,6 +40,7 @@ sealed interface RewardedAdLoadState {
  * Singleton manager to handle preloading and showing interstitial and rewarded ads.
  */
 object AdManager {
+    val nativeSdkReady = kotlinx.coroutines.flow.MutableStateFlow(false)
     private const val TAG = "AdManager"
     
     private const val INTERSTITIAL_TAG = "MaddsInterstitial"
@@ -106,7 +107,7 @@ object AdManager {
         return "response=${info.responseId ?: "none"} adapter=${info.mediationAdapterClassName ?: "none"} sources=[$adapters]"
     }
     fun onSdkInitialized(context: Context) = onMain {
-        appContext=context.applicationContext;sdkReady=true
+        appContext=context.applicationContext;sdkReady=true;nativeSdkReady.value=true
         if (policyJob == null) {
             val cm=appContext?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
             val callback=object:ConnectivityManager.NetworkCallback(){

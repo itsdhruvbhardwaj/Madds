@@ -95,16 +95,22 @@ class ExploreViewModel(
         searchJob?.cancel()
         val previous = if (keepContent) _uiState.value as? ExploreUiState.Success else null
         val previousPage = currentPage
+        val selectedPreference = styleRepository.stylePreference.value
+        val selectedCollection = currentCollection
         val requestGeneration = ++generation
         currentPage = 0
         isLoadingMore = false
         val job = viewModelScope.launch {
             if (debounce) delay(SEARCH_DEBOUNCE_MS)
-            _uiState.value = previous?.copy(isLoadingMore = false, loadMoreError = null, refreshError = null) ?: ExploreUiState.Loading
+            val cached = if (previous == null) styleRepository.getCachedExplore(selectedPreference, selectedCollection, query) else null
+            if (requestGeneration != generation) return@launch
+            // A previous session's shuffled pages cannot be continued with this session's seed.
+            val fallback = previous ?: cached?.let { ExploreUiState.Success(it, hasMore = false) }
+            _uiState.value = fallback?.copy(isLoadingMore = false, loadMoreError = null, refreshError = null) ?: ExploreUiState.Loading
             val result = styleRepository.getStyles(
                 page = 1,
                 limit = PAGE_SIZE,
-                collection = currentCollection,
+                collection = selectedCollection,
                 search = query.takeIf { it.isNotEmpty() },
                 trendingFirst = true
             )
@@ -116,11 +122,14 @@ class ExploreViewModel(
                         styles = response.styles,
                         hasMore = response.pagination.hasNextPage
                     )
+                    styleRepository.saveExploreCache(selectedPreference, selectedCollection, query, response.styles)
                 },
                 onFailure = { error ->
-                    if (previous != null) {
-                        currentPage = previousPage
-                        _uiState.value = previous.copy(isLoadingMore = false, refreshError = error.message ?: "Couldn't refresh styles. Pull down to retry.")
+                    if (fallback != null) {
+                        currentPage = if (previous != null) previousPage else 0
+                        _uiState.value = fallback.copy(isLoadingMore = false, refreshError =
+                            if (previous == null) "Couldn't refresh. Showing saved styles; some images may need a connection. Pull down to retry."
+                            else error.message ?: "Couldn't refresh styles. Pull down to retry.")
                     } else _uiState.value = ExploreUiState.Error(error.message ?: "Failed to load styles.")
                 }
             )
@@ -135,6 +144,9 @@ class ExploreViewModel(
 
         val requestGeneration = generation
         val nextPage = currentPage + 1
+        val selectedPreference = styleRepository.stylePreference.value
+        val selectedCollection = currentCollection
+        val selectedQuery = currentQuery
         isLoadingMore = true
         _uiState.value = state.copy(isLoadingMore = true, loadMoreError = null)
 
@@ -142,8 +154,8 @@ class ExploreViewModel(
             val result = styleRepository.getStyles(
                 page = nextPage,
                 limit = PAGE_SIZE,
-                collection = currentCollection,
-                search = currentQuery.takeIf { it.isNotEmpty() },
+                collection = selectedCollection,
+                search = selectedQuery.takeIf { it.isNotEmpty() },
                 trendingFirst = true
             )
             if (requestGeneration != generation) return@launch
@@ -152,11 +164,13 @@ class ExploreViewModel(
             result.fold(
                 onSuccess = { response ->
                     currentPage = response.pagination.currentPage
+                    val combined = (currentState.styles + response.styles).distinctBy { it.id }
                     _uiState.value = currentState.copy(
-                        styles = (currentState.styles + response.styles).distinctBy { it.id },
+                        styles = combined,
                         hasMore = response.pagination.hasNextPage,
                         isLoadingMore = false
                     )
+                    styleRepository.saveExploreCache(selectedPreference, selectedCollection, selectedQuery, combined)
                 },
                 onFailure = { error ->
                     _uiState.value = currentState.copy(

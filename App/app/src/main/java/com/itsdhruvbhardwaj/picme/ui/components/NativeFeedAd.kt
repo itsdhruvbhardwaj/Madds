@@ -1,5 +1,11 @@
 package com.itsdhruvbhardwaj.picme.ui.components
 
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.collect
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.repeatOnLifecycle
 import android.content.Context
 import android.graphics.Color as AndroidColor
 import android.graphics.Typeface
@@ -18,36 +24,108 @@ import com.google.android.gms.ads.*
 import com.google.android.gms.ads.nativead.*
 import com.itsdhruvbhardwaj.picme.BuildConfig
 
-/** Holds a bounded number of ads for a screen, not an unbounded ad per feed row. */
+/** SDK objects live no longer than the activity, and are bounded to two Home/three Explore slots. */
 @Stable class NativeFeedSlot {
-    var ad by mutableStateOf<NativeAd?>(null);private set
-    private var closed=false
-    private var loading=false
-    private var nextAttempt=0L
-    private var loadedAt=0L
-    fun load(context:Context) {
-        val now=SystemClock.elapsedRealtime()
-        if(closed||loading||now<nextAttempt)return
-        if(ad!=null && now-loadedAt<55*60_000L)return
-        ad?.destroy();ad=null
-        loading=true;nextAttempt=now+60_000
-        try { AdLoader.Builder(context,BuildConfig.AD_UNIT_ID_NATIVE)
-            .forNativeAd { loaded ->
-                loading=false
-                if(closed)loaded.destroy() else {ad?.destroy();ad=loaded;loadedAt=SystemClock.elapsedRealtime()}
+    var ad by mutableStateOf<NativeAd?>(null); private set
+    private var closed = false
+    private var loadedAt = 0L
+    private var serial = 0
+    private val retry = NativeAdRetryState()
+    private var driver: kotlinx.coroutines.Job? = null
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate)
+    private fun note(event: String) { if (BuildConfig.DEBUG) android.util.Log.d("MaddsNativeAd", event) }
+
+    fun activate(context: Context, active: Boolean) {
+        if (!active) { driver?.cancel(); driver = null; return }
+        if (closed || driver?.isActive == true) return
+        driver = scope.launch {
+            while (kotlinx.coroutines.currentCoroutineContext().isActive) {
+                val now = SystemClock.elapsedRealtime()
+                if (retry.timedOut(now)) { serial++; retry.failed(now); note("LOAD_TIMEOUT") }
+                if ((ad == null || now - loadedAt >= 55 * 60_000L) && retry.canStart(now)) load(context)
+                kotlinx.coroutines.delay(250)
             }
-            .withNativeAdOptions(NativeAdOptions.Builder().setVideoOptions(VideoOptions.Builder().setStartMuted(true).build()).setAdChoicesPlacement(NativeAdOptions.ADCHOICES_TOP_RIGHT).build())
-            .withAdListener(object:AdListener(){override fun onAdFailedToLoad(error:LoadAdError){loading=false}})
-            .build().loadAd(AdRequest.Builder().build())
-        } catch (_:RuntimeException) { loading=false }
+        }
     }
-    fun close(){closed=true;ad?.destroy();ad=null}
+
+    private fun load(context: Context) {
+        ad?.destroy(); ad = null
+        retry.start(SystemClock.elapsedRealtime())
+        val request = ++serial
+        note("LOAD_STARTED")
+        try {
+            AdLoader.Builder(context.applicationContext, BuildConfig.AD_UNIT_ID_NATIVE)
+                .forNativeAd { loaded ->
+                    if (closed || request != serial) loaded.destroy()
+                    else {
+                        retry.succeeded(); ad?.destroy(); ad = loaded
+                        loadedAt = SystemClock.elapsedRealtime(); note("LOAD_READY")
+                    }
+                }
+                .withNativeAdOptions(NativeAdOptions.Builder().setVideoOptions(VideoOptions.Builder().setStartMuted(true).build())
+                    .setAdChoicesPlacement(NativeAdOptions.ADCHOICES_TOP_RIGHT).build())
+                .withAdListener(object : AdListener() {
+                    override fun onAdFailedToLoad(error: LoadAdError) {
+                        if (closed || request != serial) return
+                        retry.failed(SystemClock.elapsedRealtime(), error.code == AdRequest.ERROR_CODE_INVALID_REQUEST)
+                        note("LOAD_FAILED code=${error.code} domain=${error.domain}")
+                    }
+                }).build().loadAd(AdRequest.Builder().build())
+        } catch (_: RuntimeException) {
+            retry.failed(SystemClock.elapsedRealtime()); note("LOAD_EXCEPTION")
+        }
+    }
+    fun close() { closed = true; serial++; scope.cancel(); ad?.destroy(); ad = null }
 }
 
-@Composable fun rememberNativeFeedSlots(enabled:Boolean,count:Int,resetKey:Int=0):List<NativeFeedSlot> {
-    val slots=remember(enabled,count,resetKey){List(count){NativeFeedSlot()}}
-    DisposableEffect(slots){onDispose{slots.forEach{it.close()}}}
-    return slots
+class NativeFeedCacheViewModel : androidx.lifecycle.ViewModel() {
+    private data class Group(val count: Int, val reset: Int, val slots: List<NativeFeedSlot>)
+    private val groups = mutableMapOf<String, Group>()
+    init {
+        viewModelScope.launch {
+            com.itsdhruvbhardwaj.picme.utils.AdPolicy.config.collect { config ->
+                groups.keys.toList().forEach { key ->
+                    if (!config.enabled || (key == "home" && !config.nativeHomeEnabled) || (key == "explore" && !config.nativeExploreEnabled))
+                        groups.remove(key)?.slots?.forEach { it.close() }
+                }
+            }
+        }
+    }
+    fun slots(key: String, count: Int, reset: Int): List<NativeFeedSlot> {
+        val existing = groups[key]
+        if (existing?.count == count && existing.reset == reset) return existing.slots
+        existing?.slots?.forEach { it.close() }
+        return List(count) { NativeFeedSlot() }.also { groups[key] = Group(count, reset, it) }
+    }
+    override fun onCleared() { groups.values.forEach { it.slots.forEach(NativeFeedSlot::close) }; groups.clear() }
+}
+
+@Composable fun rememberNativeFeedSlots(enabled: Boolean, count: Int, resetKey: Int = 0, screenKey: String): List<NativeFeedSlot> {
+    var current: Context = LocalContext.current
+    while (current is android.content.ContextWrapper && current !is androidx.activity.ComponentActivity) current = current.baseContext
+    val owner = current as androidx.activity.ComponentActivity
+    val cache = remember(owner) { androidx.lifecycle.ViewModelProvider(owner)[NativeFeedCacheViewModel::class.java] }
+    return remember(cache, enabled, count, resetKey, screenKey) { cache.slots(screenKey, count, resetKey) }
+}
+
+/** Preload first placement immediately, then subsequent placements shortly before arrival. */
+@Composable fun PreloadNativeFeedAds(slots: List<NativeFeedSlot>, enabled: Boolean,
+    placements: List<Pair<Int, Int>>, listState: androidx.compose.foundation.lazy.LazyListState) {
+    val context = LocalContext.current.applicationContext
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    val sdkReady by com.itsdhruvbhardwaj.picme.utils.AdManager.nativeSdkReady.collectAsState()
+    LaunchedEffect(slots, enabled, placements, lifecycle, sdkReady) {
+        try {
+            if (enabled && sdkReady && placements.isNotEmpty()) lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+                try {
+                    snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }.collect { visible ->
+                        val wanted = placements.filterIndexed { index, pair -> index == 0 || pair.first <= visible + 2 }.map { it.second }.toSet()
+                        slots.forEachIndexed { index, slot -> slot.activate(context, index in wanted) }
+                    }
+                } finally { slots.forEach { it.activate(context, false) } }
+            }
+        } finally { slots.forEach { it.activate(context, false) } }
+    }
 }
 
 /** Null slot indices suppress trailing/dense ads and bound retained SDK resources. */
@@ -57,8 +135,6 @@ fun nativeFeedSlotIndex(index:Int,count:Int,every:Int,maxAds:Int,hasMore:Boolean
 }
 
 @Composable fun NativeFeedAd(slot:NativeFeedSlot) {
-    val context=LocalContext.current
-    LaunchedEffect(slot){slot.load(context.applicationContext)}
     val ad=slot.ad ?: return
     // SDK handles all ad clicks and AdChoices. No custom click listeners or overlays.
     key(ad) {

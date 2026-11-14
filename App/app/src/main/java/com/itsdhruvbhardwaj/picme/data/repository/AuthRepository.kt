@@ -264,10 +264,15 @@ class AuthRepository(
             if (failedAccessToken != null) {
                 val latestAccessToken = tokenStorage.getAccessToken()
                 if (!latestAccessToken.isNullOrEmpty() && latestAccessToken != failedAccessToken) {
+                    val failedIdentity = com.itsdhruvbhardwaj.picme.notifications.PushSession.fromToken(failedAccessToken)
+                    val currentIdentity = com.itsdhruvbhardwaj.picme.notifications.PushSession.fromToken(latestAccessToken)
+                    if (failedIdentity != null && currentIdentity != null && failedIdentity.userId != currentIdentity.userId)
+                        return@withLock Result.failure(Exception("session_changed"))
                     return@withLock Result.success(Unit)
                 }
             }
             val currentRefreshToken = tokenStorage.getRefreshToken()
+            if (currentRefreshToken.isNullOrEmpty()) return@withLock Result.failure(Exception("session_changed"))
             if (currentRefreshToken != initialRefreshToken && !currentRefreshToken.isNullOrEmpty()) {
                 Log.i(AUTH_LOG_TAG, "refresh skipped: another request already rotated the session")
                 return Result.success(Unit)
@@ -275,7 +280,7 @@ class AuthRepository(
 
             retryIO {
                 try {
-                    val response = refreshApiService.refreshToken(RefreshTokenRequest(initialRefreshToken))
+                    val response = refreshApiService.refreshToken(RefreshTokenRequest(initialRefreshToken, tokenStorage.refreshAttempt(initialRefreshToken)))
                     // Logout/account switching must win over an older network response.
                     if (tokenStorage.getRefreshToken() != initialRefreshToken) {
                         return@retryIO Result.failure(Exception("session_changed"))
@@ -299,7 +304,10 @@ class AuthRepository(
                         }
                     } else {
                         val code = response.code()
-                        if (code == 401 || code == 403) {
+                        val rejection = runCatching { Gson().fromJson(response.errorBody()?.string(), ErrorResponse::class.java) }.getOrNull()
+                        val definitive = rejection?.code in setOf("SESSION_INVALID", "ACCOUNT_DELETION_PENDING", "ACCOUNT_DELETION_EXPIRED") ||
+                            rejection?.error in setOf("Refresh token is invalid or expired.", "Refresh token is required.")
+                        if ((code == 401 || code == 403 || code == 410) && definitive) {
                             Log.w(AUTH_LOG_TAG, "refresh rejected with HTTP $code; clearing local session")
                             synchronized(com.itsdhruvbhardwaj.picme.notifications.PushLocalState.lock) {
                                 if (tokenStorage.getRefreshToken() == initialRefreshToken) tokenStorage.clearTokens()
@@ -320,13 +328,14 @@ class AuthRepository(
                     throw e
                 } catch (e: Exception) {
                     Log.w(AUTH_LOG_TAG, "refresh failed: unexpected ${e.javaClass.simpleName}")
-                    Result.failure(e)
+                    Result.failure(Exception("refresh_failed"))
                 }
             }
         }
     }
 
     suspend fun getCurrentUser(): Result<User> {
+        val revision = tokenStorage.sessionRevision()
         val accessToken = tokenStorage.getAccessToken()
             ?: return Result.failure(Exception("No access token available"))
 
@@ -336,7 +345,9 @@ class AuthRepository(
                 onSuccess = { response ->
                     // A response started before a successful password reset
                     // must not restore the profile cache after tokens are cleared.
-                    if (tokenStorage.getAccessToken().isNullOrBlank()) {
+                    if (tokenStorage.sessionRevision() != revision) {
+                        Result.failure(Exception("session_changed"))
+                    } else if (tokenStorage.getAccessToken().isNullOrBlank()) {
                         Result.failure(Exception("session_expired"))
                     } else {
                         val user = preserveCompletedStyleSetup(response.user)
@@ -585,7 +596,7 @@ class AuthRepository(
         repeat(times - 1) {
             val result = block()
             val exception = result.exceptionOrNull()
-            if (result.isSuccess || (exception != null && exception.message !in listOf("timeout", "network_failure", "server_failure"))) {
+            if (result.isSuccess || (exception != null && !(exception.message in listOf("timeout", "network_failure", "server_failure", "refresh_failed") || exception.message?.startsWith("server_failure (") == true))) {
                 return result
             }
             delay(currentDelay)

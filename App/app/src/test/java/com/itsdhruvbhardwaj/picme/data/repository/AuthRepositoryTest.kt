@@ -23,6 +23,13 @@ import retrofit2.Response
 
 class AuthRepositoryTest {
 
+    @Test fun `unstructured proxy rejection does not delete the login`() = runBlocking {
+        `when`(tokenStorage.getRefreshToken()).thenReturn("refresh")
+        `when`(apiService.refreshToken(any())).thenReturn(Response.error(401, "gateway error".toResponseBody(null)))
+        assertTrue(repository.refreshSession().isFailure)
+        verify(tokenStorage, never()).clearTokens()
+    }
+
     @Mock
     private lateinit var apiService: AuthApiService
 
@@ -75,7 +82,7 @@ class AuthRepositoryTest {
             val refreshToken = "expired_refresh_token"
             `when`(tokenStorage.getRefreshToken()).thenReturn(refreshToken)
             `when`(apiService.refreshToken(any())).thenReturn(
-                Response.error(401, "".toResponseBody(null))
+                Response.error(401, "{\"code\":\"SESSION_INVALID\"}".toResponseBody(null))
             )
 
             val result = repository.refreshSession()
