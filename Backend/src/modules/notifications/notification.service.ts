@@ -20,6 +20,9 @@ export function audienceUserFilter(campaign: CampaignInput, now: Date): Record<s
     [`notificationPreferences.${campaign.category}`]: true };
   const cutoff = (days: number) => new Date(now.getTime() - days * DAY);
   switch (campaign.targetAudience) {
+    // Use signup time, never last activity. The worker passes its persisted
+    // recipient cutoff so retries keep the same signup window as expansion.
+    case "NEW_USERS": filter.createdAt = { $gte: cutoff(campaign.targetConditions.recentDays), $lte: now }; break;
     case "ACTIVE_USERS": filter.lastActiveAt = { $gte: cutoff(7) }; break;
     case "INACTIVE_7_DAYS": filter.lastActiveAt = { $type: "date", $lte: cutoff(7) }; break;
     case "INACTIVE_14_DAYS": filter.lastActiveAt = { $type: "date", $lte: cutoff(14) }; break;

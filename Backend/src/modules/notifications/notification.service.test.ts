@@ -61,6 +61,21 @@ describe("persistent notification delivery worker", () => {
     expect(mocks.sendEach).not.toHaveBeenCalled();
     expect(mocks.logUpdate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ $set: expect.objectContaining({ status: "SKIPPED" }) }));
   });
+  it("rechecks the same signup window before sending a new-user notification", async () => {
+    mocks.claim.mockResolvedValue({ ...campaign, targetAudience: "NEW_USERS", targetConditions: { userIds: [], recentDays: 2 } });
+    await new NotificationService().tick();
+    const window = { $gte: new Date(campaign.recipientCutoffAt.getTime() - 2 * 86400000), $lte: campaign.recipientCutoffAt };
+    for (const [filter] of mocks.user.mock.calls) expect(filter.$and[1].createdAt).toEqual(window);
+    expect(mocks.user).toHaveBeenCalledTimes(2);
+    expect(mocks.sendEach).toHaveBeenCalledOnce();
+  });
+  it("skips older accounts even with an active token when the signup filter does not match", async () => {
+    mocks.claim.mockResolvedValue({ ...campaign, targetAudience: "NEW_USERS" });
+    mocks.user.mockResolvedValue(false);
+    mocks.aggregate.mockResolvedValue([{ _id: "SKIPPED", count: 1 }]);
+    await new NotificationService().tick();
+    expect(mocks.sendEach).not.toHaveBeenCalled();
+  });
   it("respects user-wide cooldown reservations across concurrent campaigns", async () => {
     vi.stubEnv("NOTIFICATION_COOLDOWN_ENABLED", "true");
     mocks.gate.mockRejectedValue({ code: 11000 }); mocks.aggregate.mockResolvedValue([{ _id: "SKIPPED", count: 1 }]);

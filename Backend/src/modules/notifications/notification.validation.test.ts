@@ -42,6 +42,16 @@ describe("notification payload and audience rules", () => {
     expect(message.data).toMatchObject({ recipientUserId: "user", deliveryId: "delivery", bindingVersion: "7" });
     expect(Object.values(message.data!).every((value) => typeof value === "string")).toBe(true);
   });
+  it("targets new signups by creation time with an inclusive fixed send window", () => {
+    const campaign = validateCampaign({ ...draft, targetAudience: "NEW_USERS", targetConditions: { recentDays: 3 } });
+    const cutoff = new Date("2026-11-14T10:00:00Z");
+    const filter = audienceUserFilter(campaign, cutoff);
+    expect(filter.createdAt).toEqual({ $gte: new Date("2026-11-11T10:00:00Z"), $lte: cutoff });
+    expect(filter).not.toHaveProperty("lastActiveAt");
+    expect(filter).toMatchObject({ emailVerified: true, isActive: { $ne: false }, deletionScheduledAt: null,
+      "notificationPreferences.productUpdates": true });
+    expect(validateCampaign({ ...draft, targetAudience: "NEW_USERS" }).targetConditions.recentDays).toBe(1);
+  });
   it("bounds transient retries and invalidates only explicitly invalid registration tokens", () => {
     const now = new Date();
     expect(retryDecision("messaging/server-unavailable", 1, now, now)).toMatchObject({ retry: true, invalidToken: false });

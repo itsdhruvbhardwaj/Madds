@@ -18,7 +18,7 @@ export function validateCampaign(input: unknown): CampaignInput {
       (!Number.isInteger(minimumVersionCode) || minimumVersionCode < 1 || minimumVersionCode > 2100000000)) return bad();
   if (type === "APP_UPDATE" && (value.relatedStyleId || value.collectionId || value.targetAudience === "UNKNOWN_APP_VERSION")) return bad();
   const userIds = conditions.userIds ?? [];
-  const recentDays = conditions.recentDays ?? 7;
+  const recentDays = conditions.recentDays ?? (value.targetAudience === "NEW_USERS" ? 1 : 7);
   if (!Array.isArray(userIds) || userIds.length > 1000 || userIds.some((id) => typeof id !== "string" || !/^[0-9a-f]{24}$/i.test(id)) ||
       !Number.isInteger(recentDays) || recentDays < 1 || recentDays > 365 ||
       (value.targetAudience === "SPECIFIC_USERS" && userIds.length === 0)) return bad();

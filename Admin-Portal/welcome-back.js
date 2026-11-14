@@ -3,14 +3,14 @@
   function create({ api, notify, openNotification }) {
     const $ = id => document.getElementById(id), base = "/api/admin/notifications/welcome-back";
     const form = $("welcome-back-form");
-    let batch = null, selected = new Set(), busy = false, epoch = 0, requestId = null, timer, confirmationPending = false;
+    let batch = null, selected = new Set(), busy = false, loading = false, epoch = 0, requestId = null, timer, confirmationPending = false;
     function controls() {
       const locked = busy || confirmationPending || (batch && batch.status !== "DRAFT");
       for (const field of form.querySelectorAll("input,select,button")) field.disabled = !!locked;
       $("welcome-back-confirm").disabled = busy || !batch || batch.status !== "DRAFT" || !selected.size;
       $("welcome-back-confirm").ariaBusy = String(busy);
       $("welcome-back-preview").ariaBusy = String(busy);
-      $("welcome-back-refresh").disabled = busy;
+      $("welcome-back-refresh").disabled = busy || loading;
       $("welcome-back-all").disabled = !!locked || !batch;
       $("welcome-back-clear").disabled = !!locked || !batch;
       $("welcome-back-new").disabled = busy || confirmationPending;
@@ -25,7 +25,8 @@
     }
     function stopTimer() { clearTimeout(timer); }
     async function refresh() {
-      stopTimer(); const session = epoch;
+      if (loading) return;
+      loading = true; controls(); stopTimer(); const session = epoch;
       try {
         const data = await api(base); if (session !== epoch) return;
         if (batch?.status !== "DRAFT" || confirmationPending) {
@@ -37,6 +38,7 @@
         if (data.batches.some(b => b.status === "PROCESSING") && !document.getElementById("notifications-panel").hidden)
           timer = setTimeout(() => { void refresh(); }, 10000);
       } catch (error) { if (session === epoch) $("welcome-back-error").textContent = error.message; }
+      finally { if (session === epoch) { loading = false; controls(); } }
     }
     async function preview(event) {
       event.preventDefault(); if (busy || confirmationPending || !form.reportValidity()) return;
@@ -78,7 +80,7 @@
     $("welcome-back-refresh").onclick = () => { if (!busy) void refresh(); };
     $("welcome-back-new").onclick = () => { if (busy || confirmationPending) return; batch=null;requestId=null;selected.clear();render(); };
     $("welcome-back-history").addEventListener("click", event => { const id = event.target.closest("[data-grant-notification]")?.dataset.grantNotification; if(id) openNotification(id); });
-    function reset() { epoch++;stopTimer();batch=null;selected.clear();requestId=null;busy=false;confirmationPending=false;$("welcome-back-error").textContent="";$("welcome-back-history").innerHTML="";render(); }
+    function reset() { epoch++;stopTimer();batch=null;selected.clear();requestId=null;busy=false;loading=false;confirmationPending=false;$("welcome-back-error").textContent="";$("welcome-back-history").innerHTML="";render(); }
     controls(); return { refresh, reset };
   }
   if (typeof module !== "undefined" && module.exports) module.exports = { create };

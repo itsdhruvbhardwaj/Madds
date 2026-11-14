@@ -160,7 +160,6 @@
     if (byId("log-action-filter").value) params.set("action", byId("log-action-filter").value);
     const refreshButton = byId("logs-refresh");
     refreshButton.disabled = true;
-    refreshButton.textContent = "Loading…";
     byId("logs-body").setAttribute("aria-busy", "true");
     byId("logs-body").innerHTML = '<tr><td colspan="4" class="logs-loading"><span class="loading-spinner"></span>Loading change logs…</td></tr>';
     try {
@@ -174,7 +173,6 @@
     finally {
       state.logsLoading = false;
       refreshButton.disabled = false;
-      refreshButton.textContent = "Refresh logs";
       byId("logs-body").setAttribute("aria-busy", "false");
     }
   }
@@ -792,15 +790,23 @@
   byId("style-sort").addEventListener("change", renderStyles);
   byId("collection-sort").addEventListener("change", renderCollections);
   byId("add-style").addEventListener("click", () => openStyleEditor());
-  byId("refresh-button").addEventListener("click", () => {
-    if (state.activePanel === "logs-panel") void loadLogs(1);
-    else if (state.activePanel === "notifications-panel") { void notifications.refresh(); void welcomeBack.refresh(); }
-    else if (state.activePanel === "performance-panel") void performance.refresh();
-    else if (state.activePanel === "users-panel") void users.refresh();
-    else if (state.activePanel === "feedback-panel") void feedback.refresh();
-    else if (state.activePanel === "storage-panel") void storage.refresh();
-    else if (state.activePanel === "app-settings-panel") { void settings.refresh(); void watermark.refresh(); void adSettings.refresh(); }
-    else void loadCatalog();
+  byId("refresh-button").addEventListener("click", async () => {
+    const button = byId("refresh-button");
+    if (button.disabled) return;
+    // loadCatalog owns this same button while refreshing the catalogue.
+    if (["styles-panel", "collections-panel"].includes(state.activePanel)) { await loadCatalog(); return; }
+    button.disabled = true;
+    button.setAttribute("aria-label", "Refreshing workspace");
+    try {
+      if (state.activePanel === "logs-panel") await loadLogs(1);
+      else if (state.activePanel === "notifications-panel") await Promise.all([notifications.refresh(), welcomeBack.refresh()]);
+      else if (state.activePanel === "performance-panel") await performance.refresh();
+      else if (state.activePanel === "users-panel") await users.refresh();
+      else if (state.activePanel === "feedback-panel") await feedback.refresh();
+      else if (state.activePanel === "storage-panel") await storage.refresh();
+      else if (state.activePanel === "app-settings-panel") await Promise.all([settings.refresh(), watermark.refresh(), adSettings.refresh()]);
+      else await loadCatalog();
+    } finally { button.disabled = false; button.setAttribute("aria-label", "Refresh workspace"); }
   });
   document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => {
     if (button.dataset.close === "style-dialog") requestCloseStyleEditor();

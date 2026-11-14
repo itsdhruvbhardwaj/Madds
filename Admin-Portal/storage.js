@@ -4,9 +4,13 @@
   const bytes = n => n != null && Number.isFinite(Number(n)) ? `${(Number(n)/1048576).toFixed(2)} MB` : "Not available";
   function create({ api, notify }) {
     const $ = id => document.getElementById(id), base = "/api/admin/storage";
-    let epoch = 0, busy = false, mediaTicket = 0, assets = [], cursor = null;
+    let epoch = 0, busy = false, loading = false, mediaLoading = false, mediaTicket = 0, assets = [], cursor = null;
     function controls() {
       for (const id of ["storage-refresh", "media-refresh", "media-more", "media-folder", "cleanup-retry"]) $(id).disabled = busy;
+      $("storage-refresh").disabled = busy || loading;
+      $("media-refresh").disabled = busy || mediaLoading;
+      $("media-more").disabled = busy || mediaLoading;
+      $("media-folder").disabled = busy || mediaLoading;
       $("storage-policies").querySelectorAll("button").forEach(b => b.disabled = busy || b.dataset.empty === "true");
       $("media-grid").querySelectorAll("button").forEach(b => b.disabled = busy);
       for (const button of [$("storage-refresh"), $("media-refresh"), $("media-more"), $("cleanup-retry"),
@@ -29,6 +33,8 @@
       $("media-more").hidden = !cursor;
     }
     async function loadMedia(more = false) {
+      if (mediaLoading) return;
+      mediaLoading = true; controls();
       const ticket = ++mediaTicket, session = epoch, folder = $("media-folder").value;
       $("media-error").textContent = "Loading images…";
       try {
@@ -36,10 +42,12 @@
         if (ticket !== mediaTicket || session !== epoch) return;
         assets = result.assets || []; cursor = result.nextCursor; renderMedia(); $("media-error").textContent = "";
       } catch (failure) { if (ticket === mediaTicket && session === epoch) { assets = []; cursor = null; renderMedia(); $("media-error").textContent = failure.message; } }
+      finally { if (session === epoch) { mediaLoading = false; controls(); } }
     }
     async function refresh() {
-      if (busy) return; const session = epoch; error();
+      if (busy || loading) return; const session = epoch; loading = true; controls(); error();
       try { await Promise.all([overview(), queue()]); } catch (failure) { if (session === epoch) error(failure.message); }
+      finally { if (session === epoch) { loading = false; controls(); } }
     }
     async function mutate(action, message) {
       if (busy || !window.confirm(message)) return;
@@ -61,7 +69,7 @@
     $("media-refresh").addEventListener("click", () => { if (!busy) void loadMedia(); });
     $("media-folder").addEventListener("change", () => { if (!busy) void loadMedia(); });
     $("media-more").addEventListener("click", () => { if (!busy) void loadMedia(true); });
-    function reset() { epoch++; mediaTicket++; assets=[]; cursor=null; busy=false; error(); $("storage-summary").innerHTML=""; $("storage-policies").innerHTML=""; $("cleanup-jobs").innerHTML=""; $("media-grid").innerHTML=""; $("media-error").textContent=""; controls(); }
+    function reset() { epoch++; mediaTicket++; assets=[]; cursor=null; busy=false; loading=false; mediaLoading=false; error(); $("storage-summary").innerHTML=""; $("storage-policies").innerHTML=""; $("cleanup-jobs").innerHTML=""; $("media-grid").innerHTML=""; $("media-error").textContent=""; controls(); }
     return { refresh, reset };
   }
   const exported = { create, bytes };

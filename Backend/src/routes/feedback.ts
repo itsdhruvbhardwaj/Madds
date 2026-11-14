@@ -26,7 +26,16 @@ router.get("/admin/feedback", async (req, res) => {
   const page = Math.max(1, Math.min(10000, Number.parseInt(String(req.query.page || 1), 10) || 1));
   const filter = ["NEW", "IN_REVIEW", "RESOLVED"].includes(String(req.query.status)) ? { status: req.query.status } : {};
   const items = await Feedback.find(filter).select("userId category message contactEmail appVersion androidVersion status createdAt").sort({ _id: -1 }).skip((page - 1) * 20).limit(21).lean();
-  res.json({ items: items.slice(0, 20), hasMore: items.length > 20 });
+  const pageItems = items.slice(0, 20);
+  // Resolve only this page's owners in one query; existing feedback gains names
+  // too, without duplicating personal details in every feedback record.
+  const users = await User.find({ _id: { $in: [...new Set(pageItems.map(item => String(item.userId)))] } })
+    .select("name email").limit(20).lean();
+  const owners = new Map(users.map(user => [String(user._id), user]));
+  res.json({ items: pageItems.map(item => {
+    const owner = owners.get(String(item.userId));
+    return { ...item, userName: owner?.name ?? null, userEmail: owner?.email ?? null };
+  }), hasMore: items.length > 20 });
 });
 router.patch("/admin/feedback/:id", async (req, res) => {
   if (!/^[a-f0-9]{24}$/i.test(String(req.params.id)) || !["NEW", "IN_REVIEW", "RESOLVED"].includes(req.body?.status)) return res.status(400).json({ error: "Invalid feedback status." });

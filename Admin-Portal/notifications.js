@@ -1,7 +1,7 @@
 /* Notification controls share Workspace's authenticated API client. No Firebase keys belong here. */
 (() => {
   const labels = {
-    ALL_USERS: "All eligible users", ACTIVE_USERS: "Active in the last 7 days",
+    ALL_USERS: "All eligible users", NEW_USERS: "Newly joined users", ACTIVE_USERS: "Active in the last 7 days",
     INACTIVE_7_DAYS: "Inactive for 7 days", INACTIVE_14_DAYS: "Inactive for 14 days",
     INACTIVE_30_DAYS: "Inactive for 30 days", SPECIFIC_USERS: "Selected users",
     USERS_WITHOUT_RECENT_GENERATIONS: "Without recent creations",
@@ -38,8 +38,8 @@
     const minimumVersionCode = Number(values.minimumVersionCode);
     if (values.targetAudience === "OLDER_APP_VERSION" && (!Number.isInteger(minimumVersionCode) || minimumVersionCode < 1 || minimumVersionCode > 2100000000)) throw new Error("Enter the available release's numeric version code from Play Console.");
     if (values.notificationType === "APP_UPDATE" && values.targetAudience === "UNKNOWN_APP_VERSION") throw new Error("Older builds cannot open the update action. Use Product updates with Home for devices with an unknown version.");
-    const recentDays = Number(values.recentDays || 7);
-    if (!Number.isInteger(recentDays) || recentDays < 1 || recentDays > 365) throw new Error("Choose a creation window between 1 and 365 days.");
+    const recentDays = Number(values.recentDays || (values.targetAudience === "NEW_USERS" ? 1 : 7));
+    if (!Number.isInteger(recentDays) || recentDays < 1 || recentDays > 365) throw new Error("Choose a window between 1 and 365 days.");
     if (values.imageUrl.trim()) {
       let url; try { url = new URL(values.imageUrl.trim()); } catch { throw new Error("Use a valid HTTPS image URL."); }
       if (url.protocol !== "https:" || url.username || url.password || url.href.length > 1000) throw new Error("Use a valid HTTPS image URL without credentials.");
@@ -166,7 +166,12 @@
       form.elements.destination.querySelector('option[value="update"]').disabled = form.elements.notificationType.value !== "APP_UPDATE";
       $("push-unknown-version").hidden = form.elements.targetAudience.value !== "UNKNOWN_APP_VERSION";
       $("push-users-field").hidden = form.elements.targetAudience.value !== "SPECIFIC_USERS";
-      $("push-days-field").hidden = form.elements.targetAudience.value !== "USERS_WITHOUT_RECENT_GENERATIONS";
+      const newUsers = form.elements.targetAudience.value === "NEW_USERS";
+      if (form.dataset.daysAudience && form.dataset.daysAudience !== form.elements.targetAudience.value) form.elements.recentDays.value = newUsers ? "1" : "7";
+      form.dataset.daysAudience = form.elements.targetAudience.value;
+      $("push-days-field").hidden = !newUsers && form.elements.targetAudience.value !== "USERS_WITHOUT_RECENT_GENERATIONS";
+      $("push-days-label").textContent = newUsers ? "Joined within the last (days)" : "Days without a completed creation";
+      $("push-days-hint").textContent = newUsers ? "Only accounts created in this window are included. Signing in again or reinstalling does not make an existing account new. This sends once when you confirm; it is not an automatic signup message." : "Users without a completed creation during this window.";
       $("push-style-field").hidden = form.elements.destination.value !== "style";
       $("push-collection-field").hidden = form.elements.destination.value !== "collection";
       // Disabled controls aren't included in FormData; values() handles destination below.
@@ -189,7 +194,7 @@
         <form id="push-form" class="push-form"><fieldset ${draft ? "" : "disabled"} class="push-fields">
           <div class="push-two-fields"><label>Category<select name="notificationType">${options(types, item.notificationType || "PRODUCT_UPDATE")}</select></label><label>Audience<select name="targetAudience">${options(labels, item.targetAudience || "ALL_USERS")}</select></label></div>
           <label id="push-users-field" hidden>User IDs<textarea name="userIds" rows="3" placeholder="Separate IDs with commas or new lines">${escape((item.targetConditions?.userIds || []).join("\n"))}</textarea><small class="field-hint">Use account IDs, not email addresses. Maximum 1,000.</small></label>
-          <label id="push-days-field" hidden>Days without a completed creation<input name="recentDays" type="number" min="1" max="365" value="${escape(item.targetConditions?.recentDays || 7)}"></label>
+          <label id="push-days-field" hidden><span id="push-days-label">Joined within the last (days)</span><input name="recentDays" type="number" min="1" max="365" value="${escape(item.targetConditions?.recentDays || (item.targetAudience === "NEW_USERS" ? 1 : 7))}"><small id="push-days-hint" class="field-hint"></small></label>
           <label id="push-version-field" hidden>Available release version code<input name="minimumVersionCode" type="number" min="1" max="2100000000" list="push-version-options" value="${escape(item.targetConditions?.minimumVersionCode || "")}"><datalist id="push-version-options"></datalist><small class="field-hint">Send only to devices with a reported code below this number. Use a release available to the selected testers/users in Google Play. Unknown versions are excluded.</small></label>
           <p id="push-version-summary" class="field-hint"></p>
           <p id="push-unknown-version" class="field-hint" hidden>These devices have not reported a version. They are not necessarily outdated. Use Product updates opening Home; legacy builds cannot open the new Google Play action.</p>

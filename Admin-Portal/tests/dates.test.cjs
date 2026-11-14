@@ -29,7 +29,8 @@ test("the shared formatter is loaded before every dated feature and assets are r
   for (const name of ["app", "feedback", "performance", "settings", "storage", "users", "welcome-back", "watermark"]) {
     const source = fs.readFileSync(`Admin-Portal/${name}.js`, "utf8");
     assert.match(source, /MaddsDates\.dateTime/);
-    assert.match(html, new RegExp(`${name}\\.js\\?v=20261108-date-format`));
+    const version = html.match(new RegExp(`${name}\\.js\\?v=(\\d{8})[-\\w]+`));
+    assert.ok(version && Number(version[1]) >= 20261108, `${name} must use a current asset version`);
     assert.doesNotMatch(source, /new Date\([^;\n]*\)\.toLocaleString\(\)/);
   }
 });

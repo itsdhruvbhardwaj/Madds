@@ -10,9 +10,19 @@ const campaigns = [
   { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", title: "A little inspiration, just for you", body: "Find a fresh look in the latest Madds collection.", notificationType: "PRODUCT_UPDATE", targetAudience: "ALL_USERS", targetConditions: { userIds: [], recentDays: 7 }, status: "DRAFT", revision: 0, deepLink: "picme://home", createdAt: new Date().toISOString() },
   { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", title: "Weekend portraits are here", body: "Create something new this weekend.", notificationType: "NEW_STYLE", targetAudience: "ACTIVE_USERS", targetConditions: { userIds: [], recentDays: 7 }, relatedStyleId: "golden-hour", deepLink: "picme://styles/golden-hour", status: "SENT", revision: 0, createdAt: new Date().toISOString() },
 ];
-const json = (res, data, status = 200) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(data)); };
+const json = (res, data, status = 200) => {
+  const send = () => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(data)); };
+  const delay = Math.min(5000, Math.max(0, Number(process.env.WORKSPACE_PREVIEW_DELAY_MS) || 0));
+  if (delay) setTimeout(send, delay); else send();
+};
 http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://127.0.0.1");
+  if (url.pathname === "/api/admin/feedback") return json(res, { items: [
+    { _id: "cccccccccccccccccccccccc", userId: "dddddddddddddddddddddddd", userName: "Preview User", userEmail: "preview@example.com",
+      contactEmail: "reply@example.com", category: "SUGGESTION", status: "NEW", message: "Please add more styles for couples.",
+      appVersion: "1.2.3", androidVersion: "13", createdAt: new Date().toISOString() },
+  ], hasMore: false });
+  if (url.pathname === "/api/admin/notifications/device-versions") return json(res, { versions: [] });
   if (!url.pathname.startsWith("/api/")) {
     if (url.pathname === "/fixture-watermark.png" && process.env.WORKSPACE_PREVIEW_LOGO) {
       res.writeHead(200, {"Content-Type":"image/png"}); return fs.createReadStream(process.env.WORKSPACE_PREVIEW_LOGO).pipe(res);

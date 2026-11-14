@@ -1,9 +1,10 @@
 import express from "express";
 import request from "supertest";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-const m = vi.hoisted(() => ({ save: vi.fn(), update: vi.fn(), init: vi.fn(), userUpdate: vi.fn() }));
-vi.mock("../models/User.js", () => ({ User: { updateOne: m.userUpdate } }));
-vi.mock("../models/Feedback.js", () => ({ Feedback: { init: m.init, findOneAndUpdate: m.save, findByIdAndUpdate: m.update } }));
+const m = vi.hoisted(() => ({ save: vi.fn(), update: vi.fn(), init: vi.fn(), userUpdate: vi.fn(), findUsers: vi.fn(), list: vi.fn() }));
+vi.mock("../models/User.js", () => ({ User: { updateOne: m.userUpdate, find: (filter: unknown) => ({ select: (fields: string) => ({ limit: () => ({ lean: () => m.findUsers(filter, fields) }) }) }) } }));
+vi.mock("../models/Feedback.js", () => ({ Feedback: { init: m.init, findOneAndUpdate: m.save, findByIdAndUpdate: m.update,
+  find: () => ({ select: () => ({ sort: () => ({ skip: () => ({ limit: () => ({ lean: m.list }) }) }) }) }) } }));
 vi.mock("../middleware/auth.js", () => ({ requireAuth: (req: any, res: any, next: any) => {
   if (!req.headers.authorization) return res.sendStatus(401);
   req.user = { id: "signed-in-user", email: req.headers.authorization === "Bearer admin" ? "admin@example.com" : "user@example.com", emailVerified: true }; next();
@@ -35,6 +36,20 @@ describe("feedback", () => {
   it("allows an administrator to update a valid status only", async () => {
     expect((await request(app).patch("/api/admin/feedback/aaaaaaaaaaaaaaaaaaaaaaaa").set("Authorization", "Bearer admin").send({ status: "RESOLVED" })).status).toBe(200);
     expect((await request(app).patch("/api/admin/feedback/aaaaaaaaaaaaaaaaaaaaaaaa").set("Authorization", "Bearer admin").send({ status: "anything" })).status).toBe(400);
+  });
+  it("joins only this page's names and emails without exposing account credentials", async () => {
+    m.list.mockResolvedValue(Array.from({ length: 21 }, (_, index) => ({ _id: `feedback${index}`, userId: `user${index}` })));
+    m.findUsers.mockResolvedValue([{ _id: "user0", name: "Dhruv", email: "person@example.com" }]);
+    const result = await request(app).get("/api/admin/feedback").set("Authorization", "Bearer admin");
+    expect(result.status).toBe(200);
+    expect(result.body.hasMore).toBe(true);
+    expect(result.body.items).toHaveLength(20);
+    expect(result.body.items[0]).toMatchObject({ userId: "user0", userName: "Dhruv", userEmail: "person@example.com" });
+    expect(result.body.items[1]).toMatchObject({ userName: null, userEmail: null });
+    expect(m.findUsers).toHaveBeenCalledOnce();
+    expect(m.findUsers.mock.calls[0][0]._id.$in).toHaveLength(20);
+    expect(m.findUsers.mock.calls[0][0]._id.$in).not.toContain("user20");
+    expect(m.findUsers.mock.calls[0][1]).toBe("name email");
   });
 });
 

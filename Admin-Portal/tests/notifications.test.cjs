@@ -2,6 +2,13 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { buildDraft, localSchedule } = require("../notifications.js");
 const values = { title: "News", body: "A new update", notificationType: "PRODUCT_UPDATE", targetAudience: "ALL_USERS", userIds: "", recentDays: "7", destination: "home", styleId: "", collectionId: "", imageUrl: "" };
+test("welcome messages target a bounded signup window and retain name personalization", () => {
+  const draft = buildDraft({ ...values, targetAudience: "NEW_USERS", recentDays: "2", title: "Welcome {firstName}!" });
+  assert.equal(draft.targetAudience, "NEW_USERS");
+  assert.equal(draft.targetConditions.recentDays, 2);
+  assert.equal(draft.title, "Welcome {firstName}!");
+  for (const recentDays of ["0", "1.5", "366"]) assert.throws(() => buildDraft({ ...values, targetAudience: "NEW_USERS", recentDays }));
+});
 test("selected accounts require IDs, not email addresses", () => {
   assert.throws(() => buildDraft({ ...values, targetAudience: "SPECIFIC_USERS", userIds: "person@example.com" }));
   const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
