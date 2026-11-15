@@ -1,14 +1,14 @@
 import express from "express";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const m = vi.hoisted(() => ({ find: vi.fn(), one: vi.fn(), update: vi.fn(), stale: vi.fn(), read: vi.fn() }));
+const m = vi.hoisted(() => ({ find: vi.fn(), one: vi.fn(), update: vi.fn(), stale: vi.fn(), read: vi.fn(), thumbnail: vi.fn(), remove: vi.fn() }));
 vi.mock("../middleware/auth.js", () => ({ requireAuth: (req: any, res: any, next: any) => {
   if (!req.headers.authorization) return res.sendStatus(401);
   req.user = { id: "aaaaaaaaaaaaaaaaaaaaaaaa" }; next();
 } }));
 vi.mock("../models/Generation.js", () => ({ Generation: { find: m.find, findOne: m.one, updateOne: m.update, updateMany: m.stale } }));
 vi.mock("../models/CatalogStyle.js", () => ({ CatalogStyle: { find: () => ({ select: () => ({ lean: async () => [] }) }) } }));
-vi.mock("../services/generationRecovery.js", () => ({ readGenerationResult: m.read }));
+vi.mock("../services/generationRecovery.js", () => ({ readGenerationResult: m.read, readGenerationThumbnail: m.thumbnail, deleteGenerationResult: m.remove }));
 import { generationRecoveryRouter } from "./generationRecovery.js";
 const app = express(); app.use(express.json()); app.use("/api/generations", generationRecoveryRouter);
 const id = "bbbbbbbbbbbbbbbbbbbbbbbb";
@@ -48,5 +48,62 @@ describe("generation recovery endpoints", () => {
     await request(app).get(`/api/generations/by-key/request-key`).set("Authorization", "Bearer user");
     expect(m.stale.mock.calls[1][0]).toMatchObject({ userId: "aaaaaaaaaaaaaaaaaaaaaaaa", status: "processing" });
     expect(m.stale.mock.calls[1][1].$set.status).toBe("outcome_unknown");
+  });
+});
+
+
+describe("24-hour gallery", () => {
+  it("includes viewed photos, scopes ownership and expiry, and bounds cursor pagination", async () => {
+    const expiry = new Date(Date.now() + 86400000);
+    const items = Array.from({ length: 21 }, (_, i) => ({ _id: i.toString(16).padStart(24, "0"),
+      styleId: "portrait", status: "completed", resultParts: 1, resultExpiresAt: expiry, viewedAt: new Date() }));
+    const limit = vi.fn(() => ({ lean: async () => items }));
+    const sort = vi.fn(() => ({ limit }));
+    m.find.mockReturnValue({ sort });
+    const r = await request(app).get(`/api/generations/gallery?cursor=${id}`).set("Authorization", "Bearer user");
+    expect(r.status).toBe(200); expect(r.body.items).toHaveLength(20);
+    expect(r.body.nextCursor).toBe(items[19]._id);
+    expect(r.body.items[0].resultAvailable).toBe(true);
+    expect(r.body.serverNow).toBeTruthy(); expect(r.headers["cache-control"]).toBe("no-store");
+    expect(m.find.mock.calls[0][0]).toMatchObject({ userId: "aaaaaaaaaaaaaaaaaaaaaaaa", resultDeletedAt: null, _id: { $lt: id } });
+    expect(m.find.mock.calls[0][0]).not.toHaveProperty("viewedAt");
+    expect(m.find.mock.calls[0][0].$or[1].resultExpiresAt.$gt).toBeInstanceOf(Date);
+    expect(limit).toHaveBeenCalledWith(21); expect(sort).toHaveBeenCalledWith({ _id: -1 });
+  });
+  it("rejects malformed cursors and unauthenticated gallery requests", async () => {
+    expect((await request(app).get("/api/generations/gallery")).status).toBe(401);
+    expect((await request(app).get("/api/generations/gallery?cursor=invalid").set("Authorization", "Bearer user")).status).toBe(400);
+    expect(m.find).not.toHaveBeenCalled();
+  });
+  it("serves an authenticated binary preview without reading the full result endpoint", async () => {
+    m.one.mockReturnValue({ lean: async () => ({ _id: id, status: "completed" }) });
+    m.thumbnail.mockResolvedValue(Buffer.from("private-thumbnail"));
+    const r = await request(app).get(`/api/generations/${id}/thumbnail`).set("Authorization", "Bearer user");
+    expect(r.status).toBe(200); expect(r.headers["content-type"]).toContain("image/webp");
+    expect(r.headers["cache-control"]).toBe("no-store"); expect(m.read).not.toHaveBeenCalled();
+    expect(m.thumbnail.mock.calls[0][0]).toBe("aaaaaaaaaaaaaaaaaaaaaaaa");
+  });
+  it("returns 410 for expired previews and never exposes another owner's thumbnail", async () => {
+    m.one.mockReturnValue({ lean: async () => ({ _id: id, status: "completed" }) }); m.thumbnail.mockResolvedValue(null);
+    expect((await request(app).get(`/api/generations/${id}/thumbnail`).set("Authorization", "Bearer user")).status).toBe(410);
+    m.one.mockReturnValue({ lean: async () => null }); m.thumbnail.mockClear();
+    expect((await request(app).get(`/api/generations/${id}/thumbnail`).set("Authorization", "Bearer user")).status).toBe(404);
+    expect(m.thumbnail).not.toHaveBeenCalled();
+  });
+  it("deletes an owned completed temporary result without deleting the generation audit record", async () => {
+    m.one.mockReturnValue({ lean: async () => ({ _id: id, status: "completed" }) }); m.remove.mockResolvedValue(undefined);
+    expect((await request(app).delete(`/api/generations/${id}/result`).set("Authorization", "Bearer user")).status).toBe(204);
+    expect(m.remove).toHaveBeenCalledWith("aaaaaaaaaaaaaaaaaaaaaaaa", id);
+    m.one.mockReturnValue({ lean: async () => ({ _id: id, status: "processing" }) }); m.remove.mockClear();
+    expect((await request(app).delete(`/api/generations/${id}/result`).set("Authorization", "Bearer user")).status).toBe(409);
+    m.one.mockReturnValue({ lean: async () => null });
+    expect((await request(app).delete(`/api/generations/${id}/result`).set("Authorization", "Bearer user")).status).toBe(404);
+    expect(m.remove).not.toHaveBeenCalled();
+  });
+  it("does not report deleted results as available in metadata", async () => {
+    m.one.mockReturnValue({ lean: async () => ({ _id: id, status: "completed", resultParts: 1,
+      resultExpiresAt: new Date(Date.now() + 86400000), resultDeletedAt: new Date() }) });
+    const r = await request(app).get(`/api/generations/${id}`).set("Authorization", "Bearer user");
+    expect(r.status).toBe(200); expect(r.body.resultAvailable).toBe(false);
   });
 });

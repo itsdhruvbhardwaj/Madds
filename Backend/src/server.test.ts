@@ -1431,7 +1431,7 @@ describe("session discovery requests", () => {
       const second = await request(app).get("/api/styles").query({ shuffleSeed: "session-one", trendingFirst: true, gender: "male", page: 2, limit: 10 });
       expect(first.status).toBe(200);
       expect(second.status).toBe(200);
-      expect(first.body.styles.slice(0,3).map((s: any) => s.id)).toEqual(sample.slice(0,3).map(s => s.id));
+      expect(first.body.styles.slice(0,3).map((s: any) => s.id).sort()).toEqual(sample.slice(0,3).map(s => s.id).sort());
       expect(new Set([...first.body.styles, ...second.body.styles].map(s => s.id)).size).toBe(20);
       expect(catalogue).toHaveBeenCalledTimes(2);
     } finally { catalogue.mockRestore(); }

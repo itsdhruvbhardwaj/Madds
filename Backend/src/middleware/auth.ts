@@ -101,7 +101,12 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
     req.sessionId = sessionId;
 
     next();
-  } catch (_error) {
-    res.status(401).json({ ok: false, error: "Invalid or expired authentication token." });
+  } catch (error) {
+    const name = error instanceof Error ? error.name : "";
+    if (["TokenExpiredError", "JsonWebTokenError", "NotBeforeError"].includes(name)) {
+      res.status(401).json({ ok: false, code: "ACCESS_TOKEN_INVALID", error: "Invalid or expired authentication token." });
+    } else {
+      res.status(503).json({ ok: false, code: "SESSION_SERVICE_UNAVAILABLE", error: "Session service temporarily unavailable." });
+    }
   }
 }

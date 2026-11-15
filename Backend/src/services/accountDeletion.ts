@@ -5,6 +5,7 @@ import { EmailVerificationToken } from "../models/EmailVerificationToken.js";
 import { FavoriteStyle } from "../models/FavoriteStyle.js";
 import { Generation } from "../models/Generation.js";
 import { GenerationResult } from "../models/GenerationResult.js";
+import { GenerationThumbnail } from "../models/GenerationThumbnail.js";
 import { GenerationNotification } from "../models/GenerationNotification.js";
 import { PasswordResetToken } from "../models/PasswordResetToken.js";
 import { PasswordSetupToken } from "../models/PasswordSetupToken.js";
@@ -20,6 +21,7 @@ import { destroyProfileImage } from "./profileImages.js";
 const userOwnedModels = [
   GenerationNotification,
   GenerationResult,
+  GenerationThumbnail,
   Feedback,
   DeviceToken,
   NotificationLog,

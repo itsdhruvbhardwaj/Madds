@@ -1,3 +1,4 @@
+import { hashRefreshToken } from "./lib/auth.js";
 import bcrypt from "bcryptjs";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -289,6 +290,7 @@ describe("email verification", () => {
       lean: async () => ({
         _id: "session-456",
         userId: "user-456",
+        refreshTokenHash: hashRefreshToken(response.body.refreshToken),
         deviceInfo: "test-device",
         revokedAt: null,
         expiresAt: new Date(Date.now() + 60_000),
@@ -307,7 +309,7 @@ describe("email verification", () => {
     expect(refreshResponse.body.refreshToken).not.toBe(response.body.refreshToken);
     expect(sessionModel.findOne).toHaveBeenCalledWith(
       expect.objectContaining({
-        refreshTokenHash: expect.any(String),
+         $or: expect.any(Array),
         revokedAt: null,
       }),
     );
@@ -837,6 +839,7 @@ describe("Google sign-in", () => {
       lean: async () => ({
         _id: "google-session-old",
         userId: "google-user-refresh",
+        refreshTokenHash: hashRefreshToken(loginResponse.body.refreshToken),
         deviceInfo: "test-device",
         expiresAt: new Date(Date.now() + 60_000),
       }),
@@ -856,7 +859,7 @@ describe("Google sign-in", () => {
     expect(creditServiceMocks.createUserWithWelcomeCredits).toHaveBeenCalledTimes(1);
     expect(sessionModel.updateOne).toHaveBeenCalledWith(
       expect.objectContaining({ _id: "google-session-old" }),
-      expect.objectContaining({ $set: expect.objectContaining({ revokedAt: expect.any(Date) }) }),
+      expect.objectContaining({ $set: expect.objectContaining({ refreshTokenHash: expect.any(String) }) }),
     );
   });
 });
@@ -868,7 +871,7 @@ describe("refresh and logout", () => {
 
   it("rotates a valid refresh token", async () => {
     const oldToken = "old-refresh-token";
-    const oldHash = "hash-old-refresh-token";
+    const oldHash = hashRefreshToken(oldToken);
     const user = {
       _id: "user-77",
       email: "refresh@example.com",
@@ -890,7 +893,7 @@ describe("refresh and logout", () => {
     userModel.findById.mockImplementation(() => ({
       select: () => ({ lean: async () => user }),
     }));
-    sessionModel.updateOne.mockResolvedValue({ ok: true });
+    sessionModel.updateOne.mockResolvedValue({ modifiedCount: 1 });
     sessionModel.create.mockResolvedValue({ _id: "session-88" });
     userModel.findById.mockResolvedValue(user);
 
@@ -987,7 +990,7 @@ describe("session lifecycle and refresh security", () => {
     const oldSession = {
       _id: "session-old",
       userId: "user-refresh",
-      refreshTokenHash: "hash-old-refresh",
+      refreshTokenHash: hashRefreshToken("old-refresh-token"),
       deviceInfo: "device-1",
       expiresAt: new Date(Date.now() + 60_000),
       revokedAt: null,
@@ -1005,14 +1008,14 @@ describe("session lifecycle and refresh security", () => {
       lean: async () => oldSession,
     });
     sessionModel.create.mockResolvedValue({ _id: "session-new" });
-    sessionModel.updateOne.mockResolvedValue({ ok: true });
+    sessionModel.updateOne.mockResolvedValue({ modifiedCount: 1 });
 
     const response = await request(app).post("/api/auth/refresh").send({ refreshToken: "old-refresh-token" });
 
     expect(response.status).toBe(200);
     expect(response.body.ok).toBe(true);
     const decoded = await import("jsonwebtoken").then(({ default: jwt }) => jwt.decode(response.body.accessToken));
-    expect(decoded).toMatchObject({ sub: "user-refresh", sid: "session-new" });
+    expect(decoded).toMatchObject({ sub: "user-refresh", sid: "session-old" });
   });
 
   it("rejects a reused refresh token after rotation", async () => {
@@ -1523,3 +1526,11 @@ describe("session lifecycle and refresh security", () => {
     expect(sessionModel.create).not.toHaveBeenCalled();
   });
 });
+
+ it("returns a temporary server error instead of invalidating login when the auth database fails", async () => {
+   userModel.findById.mockImplementation(() => { throw new Error("database unavailable"); });
+   const access = await createTestAccessToken("user-db", "session-db");
+   const response = await request(app).get("/api/auth/me").set("Authorization", `Bearer ${access}`);
+   expect(response.status).toBe(503);
+   expect(response.body.code).toBe("SESSION_SERVICE_UNAVAILABLE");
+ });

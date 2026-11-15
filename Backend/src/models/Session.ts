@@ -16,6 +16,9 @@ const SessionSchema = new Schema(
       type: String,
       required: true,
     },
+    previousRefreshTokenHash: String,
+    previousRefreshAttemptHash: String,
+    previousRefreshValidUntil: Date,
     deviceInfo: {
       type: String,
       default: "",
@@ -36,6 +39,8 @@ const SessionSchema = new Schema(
   { timestamps: true },
 );
 
+SessionSchema.index({ refreshTokenHash: 1 });
+SessionSchema.index({ previousRefreshTokenHash: 1 });
 SessionSchema.index({ userId: 1, createdAt: -1 });
 SessionSchema.index({ revokedAt: 1 });
 SessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });

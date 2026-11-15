@@ -12,8 +12,8 @@ export function orderDiscoveryStyles(styles: Style[], seed?: string, trendingFir
   }));
   ranked.sort((a, b) => {
     if (trendingFirst && a.trending !== b.trending) return Number(b.trending) - Number(a.trending);
-    // Preserve the existing Trending order. Shuffle the rest before pagination.
-    if (!seed || (trendingFirst && a.trending && b.trending)) return 0;
+    // Shuffle within both groups before pagination, retaining Trending priority.
+    if (!seed) return 0;
     return a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : a.style.id.localeCompare(b.style.id);
   });
   return ranked.map(item => item.style);

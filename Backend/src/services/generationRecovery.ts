@@ -2,6 +2,8 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { env } from "../config/env.js";
 import { Generation } from "../models/Generation.js";
 import { GenerationResult } from "../models/GenerationResult.js";
+import { GenerationThumbnail } from "../models/GenerationThumbnail.js";
+import sharp from "sharp";
 
 const RETENTION_MS = 24 * 60 * 60_000;
 function key() {
@@ -40,14 +42,48 @@ export async function saveGenerationResult(userId: string, generationId: string,
       await Generation.updateOne({ _id: generationId, userId, status: "processing" }, {
         $set: { resultParts: parts.length, resultExpiresAt: expiresAt, providerCompletedAt: new Date() },
       });
-      return;
+      // Preview failure must never lose an already stored, paid result.
+      try { await storeThumbnail(userId, generationId, image, expiresAt); } catch { /* Lazy preview retrieval can retry. */ }
+      return expiresAt;
     } catch (error) { lastError = error; }
   }
   throw lastError;
 }
 export async function readGenerationResult(userId: string, generation: any): Promise<string | null> {
-  if (!generation.resultParts || !generation.resultExpiresAt || new Date(generation.resultExpiresAt).getTime() <= Date.now()) return null;
+  if (generation.resultDeletedAt || !generation.resultParts || !generation.resultExpiresAt || new Date(generation.resultExpiresAt).getTime() <= Date.now()) return null;
   const parts = await GenerationResult.find({ userId, generationId: generation._id, expiresAt: { $gt: new Date() } }).sort({ part: 1 });
   if (parts.length !== generation.resultParts) return null;
   return openResult(Buffer.concat(parts.map((part: any) => Buffer.from(part.data))), `${userId}:${generation._id}`);
+}
+
+async function storeThumbnail(userId: string, generationId: string, image: string, expiresAt: Date) {
+  const bytes = Buffer.from(image.substring(image.indexOf(",") + 1), "base64");
+  const thumbnail = await sharp(bytes, { limitInputPixels: 40_000_000 }).rotate()
+    .resize(320, 448, { fit: "inside", withoutEnlargement: true }).webp({ quality: 72 }).toBuffer();
+  await GenerationThumbnail.updateOne({ generationId, userId }, { $set: {
+    userId, generationId, expiresAt,
+    data: sealResult(thumbnail.toString("base64"), `${userId}:${generationId}:thumbnail`),
+  } }, { upsert: true });
+  return thumbnail;
+}
+
+export async function readGenerationThumbnail(userId: string, generation: any): Promise<Buffer | null> {
+  if (generation.resultDeletedAt || !generation.resultParts || !generation.resultExpiresAt || new Date(generation.resultExpiresAt).getTime() <= Date.now()) return null;
+  const thumbnail = await GenerationThumbnail.findOne({ userId, generationId: generation._id, expiresAt: { $gt: new Date() } });
+  if (thumbnail) return Buffer.from(openResult(Buffer.from(thumbnail.data), `${userId}:${generation._id}:thumbnail`), "base64");
+  const image = await readGenerationResult(userId, generation);
+  if (!image) return null;
+  return storeThumbnail(userId, String(generation._id), image, new Date(generation.resultExpiresAt));
+}
+
+export async function deleteGenerationResult(userId: string, generationId: string) {
+  // Revoke access before removing bytes. TTL is the fallback if storage is unavailable.
+  await Generation.updateOne({ _id: generationId, userId, status: "completed" }, {
+    $set: { resultDeletedAt: new Date(), viewedAt: new Date(), resultParts: 0 },
+    $unset: { resultExpiresAt: 1 },
+  });
+  await Promise.all([
+    GenerationResult.deleteMany({ userId, generationId }),
+    GenerationThumbnail.deleteMany({ userId, generationId }),
+  ]);
 }

@@ -24,6 +24,7 @@ import { feedbackRouter } from "./routes/feedback.js";
 import { generationRecoveryRouter } from "./routes/generationRecovery.js";
 import { saveGenerationResult } from "./services/generationRecovery.js";
 import { GenerationResult } from "./models/GenerationResult.js";
+import { GenerationThumbnail } from "./models/GenerationThumbnail.js";
 import { GenerationNotification } from "./models/GenerationNotification.js";
 import { adminCatalogRouter } from "./routes/adminCatalog.js";
 import { adminSettingsRouter } from "./routes/adminSettings.js";
@@ -524,8 +525,9 @@ app.post(
 
     await recordDiagnostics({ providerDurationMs: Date.now() - providerStartedAt.getTime(), providerCompletedAt: new Date(), providerRequestId: result.providerRequestId });
     const image = `data:${result.mimeType ?? `image/${env.imageFormat}`};base64,${result.base64}`;
+    let resultExpiresAt: Date | undefined;
     try {
-      await saveGenerationResult(userId, reservation.generationId, image);
+      resultExpiresAt = await saveGenerationResult(userId, reservation.generationId, image);
       const completed = await completeGeneration(reservation.generationId);
       if (!completed && !await Generation.exists({ _id: reservation.generationId, userId, status: "completed", resultParts: { $gt: 0 } })) {
         throw new Error("Generation completion state was not updated.");
@@ -552,6 +554,8 @@ app.post(
       image,
       generationId: reservation.generationId,
       usage: result.usage,
+      resultExpiresAt,
+      serverNow: new Date().toISOString(),
     });
   },
 );
@@ -595,6 +599,7 @@ if (isDirectExecution) {
         await Promise.all([
           Generation.init(),
           GenerationResult.init(),
+          GenerationThumbnail.init(),
           GenerationNotification.init(),
           CreditTransaction.init(),
           FavoriteStyle.init(),

@@ -6,8 +6,8 @@ to Home and styles endpoints; there is no per-user database history or shuffle w
 
 The backend ranks style IDs deterministically using SHA-256 of seed plus ID. Gender, verification,
 collection and search filtering remain in force. Home takes at most ten per collection AFTER
-ordering. Explore preserves the existing Trending order first and shuffles other styles before
-pagination. A style in multiple collections is still one Explore entry. Old clients without a seed
+ordering. Explore keeps every Trending style ahead of other styles, shuffling within both groups
+before pagination. A style in multiple collections is still one Explore entry. Old clients without a seed
 retain their original order. The seed is limited to 8–64 safe characters.
 
 The order is stable for an unchanged catalogue. Publishing/deleting/reclassifying styles during a
@@ -21,3 +21,5 @@ call deadline. Collections fall back to paged catalogue scans only on 404, never
 Explore no longer makes a duplicate collection request on initialization.
 
 Requires the backend deployment and an updated Android build. Workspace needs no shuffle controls.
+For Android builds already sending the session seed, shuffling within the Trending group requires
+only a backend deployment. Image URLs and cache keys remain unchanged.

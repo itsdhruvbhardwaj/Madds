@@ -21,13 +21,28 @@ describe("session discovery ordering", () => {
     expect(pages).toEqual(first);
     expect(new Set(pages.map(s => s.id)).size).toBe(80);
   });
-  it("preserves Trending at the front and shuffles only the remainder in Explore", () => {
+  it("keeps all Trending first and shuffles within both Explore groups", () => {
     const first = orderDiscoveryStyles(styles, "session-one", true);
     const second = orderDiscoveryStyles(styles, "session-two", true);
-    expect(first.slice(0,5)).toEqual(styles.slice(0,5));
-    expect(second.slice(0,5)).toEqual(styles.slice(0,5));
+    expect(first.slice(0,5).map(s => s.id).sort()).toEqual(styles.slice(0,5).map(s => s.id).sort());
+    expect(second.slice(0,5).map(s => s.id).sort()).toEqual(styles.slice(0,5).map(s => s.id).sort());
+    expect(second.slice(0,5)).not.toEqual(first.slice(0,5));
+    expect(orderDiscoveryStyles([...styles].reverse(), "session-one", true)).toEqual(first);
     expect(second.slice(5,15)).not.toEqual(first.slice(5,15));
     expect(new Set(first.map(s => s.id)).size).toBe(styles.length);
+  });
+  it("retains every Trending item across page boundaries without duplicate styles or changed URLs", () => {
+    const sample = styles.map((style, index) => ({ ...style,
+      thumbnail: `https://res.cloudinary.com/test/image/upload/v1/${style.id}.jpg`,
+      collections: index < 35 ? ["Trending"] : ["Fashion"] }));
+    const ordered = orderDiscoveryStyles(sample, "session-one", true);
+    const pages = [0, 1, 2].flatMap(page => orderDiscoveryStyles(sample, "session-one", true).slice(page * 30, (page + 1) * 30));
+    expect(pages).toEqual(ordered);
+    expect(new Set(pages.map(s => s.id)).size).toBe(sample.length);
+    expect(pages.slice(0,35).every(s => s.collections.includes("Trending"))).toBe(true);
+    expect(pages.slice(35).every(s => !s.collections.includes("Trending"))).toBe(true);
+    for (const style of pages) expect(style.thumbnail).toBe(sample.find(s => s.id === style.id)!.thumbnail);
+    expect(orderDiscoveryStyles(sample, undefined, true)).toEqual(sample);
   });
   it("chooses Home previews from all matching styles before applying the ten-card limit", () => {
     const filtered = styles.filter(s => matchesStylePreference(s, "male"));

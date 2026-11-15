@@ -1,3 +1,4 @@
+import { refreshLookup, rotateRefresh } from "../services/sessionRefresh.js";
 import { Router, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import { OAuth2Client } from "google-auth-library";
@@ -1031,27 +1032,23 @@ router.post("/refresh", refreshRateLimiter, async (req: Request, res: Response) 
 
   if (!suppliedToken) {
     console.warn("[auth.refresh] rejected: missing_refresh_token");
-    return res.status(401).json({ ok: false, error: "Refresh token is required." });
+    return res.status(401).json({ ok: false, code: "SESSION_INVALID", error: "Refresh token is required." });
   }
 
-  const refreshTokenHash = hashRefreshToken(suppliedToken);
-
+  const attempt = getRequestBodyValue(req, "refreshAttemptId") || undefined;
+  if (attempt && !/^[a-zA-Z0-9_-]{16,128}$/.test(attempt)) return res.status(400).json({ ok: false, code: "INVALID_REFRESH_ATTEMPT" });
   try {
-    const existingSession = await Session.findOne({
-      refreshTokenHash,
-      revokedAt: null,
-      expiresAt: { $gt: new Date() },
-    }).lean();
+    const existingSession = await Session.findOne(refreshLookup(suppliedToken, attempt)).lean();
 
     if (!existingSession) {
       console.warn("[auth.refresh] rejected: invalid_or_expired_session");
-      return res.status(401).json({ ok: false, error: "Refresh token is invalid or expired." });
+      return res.status(401).json({ ok: false, code: "SESSION_INVALID", error: "Refresh token is invalid or expired." });
     }
 
     const user = await User.findById(existingSession.userId);
     if (!user || !user.isActive || !user.emailVerified) {
       console.warn("[auth.refresh] rejected: user_missing_inactive_or_unverified");
-      return res.status(401).json({ ok: false, error: "Refresh token is invalid or expired." });
+      return res.status(401).json({ ok: false, code: "SESSION_INVALID", error: "Refresh token is invalid or expired." });
     }
     if (respondToScheduledDeletion(res, user.deletionScheduledAt)) {
       console.warn("[auth.refresh] rejected: account_deletion_pending_or_expired");
@@ -1059,29 +1056,13 @@ router.post("/refresh", refreshRateLimiter, async (req: Request, res: Response) 
     }
     if ((existingSession.authVersion ?? 0) !== (user.authVersion ?? 0)) {
       console.warn("[auth.refresh] rejected: auth_version_mismatch");
-      return res.status(401).json({ ok: false, error: "Refresh token is invalid or expired." });
+      return res.status(401).json({ ok: false, code: "SESSION_INVALID", error: "Refresh token is invalid or expired." });
     }
 
-    const newRefreshToken = createRefreshToken();
-    const newTokenHash = hashRefreshToken(newRefreshToken);
-
-    const rewrittenSession = await Session.create({
-      userId: existingSession.userId,
-      authVersion: user.authVersion ?? 0,
-      refreshTokenHash: newTokenHash,
-      deviceInfo: existingSession.deviceInfo ?? "",
-      expiresAt: getRefreshSessionExpiryDate(),
-      lastUsedAt: new Date(),
-    });
-
-    await Session.updateOne(
-      { _id: existingSession._id, userId: existingSession.userId, revokedAt: null },
-      { $set: { revokedAt: new Date(), lastUsedAt: new Date() } },
-    );
-
-    const accessToken = createAccessToken(String(user._id), String(rewrittenSession._id));
-
-    console.info("[auth.refresh] succeeded: session rotated");
+    const newRefreshToken = await rotateRefresh(existingSession, suppliedToken, attempt);
+    if (!newRefreshToken) return res.status(409).json({ ok: false, code: "SESSION_RECOVERY_RETRY", error: "Please retry session recovery." });
+    const accessToken = createAccessToken(String(user._id), String(existingSession._id));
+    console.info("[auth.refresh] succeeded: session refreshed");
     return res.json({
       ok: true,
       accessToken,
@@ -1092,7 +1073,7 @@ router.post("/refresh", refreshRateLimiter, async (req: Request, res: Response) 
     const errorType = error instanceof Error ? error.name : "UnknownError";
     console.error(`[auth.refresh] failed: ${errorType}`);
     const message = error instanceof Error ? error.message : "Unable to refresh session.";
-    return res.status(500).json({ ok: false, error: message });
+    return res.status(503).json({ ok: false, code: "SESSION_SERVICE_UNAVAILABLE", error: "Session service temporarily unavailable." });
   }
 });
 
