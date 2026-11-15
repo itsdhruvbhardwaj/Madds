@@ -23,6 +23,11 @@ From this folder, run `py -m http.server 8080` and open `http://localhost:8080`.
 
 ## Hosting
 
+AdSense ownership verification uses the `google-adsense-account` meta tag on the
+home page. Select **Meta tag** in AdSense and verify after publishing. This tag
+does not load advertising scripts or enable Auto ads. `ads.txt` authorizes the
+website publisher; keep the separate `app-ads.txt` file for Android AdMob.
+
 Deploy the contents of this folder as a static site, then connect `maddsofficial.com` and `www.maddsofficial.com` in the hosting provider's domain settings. Configure the backend's `CLIENT_ORIGIN` environment variable to include the website origins if the backend uses an origin allowlist, for example:
 
 ```text
