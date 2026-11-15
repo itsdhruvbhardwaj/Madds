@@ -24,7 +24,7 @@ Use Node 22.12 or newer. Run `npm ci`, then `npm run dev` from this folder. The 
 
 ## Account and device behaviour
 
-Existing Madds accounts and credits are reused. Google-only accounts can use the password they create in the Android app. Direct Google web sign-in is wired but hidden until `VITE_GOOGLE_CLIENT_ID` is configured and its web origin is authorized in Google Cloud and the backend audience configuration.
+Existing Madds accounts and credits are reused. Google sign-in and signup use Google Identity Services and the existing `/api/auth/google` backend, which verifies the ID token and creates or signs into the account. The default public Web client ID matches Android's server audience; `VITE_GOOGLE_CLIENT_ID` can override it only when the backend is configured to accept that client. Each website origin must be authorized in Google Cloud. Email/password login remains available independently.
 
 Access tokens stay in memory. Refresh tokens and minimal account details use this site's local storage because the existing API uses bearer tokens. Do not put credentials in build-time environment variables. Production hardening can move web sessions to HttpOnly cookies with a backend web-session integration; that requires separate backend work. Network/server failures do not clear sessions; a definitive invalid refresh token does.
 
@@ -34,7 +34,7 @@ Unsaved generations use the backend's existing 24-hour retention. Saved copies a
 
 - Static hosting: set `VITE_API_BASE_URL` and add the final app origin to the backend `CLIENT_ORIGIN` allowlist. Configure all app routes to fall back to `index.html`. Serve HTTPS for installation and service workers.
 - Private review hosting: the bundled Worker forwards only allowlisted Madds endpoints to a fixed backend, never forwards browser cookies, and applies security headers. Its forwarding can aggregate upstream IP-based rate limits; use direct API requests with the approved origin for a public production release.
-- Google sign-in: authorize the actual web origin before exposing the button.
+- Google sign-in: authorize the actual web origin in the existing Web OAuth client before release. Local SDK loading has a bounded timeout and retry; Google credentials are verified only by the backend. A cancelled popup does not create an account or clear an existing session.
 - Notifications: Home Screen push subscriptions and web-ready notifications require a web push backend integration. The current app shows ready-generation alerts in its header while active; it does not claim browser push is configured.
 - Credit purchases are intentionally unavailable on the web/iOS release. Existing account credits can be used; insufficient-credit handling shows the required balance and allows refreshing it. Web ads require separate provider configuration; the app does not issue unverified rewards or simulate purchases.
 

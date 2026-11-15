@@ -10,6 +10,8 @@ import type { Generation, Style } from './types';
 import { GalleryPage, PhotoViewer } from './Gallery';
 import { GeneratePage, UploadSheet } from './Generation';
 import { ProfileAppearancePage } from './ProfilePicturePage';
+import { BeforeAfterComparison } from './BeforeAfterComparison';
+import { GoogleSignIn } from './GoogleSignIn';
 
 const navigation = [{ path: '/', label: 'Home', Icon: House }, { path: '/explore', label: 'Explore', Icon: Search }, { path: '/collections', label: 'Collections', Icon: Images }, { path: '/favorites', label: 'Favourites', Icon: Heart }, { path: '/profile', label: 'Profile', Icon: UserRound }];
 
@@ -90,25 +92,28 @@ function StylePage() {
   const { id } = useParams();
   const { styles, user } = useApp();
   const navigate = useNavigate();
-  const [position, setPosition] = useState(50);
   const [upload, setUpload] = useState(false);
   const fallback = styles.find(s => s.id === id);
   const details = useQuery({ queryKey: ['style', id], queryFn: ({ signal }) => api<{ style: Style }>(`/api/styles/${encodeURIComponent(id || '')}`, { signal }), staleTime: 300_000 });
   const style = details.data?.style || fallback;
   return <><CompactHeader title={style?.name || 'Style preview'} back="/explore" action={<FavoriteButton styleId={id || ''} />} /><main className="style-page">
     {details.error && <ErrorNotice message={describeError(details.error)} retry={() => void details.refetch()} />}
-    {!style ? <StyleSkeletons count={1} /> : <><div className="before-after" style={{ '--split': `${position}%` } as React.CSSProperties}><StyleImage src={style.exampleAfterUrl || style.thumbnail} alt={`${style.name}, after`} large priority /><div className="before-layer"><StyleImage src={style.exampleBeforeUrl || style.thumbnail} alt="Before transformation" large priority /></div><span className="compare-label before">Before</span><span className="compare-label after">After</span><div className="compare-line"><span>↔</span></div><input aria-label="Before and after comparison" type="range" min="0" max="100" value={position} onChange={e => setPosition(Number(e.target.value))} /></div><div className="style-description"><GenderBadge style={style} /><p>{style.description}</p></div><div className="generate-dock"><div><strong>{style.tokensRequired} credits</strong><span>per generation</span></div><button className="button primary" onClick={() => user ? setUpload(true) : navigate(`/login?next=${encodeURIComponent(`/style/${style.id}`)}`)}>Generate <Sparkles size={17} /></button></div></>}
+    {!style ? <StyleSkeletons count={1} /> : <><BeforeAfterComparison key={style.id} style={style} /><div className="style-description"><GenderBadge style={style} /><p>{style.description}</p></div><div className="generate-dock"><div><strong>{style.tokensRequired} credits</strong><span>per generation</span></div><button className="button primary" onClick={() => user ? setUpload(true) : navigate(`/login?next=${encodeURIComponent(`/style/${style.id}`)}`)}>Generate <Sparkles size={17} /></button></div></>}
   </main>{upload && style && <UploadSheet style={style} close={() => setUpload(false)} />}</>;
 }
 
 function ProfilePage() {
-  const { user, authError, refreshUser } = useApp();
-  const rows = [{ path: '/generations', text: 'My Generations', Icon: Images }, { path: '/history/purchases', text: 'My Purchases', Icon: Wallet }, { path: '/history/credits', text: 'Credit History', Icon: Clock3 }, { path: '/settings', text: 'Settings', Icon: Settings2 }, { path: 'https://maddsofficial.com/help.html', text: 'Help & Support', Icon: ShieldCheck }, { path: '/feedback', text: 'Send Feedback', Icon: MessageSquare }];
+  const { user, authError, refreshUser, logout } = useApp();
+  const navigate = useNavigate();
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState('');
+  const rows = [{ path: '/generations', text: 'My Generations', Icon: Images }, { path: '/history/credits', text: 'Credit History', Icon: Clock3 }, { path: '/settings', text: 'Settings', Icon: Settings2 }, { path: 'https://maddsofficial.com/help.html', text: 'Help & Support', Icon: ShieldCheck }, { path: '/feedback', text: 'Send Feedback', Icon: MessageSquare }];
   return <><AppHeader title="Profile" /><main className="profile-page">{!user ? <SignInGate title="Your space. Your creations.">Sign in to manage your credits, favourites, and creations.</SignInGate> : <>
     {authError && <ErrorNotice message={authError} retry={() => void refreshUser()} />}
     <div className="profile-identity"><Link to="/profile/appearance" className="edit-picture" aria-label="Edit profile picture"><Avatar /></Link><Link to="/profile/appearance" className="text-button">Edit profile picture</Link><h2>{user.name}</h2><p>{user.email}</p></div>
     <div className="credit-card"><div><div className="credit-amount"><Coins size={28} /><strong>{user.credits}</strong></div><span>Credits</span></div><Link className="text-button" to="/history/credits">View history <ChevronRight size={16} /></Link></div>
-    <div className="profile-menu">{rows.map(({ path, text, Icon }) => path.startsWith('https') ? <a key={path} href={path} target="_blank" rel="noreferrer"><Icon /><span>{text}</span><ChevronRight /></a> : <Link key={path} to={path}><Icon /><span>{text}</span><ChevronRight /></Link>)}</div>
+    <div className="profile-menu">{rows.map(({ path, text, Icon }) => path.startsWith('https') ? <a key={path} href={path} target="_blank" rel="noreferrer"><Icon /><span>{text}</span><ChevronRight /></a> : <Link key={path} to={path}><Icon /><span>{text}</span><ChevronRight /></Link>)}<button disabled={loggingOut} aria-busy={loggingOut} onClick={async () => { setLoggingOut(true); setLogoutError(''); try { await logout(); navigate('/', { replace: true }); } catch (e) { setLogoutError(describeError(e)); } finally { setLoggingOut(false); } }}><LogOut /><span>{loggingOut ? 'Logging out…' : 'Log out'}</span>{loggingOut ? <Spinner small /> : <ChevronRight />}</button></div>
+    {logoutError && <ErrorNotice message={logoutError} />}
   </>}</main></>;
 }
 export function CreditsSheet({ close, requiredCredits }: { close: () => void; requiredCredits: number }) {
@@ -118,23 +123,6 @@ export function CreditsSheet({ close, requiredCredits }: { close: () => void; re
   return <Modal title={balance < requiredCredits ? 'Not enough credits' : 'Your Madds credits'} onClose={close}><div className="credits-modal"><Coins size={40} /><strong>{balance}</strong><span>credits available</span></div><p>{balance < requiredCredits ? `This style needs ${requiredCredits} credits. You need ${requiredCredits - balance} more to generate it.` : 'Your balance is ready. Close this message and tap Generate to continue.'}</p><div className="info-box">You can use your existing Madds balance here. Getting more credits on the web is not available yet.</div>{error && <ErrorNotice message={error} />}<button className="button secondary full" disabled={busy} onClick={async () => { setBusy(true); setError(''); try { await refreshUser(); } catch (e) { setError(describeError(e)); } finally { setBusy(false); } }}>{busy ? <Spinner small /> : 'Refresh balance'}</button><button className="button primary full" onClick={close}>Got it</button></Modal>;
 }
 
-function GoogleButton({ onCredential }: { onCredential: (value: string) => void }) {
-  const container = useRef<HTMLDivElement>(null);
-  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-  useEffect(() => {
-    if (!clientId) return;
-    const init = () => {
-      const google = (window as unknown as { google?: { accounts: { id: { initialize: (v: unknown) => void; renderButton: (e: HTMLElement, v: unknown) => void } } } }).google;
-      if (!google || !container.current) return;
-      google.accounts.id.initialize({ client_id: clientId, callback: (r: { credential: string }) => onCredential(r.credential) });
-      google.accounts.id.renderButton(container.current, { theme: 'filled_black', size: 'large', shape: 'pill', width: 300 });
-    };
-    const existing = document.querySelector<HTMLScriptElement>('script[data-google-signin]');
-    if (existing) { init(); existing.addEventListener('load', init); return () => existing.removeEventListener('load', init); }
-    const script = document.createElement('script'); script.src = 'https://accounts.google.com/gsi/client'; script.async = true; script.dataset.googleSignin = 'true'; script.onload = init; document.head.append(script);
-  }, [clientId, onCredential]);
-  return clientId ? <div ref={container} className="google-signin" /> : <p className="auth-help">Use your Madds email and password. If you signed up with Google, create a password in the Android app’s account settings first.</p>;
-}
 function AuthPage() {
   const { user, login, googleLogin, authBusy } = useApp();
   const [params] = useSearchParams();
@@ -153,14 +141,14 @@ function AuthPage() {
       else { const r = await api<{ message: string }>('/api/auth/forgot-password', jsonBody({ email })); setMessage(r.message); }
     } catch (e) { setError(describeError(e)); } finally { setBusy(false); }
   };
-  return <><CompactHeader title="Your Madds account" /><main className="auth-page"><img className="auth-logo" src="/assets/wordmark.png" alt="madds" /><h2>{mode === 'login' ? 'Welcome back.' : mode === 'register' ? 'Make it yours.' : 'Forgot your password?'}</h2><p className="muted">{mode === 'login' ? 'Your next creation is waiting.' : mode === 'register' ? 'One account. Endless possibilities.' : 'We’ll email you a link to reset it.'}</p><form onSubmit={submit}>
+  return <><CompactHeader title="Your Madds account" /><main className="auth-page"><img className="auth-logo" src="/assets/wordmark.png" alt="madds" /><h2>{mode === 'login' ? 'Welcome back.' : mode === 'register' ? 'Make it yours.' : 'Forgot your password?'}</h2><p className="muted">{mode === 'login' ? 'Your next creation is waiting.' : mode === 'register' ? 'One account. Endless possibilities.' : 'We’ll email you a link to reset it.'}</p>{mode !== 'reset' && <><GoogleSignIn signup={mode === 'register'} busy={busy || authBusy} onCredential={async value => { setError(''); setMessage(''); await googleLogin(value); }} /><div className="auth-divider"><span>or continue with email</span></div></>}<form onSubmit={submit}>
     {mode === 'register' && <label>Name<input name="name" autoComplete="name" required minLength={2} placeholder="Your name" /></label>}
     <label>Email<input name="email" type="email" autoComplete="email" required placeholder="you@example.com" /></label>
     {mode !== 'reset' && <label>Password<input name="password" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={mode === 'register' ? 8 : 1} required placeholder="Your password" />{mode === 'register' && <small>At least 8 characters, with uppercase, lowercase, and a number.</small>}</label>}
     {mode === 'login' && <button className="text-button forgot" type="button" onClick={() => { setMode('reset'); setError(''); }}>Forgot password?</button>}
     {error && <ErrorNotice message={error} />}{message && <div className="success-notice" role="status"><Check size={18} />{message}</div>}
     <button className="button primary full" disabled={busy || authBusy}>{busy || authBusy ? <Spinner small /> : mode === 'login' ? 'Sign in' : mode === 'register' ? 'Create account' : 'Send reset link'}<ArrowRight size={17} /></button>
-  </form>{mode === 'login' && <GoogleButton onCredential={value => void googleLogin(value).catch(e => setError(describeError(e)))} />}
+  </form>
   <p className="auth-switch">{mode === 'login' ? 'New to Madds?' : 'Already have an account?'} <button className="text-button" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setMessage(''); }}>{mode === 'login' ? 'Create account' : 'Sign in'}</button></p>
   <p className="legal-note">By continuing, you agree to our <a href="https://maddsofficial.com/terms.html" target="_blank" rel="noreferrer">Terms</a> and <a href="https://maddsofficial.com/privacy.html" target="_blank" rel="noreferrer">Privacy Policy</a>.</p></main></>;
 }

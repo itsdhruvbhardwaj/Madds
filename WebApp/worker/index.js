@@ -28,7 +28,7 @@ export default {
     const asset = assets[url.pathname === '/' ? '/index.html' : url.pathname] || (!/\.[a-z0-9]+$/i.test(url.pathname) ? assets['/index.html'] : null);
     if (!asset) return new Response('Not found', { status: 404 });
     const immutable = /\/assets\/index-[a-zA-Z0-9_-]+\.(?:js|css)$/.test(url.pathname);
-    const headers = { 'Content-Type': asset.type, 'Cache-Control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache', 'Content-Security-Policy': csp, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'strict-origin-when-cross-origin', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=()' };
+    const headers = { 'Content-Type': asset.type, 'Cache-Control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache', 'Content-Security-Policy': csp, 'X-Content-Type-Options': 'nosniff', 'Cross-Origin-Opener-Policy': 'same-origin-allow-popups', 'Referrer-Policy': 'strict-origin-when-cross-origin', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=()' };
     const bytes = Uint8Array.from(atob(asset.body), character => character.charCodeAt(0));
     return new Response(request.method === 'HEAD' ? null : bytes, { headers });
   }
