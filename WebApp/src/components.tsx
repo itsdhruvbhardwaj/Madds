@@ -3,7 +3,8 @@ import { ArrowLeft, Check, Heart, ImageOff, LoaderCircle, RefreshCw, SlidersHori
 import { Link, useNavigate } from 'react-router-dom';
 import { imageUrl } from './storage';
 import { useApp } from './state';
-import type { Preference, Style } from './types';
+import type { Style } from './types';
+import { preferenceLabel, preferenceOptions } from './preferences';
 
 export function Spinner({ small = false }: { small?: boolean }) { return <LoaderCircle className={`spin ${small ? 'icon-sm' : ''}`} aria-label="Loading" />; }
 export function Avatar() {
@@ -61,10 +62,10 @@ export function PreferenceSheet({ close }: { close: () => void }) {
   const { preference, changePreference, toast } = useApp();
   const [chosen, choose] = useState(preference);
   const [busy, setBusy] = useState(false);
-  const options: [Preference, string, string][] = [['all', 'For everyone', 'Discover the complete Madds collection'], ['her', 'For her', 'Styles for her, plus universal looks'], ['him', 'For him', 'Styles for him, plus universal looks']];
+  const options = preferenceOptions;
   return <Modal title="Make Madds yours" onClose={close}><p className="muted">Choose the styles you’d like to see.</p><div className="preference-options">{options.map(([value, title, description]) => <button key={value} className={chosen === value ? 'selected' : ''} onClick={() => choose(value)}><div><strong>{title}</strong><span>{description}</span></div><span className="radio">{chosen === value && <Check size={15} />}</span></button>)}</div><button className="button primary full" disabled={busy} onClick={async () => { setBusy(true); try { await changePreference(chosen); close(); } catch (e) { toast(e instanceof Error ? e.message : 'Could not save preference'); } finally { setBusy(false); } }}>{busy ? <Spinner small /> : 'Apply preference'}</button></Modal>;
 }
 export function FilterDock({ open }: { open: () => void }) {
   const { preference, user } = useApp();
-  return <button className="filter-dock" onClick={open} aria-label="Change style preference"><SlidersHorizontal size={19} /><span>{preference === 'all' ? 'Everyone' : preference === 'her' ? 'For her' : 'For him'}</span>{user && <><i /><strong>{user.credits}</strong></>}</button>;
+  return <button className="filter-dock" onClick={open} aria-label="Change style preference"><SlidersHorizontal size={19} /><span>{preference === 'all' ? 'Everyone' : preferenceLabel(preference)}</span>{user && <><i /><strong>{user.credits}</strong></>}</button>;
 }

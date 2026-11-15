@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, clearSession, jsonBody, sessionEvent, setSession, storedSession, updateUser } from './api';
 import { cacheCatalog, readCatalog } from './storage';
 import type { CatalogSnapshot } from './storage';
+import { normalizePreference } from './preferences';
 import type { Collection, Preference, Section, Style, StylesResponse, Tokens, User } from './types';
 
 type AppState = {
@@ -27,8 +28,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState('');
   const [preference, setPreference] = useState<Preference>(() => {
-    const p = storedSession()?.user.stylePreference || localStorage.getItem('madds.preference');
-    return p === 'her' || p === 'him' ? p : 'all';
+    return normalizePreference(storedSession()?.user.stylePreference ?? localStorage.getItem('madds.preference'));
   });
   // Ordering changes between browsing sessions, never in the middle of pagination.
   const [seed, setSeed] = useState(() => crypto.randomUUID());
@@ -52,6 +52,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         previousOwner = session?.user.id;
       }
       setUser(session?.user || null);
+      setPreference(normalizePreference(session ? session.user.stylePreference : localStorage.getItem('madds.preference')));
     };
     window.addEventListener(sessionEvent, sync);
     return () => window.removeEventListener(sessionEvent, sync);
@@ -60,7 +61,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!storedSession()) return;
     const { user: fresh } = await api<{ user: User }>('/api/auth/me', {}, true);
     updateUser(fresh); setAuthError('');
-    if (fresh.stylePreference) setPreference(fresh.stylePreference);
   }, []);
   useEffect(() => { void refreshUser().catch(e => setAuthError(describeError(e))); }, [refreshUser]);
   useEffect(() => { if (online && storedSession()) void refreshUser().catch(e => setAuthError(describeError(e))); }, [online, refreshUser]);
@@ -69,7 +69,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const data = await api<Tokens>(path, jsonBody(body));
       setSession(data);
-      if (data.user.stylePreference) setPreference(data.user.stylePreference);
     } finally { setAuthBusy(false); }
   };
   const changePreference = async (p: Preference) => {
@@ -80,7 +79,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('madds.preference', p); setPreference(p);
   };
 
-  const [cachedCatalog, setCachedCatalog] = useState<CatalogSnapshot>();
+  const [cachedCatalog, setCachedCatalog] = useState<{ preference: Preference; snapshot: CatalogSnapshot }>();
   const catalogue = useQuery({
     queryKey: ['catalog', preference, seed],
     queryFn: async ({ signal }) => {
@@ -100,10 +99,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
   useEffect(() => {
     let active = true; setCachedCatalog(undefined);
-    void readCatalog(preference).then(snapshot => { if (active) setCachedCatalog(snapshot); }).catch(() => {});
+    void readCatalog(preference).then(snapshot => { if (active && snapshot) setCachedCatalog({ preference, snapshot }); }).catch(() => {});
     return () => { active = false; };
   }, [preference]);
-  const catalog = catalogue.data || cachedCatalog;
+  const catalog = catalogue.data || (cachedCatalog?.preference === preference ? cachedCatalog.snapshot : undefined);
 
   const favorites = useQuery({ queryKey: ['favorites', user?.id], meta: { private: true }, enabled: Boolean(user) && online,
     queryFn: ({ signal }) => api<{ favorites: Style[] }>('/api/me/favorites', { signal }, true), staleTime: 60_000 });
@@ -149,7 +148,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     shuffle: () => setSeed(crypto.randomUUID()),
     home: catalog?.home || [], styles: catalog?.styles || [], collections: catalog?.collections || [],
     loading: catalogue.isFetching && !catalog, catalogError: catalogue.error ? describeError(catalogue.error) : '',
-    cached: !catalogue.data && Boolean(cachedCatalog), refreshCatalog: () => { void catalogue.refetch(); },
+    cached: !catalogue.data && Boolean(catalog), refreshCatalog: () => { void catalogue.refetch(); },
     favoriteIds, favoriteStyles, favoriteBusy, toggleFavorite, favoritesError: favorites.error ? describeError(favorites.error) : '',
     refreshFavorites: () => { void favorites.refetch(); }, toast, notice, online,
   }}>{children}</Context.Provider>;

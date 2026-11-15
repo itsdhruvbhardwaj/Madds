@@ -1,4 +1,4 @@
-export type Preference = 'all' | 'her' | 'him';
+export type Preference = 'all' | 'female' | 'male';
 export interface Style {
   id: string; name: string; description: string; thumbnail: string;
   genderTag: 'her' | 'him' | 'none'; tokensRequired: number; imageCount: number;
