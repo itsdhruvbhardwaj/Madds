@@ -2,6 +2,8 @@
 
 Deploy this folder as a separate service from the main Madds website, Admin Studio and backend.
 
+Render service: `srv-dbssgjlg1s2s7383258g`; live address: https://madds-web-app.onrender.com. The service tracks `codex/webapp-production` in the Madds repository.
+
 | Setting | Value |
 | --- | --- |
 | Root directory | `WebApp` |
@@ -25,8 +27,11 @@ Set the following response headers on the static site:
 | `/sw.js` | `Cache-Control` | `no-cache` |
 | `/index.html` | `Cache-Control` | `no-cache` |
 | `/manifest.webmanifest` | `Cache-Control` | `no-cache` |
+| `/manifest.webmanifest` | `Content-Type` | `application/manifest+json` |
 
 Add the final frontend origin to the backend `CLIENT_ORIGIN` allowlist while preserving all existing origins. First add the custom domain in Render, then create only the `app` CNAME in DNS pointing to the exact service hostname Render supplies. Do not change root or `www` records.
+
+GoDaddy DNS record: type `CNAME`, name `app`, value `madds-web-app.onrender.com`, default TTL. After DNS propagates, verify `app.maddsofficial.com` in the service's Custom Domains settings and wait for its TLS certificate before sharing the custom address.
 
 Direct Google web sign-in remains hidden until its OAuth web client and authorized origins are configured. Web payments, rewarded credits and browser push remain inactive. Existing account balances, email sign-in, image generation and saving continue to use the existing API.
 
