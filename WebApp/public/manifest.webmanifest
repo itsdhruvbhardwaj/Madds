@@ -1,0 +1,6 @@
+{
+  "id": "/", "name": "Madds", "short_name": "Madds",
+  "description": "Your photos. Reimagined.", "start_url": "/", "scope": "/",
+  "display": "standalone", "background_color": "#111213", "theme_color": "#111213",
+  "icons": [{ "src": "/assets/icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }]
+}
