@@ -9,7 +9,7 @@ export interface Section { id: string; title: string; slug: string; visible: boo
 export interface Collection { id: string; name: string; thumbnail: string; styleCount: number }
 export interface User {
   id: string; name: string; email: string; credits: number; emailVerified: boolean;
-  profileImage?: string; profileAppearance?: string; avatarId?: string;
+  profileImage?: string; profileAppearance?: string; avatarId?: string; avatarBackground?: string;
   stylePreference?: Preference; hasPassword?: boolean;
 }
 export interface Tokens { accessToken: string; refreshToken: string; user: User }

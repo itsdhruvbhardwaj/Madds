@@ -19,6 +19,7 @@ Use Node 22.12 or newer. Run `npm ci`, then `npm run dev` from this folder. The 
 - Reference upload validation and resizing, generation requests with persistent idempotency keys, status recovery and 24-hour account gallery.
 - Full-screen result preview, watermarked export using the backend configuration, local Saved gallery, download/share and explicit deletion.
 - Profile, credits, credit/purchase history, feedback, style preference and Home Screen installation instructions.
+- Profile picture editor with the Android avatar catalogue, six background colours and locally resized/cropped photo uploads. Changes save to the same account used by Android.
 - Public catalogue snapshots in IndexedDB; fixed CDN image variants; bounded service-worker caching for public style images. Authenticated API responses and private temporary photos are never placed in the service-worker cache.
 
 ## Account and device behaviour

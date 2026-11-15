@@ -4,5 +4,6 @@ dist/
 .env.local
 .sites-runtime/
 .render-deploy/
+.qa/
 *.tsbuildinfo
 .openai/*.zip

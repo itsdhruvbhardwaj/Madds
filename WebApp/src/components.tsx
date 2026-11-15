@@ -3,15 +3,20 @@ import { ArrowLeft, Check, Heart, ImageOff, LoaderCircle, RefreshCw, SlidersHori
 import { Link, useNavigate } from 'react-router-dom';
 import { imageUrl } from './storage';
 import { useApp } from './state';
-import type { Style } from './types';
+import type { Style, User } from './types';
 import { preferenceLabel, preferenceOptions } from './preferences';
+import { avatarFill, validAvatar } from './profileAppearance';
 
 export function Spinner({ small = false }: { small?: boolean }) { return <LoaderCircle className={`spin ${small ? 'icon-sm' : ''}`} aria-label="Loading" />; }
-export function Avatar() {
-  const { user } = useApp();
-  const avatar = user?.profileAppearance === 'avatar' && /^avatar_\d{3}$/.test(user.avatarId || '') ? `/assets/avatars/${user!.avatarId}.png` : null;
-  return <span className="avatar">{avatar || user?.profileImage ? <img src={avatar || user!.profileImage} alt="Your profile" referrerPolicy="no-referrer" /> : user ? <span>{user.name.trim().slice(0, 1).toUpperCase()}</span> : <UserRound size={20} />}</span>;
+export function ProfilePicture({ user }: { user: User | null }) {
+  const [failed, setFailed] = useState(false);
+  const avatar = user?.profileAppearance === 'avatar' && validAvatar(user.avatarId) ? `/assets/avatars/${user!.avatarId}.png` : null;
+  const photo = user?.profileAppearance !== 'avatar' && user?.profileImage ? user.profileImage : null;
+  const src = avatar || photo;
+  useEffect(() => setFailed(false), [src]);
+  return <span className={`avatar ${avatar ? 'avatar-art' : ''}`} style={{ background: avatarFill(user?.avatarBackground) }}>{src && !failed ? <img src={src} alt="Your profile" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> : user ? <span>{user.name.trim().slice(0, 1).toUpperCase()}</span> : <UserRound size={20} />}</span>;
 }
+export function Avatar() { const { user } = useApp(); return <ProfilePicture user={user} />; }
 export function AppHeader({ title }: { title: string }) {
   return <header className="app-header"><Link to="/" className="wordmark" aria-label="Madds home"><img src="/assets/wordmark.png" alt="madds" /></Link><h1>{title}</h1><Link to="/profile" className="avatar-link" aria-label="Open profile"><Avatar /></Link></header>;
 }
