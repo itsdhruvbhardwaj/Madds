@@ -7,6 +7,9 @@ let serial = 10;
 let styleGroups = [];
 let rewardedCredits = { credits: 2, revision: 0, source: 'environment' };
 let dailyRewards = { enabled: false, credits: 2, revision: 0, maximum: 10, history: [] };
+let adSettings = { enabled: true, bannersEnabled: true, rewardedEnabled: true, nativeHomeEnabled: true, nativeExploreEnabled: true,
+  minGapSeconds: 90, timedIntervalSeconds: 120, homeNativeEverySections: 3, exploreNativeEveryStyles: 12, revision: 0,
+  placements: Object.fromEntries(['generation_continue','custom_generate','avatar_saved','buy_more','my_generations','home_see_all','collection_open','image_download','appearance_applied','timed_navigation','daily_bonus_claim'].map(key => [key, key !== 'daily_bonus_claim'])) };
 let dailyReminder = { enabled: false, sendTime: '20:00', title: 'Your daily credits are waiting ✨', body: 'Hi {firstName}, claim your {credits} free credits before midnight.', revision: 0, history: [], runs: [] };
 const previewPort = Number(process.env.WORKSPACE_PREVIEW_PORT) || 4178;
 let welcomeBackBatches = [];
@@ -40,8 +43,8 @@ http.createServer(async (req, res) => {
     if (url.pathname === "/config.js") { res.writeHead(200, { "Content-Type": "text/javascript" }); return res.end("window.PICMEE_API_BASE = location.origin;"); }
     const file = path.resolve(root, "." + decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname));
     if (!file.startsWith(root + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) { res.writeHead(404); return res.end(); }
-    const mime = { ".js": "text/javascript", ".css": "text/css", ".html": "text/html", ".png": "image/png", ".svg": "image/svg+xml" }[path.extname(file)] || "application/octet-stream";
-    res.writeHead(200, { "Content-Type": mime }); return fs.createReadStream(file).pipe(res);
+    const mime = { ".js": "text/javascript", ".css": "text/css", ".html": "text/html", ".png": "image/png", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json" }[path.extname(file)] || "application/octet-stream";
+    res.writeHead(200, { "Content-Type": mime, "Cache-Control": "no-cache" }); return fs.createReadStream(file).pipe(res);
   }
   if (url.pathname === "/api/admin/settings/watermark/logo" && req.method === "POST") {
     for await (const _chunk of req) { /* Local-only fixture discards the upload. */ }
@@ -51,6 +54,14 @@ http.createServer(async (req, res) => {
   let input = {}; try { input = body ? JSON.parse(body) : {}; } catch { return json(res, { error: "Invalid JSON" }, 400); }
   if (url.pathname === "/api/auth/login") return json(res, { accessToken: "fixture-access", refreshToken: "fixture-refresh", user: { email: "preview@example.com" } });
   if (url.pathname === "/api/auth/logout") return json(res, { ok: true });
+  if (url.pathname === '/api/admin/settings/ads') {
+    if (req.method === 'PATCH') {
+      if (input.expectedRevision !== adSettings.revision) return json(res, { error: 'Ad settings changed. Refresh before saving.' }, 409);
+      const { expectedRevision, ...values } = input;
+      adSettings = { ...adSettings, ...values, revision: adSettings.revision + 1, updatedByName: 'Preview Owner', updatedAt: new Date().toISOString() };
+    }
+    return json(res, { ok: true, ...adSettings });
+  }
   if (url.pathname === '/api/admin/notifications/daily-reminder') {
     if (req.method === 'PATCH') {
       if (input.expectedRevision !== dailyReminder.revision) return json(res, { error: 'Reminders changed. Refresh before saving.' }, 409);

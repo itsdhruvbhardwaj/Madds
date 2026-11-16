@@ -26,7 +26,7 @@
     }
     input.addEventListener("input",controls);form.addEventListener("submit",save);$("app-settings-refresh").addEventListener("click",refresh);
     function reset(){epoch++;ticket++;revision=null;saved=null;busy=false;loading=false;input.value="";$("app-settings-error").textContent="";$("app-settings-current").textContent="";$("app-settings-editor").textContent="";controls();}
-    controls();return {refresh,reset};
+    controls();return {refresh,reset,hasPendingChanges:()=>busy||loading||(saved!==null&&input.value!==String(saved))};
   }
   const exported={create};if(typeof module!=="undefined"&&module.exports)module.exports=exported;else window.MaddsSettings=exported;
 })();

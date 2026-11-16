@@ -1,5 +1,5 @@
 const {test}=require("node:test"),assert=require("node:assert/strict"),vm=require("node:vm"),fs=require("node:fs"),path=require("node:path");
-function fixture() {
+function fixture(legacy=false) {
  const nodes=new Map(),calls=[],form={elements:{},events:{},reportValidity:()=>true,reset(){},addEventListener(name,fn){this.events[name]=fn;},querySelectorAll(){return Object.values(this.elements);}};
  const input=()=>({value:"",checked:false,disabled:false});
  for(const key of ["enabled","bannersEnabled","rewardedEnabled","minGapSeconds","timedIntervalSeconds","nativeHomeEnabled","nativeExploreEnabled","homeNativeEverySections","exploreNativeEveryStyles"])form.elements[key]=input();
@@ -10,7 +10,7 @@ function fixture() {
  const tool=sandbox.window.MaddsAdSettings.create({api:async(url,options)=>{
   calls.push({url,options});if(options)return {...JSON.parse(options.body),revision:2};
   return {enabled:true,bannersEnabled:true,rewardedEnabled:true,minGapSeconds:90,timedIntervalSeconds:180,nativeHomeEnabled:true,nativeExploreEnabled:true,homeNativeEverySections:3,exploreNativeEveryStyles:12,revision:1,
-    placements:Object.fromEntries(Object.keys(form.elements).filter(k=>!["enabled","bannersEnabled","rewardedEnabled","minGapSeconds","timedIntervalSeconds","nativeHomeEnabled","nativeExploreEnabled","homeNativeEverySections","exploreNativeEveryStyles"].includes(k)).map(k=>[k,true]))};
+    placements:Object.fromEntries(Object.keys(form.elements).filter(k=>!["enabled","bannersEnabled","rewardedEnabled","minGapSeconds","timedIntervalSeconds","nativeHomeEnabled","nativeExploreEnabled","homeNativeEverySections","exploreNativeEveryStyles"].includes(k) && (!legacy || k!=="daily_bonus_claim")).map(k=>[k,k!=="daily_bonus_claim"]))};
  },notify(){}});
  return {form,el,tool,calls};
 }
@@ -54,6 +54,14 @@ test("collection click placement can be saved independently",async()=>{
  await f.form.events.submit({preventDefault(){}});
  const payload=JSON.parse(f.calls.at(-1).options.body);
  assert.equal(payload.placements.collection_open,false);assert.equal(payload.placements.home_see_all,true);
+});
+test('daily bonus placement is off for new and legacy responses and saves independently',async()=>{
+ for(const legacy of [false,true]) {
+  const f=fixture(legacy);await f.tool.refresh();assert.equal(f.form.elements.daily_bonus_claim.checked,false);
+  f.form.elements.daily_bonus_claim.checked=true;f.form.events.input();await f.form.events.submit({preventDefault(){}});
+  const payload=JSON.parse(f.calls.at(-1).options.body);
+  assert.equal(payload.placements.daily_bonus_claim,true);assert.equal(payload.placements.home_see_all,true);
+ }
 });
 test("native screen switches and spacing are saved independently",async()=>{
  const f=fixture();await f.tool.refresh();f.form.elements.nativeHomeEnabled.checked=false;

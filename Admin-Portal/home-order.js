@@ -43,7 +43,7 @@
       finally{if(session===epoch){busy=false;render();}}
     });
     function reset(){epoch++;baseline=[];draft=[];latest=[];stale=false;busy=false;render();}
-    return {update(sections){latest=sections;update(sections);},reset};
+    return {update(sections){latest=sections;update(sections);},reset,hasPendingChanges:()=>busy||dirty()};
   }
   const exported={create};if(typeof module!=="undefined"&&module.exports)module.exports=exported;else window.MaddsHomeOrder=exported;
 })();

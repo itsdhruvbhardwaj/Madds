@@ -1,0 +1,17 @@
+{
+  "id": "./",
+  "name": "Madds Workspace",
+  "short_name": "Workspace",
+  "description": "Private Madds team workspace. An internet connection is required.",
+  "lang": "en",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#131413",
+  "theme_color": "#131413",
+  "icons": [
+    { "src": "assets/workspace-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/workspace-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/workspace-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

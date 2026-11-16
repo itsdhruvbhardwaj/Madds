@@ -78,7 +78,7 @@
     form.addEventListener("input", render); form.addEventListener("submit", save);
     $("watermark-upload").addEventListener("click", () => $("watermark-logo-file").click());
     $("watermark-logo-file").addEventListener("change", upload); $("watermark-refresh").addEventListener("click", refresh);
-    render(); return { refresh, reset };
+    render(); return { refresh, reset, hasPendingChanges: () => busy || (saved !== null && JSON.stringify(values()) !== saved) };
   }
   if (typeof module !== "undefined" && module.exports) module.exports = { create };
   else window.MaddsWatermark = { create };

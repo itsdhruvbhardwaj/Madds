@@ -5,6 +5,7 @@
     my_generations:"Open My Generations", home_see_all:"Home: See all", collection_open:"Collections: open a collection",
     image_download:"Download image", appearance_applied:"Apply style preference",
     timed_navigation:"Automatic ad after active usage (any screen)",
+    daily_bonus_claim:"Daily bonus: after a successful claim (Home card and popup)",
   };
   function create({api,notify}) {
     const $=id=>document.getElementById(id), form=$("ad-settings-form"), base="/api/admin/settings/ads";
@@ -38,7 +39,7 @@
       revision=data.revision;
       for(const key of ["enabled","bannersEnabled","rewardedEnabled","nativeHomeEnabled","nativeExploreEnabled"])form.elements[key].checked=data[key]??false;
       for(const key of ["minGapSeconds","timedIntervalSeconds","homeNativeEverySections","exploreNativeEveryStyles"])form.elements[key].value=data[key]??(key==="homeNativeEverySections"?3:key==="exploreNativeEveryStyles"?12:120);
-      for(const key of Object.keys(placements))form.elements[key].checked=data.placements[key];
+      for(const key of Object.keys(placements))form.elements[key].checked=data.placements[key] === true;
       saved=JSON.stringify(values());
       $("ad-settings-editor").textContent=data.updatedAt?`Last changed by ${data.updatedByName||"Team member"} · ${window.MaddsDates.dateTime(data.updatedAt)}`:"Default settings; no Workspace override saved yet.";
     }
@@ -61,7 +62,7 @@
     });
     form.addEventListener("input",controls);$("ad-settings-refresh").addEventListener("click",refresh);
     function reset(){epoch++;revision=null;saved="";busy=false;loading=false;form.reset();$("ad-settings-error").textContent="";$("ad-settings-editor").textContent="";controls();}
-    controls();return {refresh,reset};
+    controls();return {refresh,reset,hasPendingChanges:()=>busy||loading||Boolean(saved&&JSON.stringify(values())!==saved)};
   }
   window.MaddsAdSettings={create};
 })();

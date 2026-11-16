@@ -35,6 +35,15 @@
   const dailyRewards = window.MaddsDailyRewards.create({ api, notify });
   const dailyReminder = window.MaddsDailyReminder.create({ api, notify });
   const watermark = window.MaddsWatermark.create({ api, notify });
+  const settingsNavigation = window.MaddsSettingsNavigation.create({
+    controllers: { welcome: settings, daily: dailyRewards, rewarded: rewardedCredits, ads: adSettings, watermark },
+    onReminders: () => {
+      document.querySelector('.side-link[data-panel="notifications-panel"]').click();
+      if (state.activePanel !== 'notifications-panel') return;
+      const automation = byId('daily-reminder-form').closest('details');
+      automation.open = true; automation.scrollIntoView({ block: 'start' });
+    }
+  });
   const homeOrder = window.MaddsHomeOrder.create({ api, notify, onSaved: sections => { state.sections = sections; renderCollections(); } });
   const performance = window.MaddsPerformance.create({ api, notify, onChanged: loadCatalog });
   const feedback = window.MaddsFeedback.create({ api, notify });
@@ -42,33 +51,29 @@
   const styleTags = window.MaddsStyleTags.create({ getCatalog: () => state });
   const styleGroups = window.MaddsStyleGroups.create({ api, notify, getCatalog: () => state, onChange: renderStyles });
 
-  async function api(path, options = {}, retry = true) {
-    const headers = new Headers(options.headers || {});
-    headers.set("Accept", "application/json");
-    if (options.body && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
-    const access = sessionStorage.getItem(tokenKey);
-    if (access) headers.set("Authorization", `Bearer ${access}`);
-    let response = await fetch(`${apiBase}${path}`, { ...options, headers });
-    if (response.status === 401 && retry && sessionStorage.getItem(refreshKey)) {
-      const refreshed = await fetch(`${apiBase}/api/auth/refresh`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken: sessionStorage.getItem(refreshKey) }),
-      }).catch(() => null);
-      const credentials = refreshed?.ok ? await refreshed.json() : null;
-      if (credentials?.accessToken && credentials?.refreshToken) {
-        sessionStorage.setItem(tokenKey, credentials.accessToken);
-        sessionStorage.setItem(refreshKey, credentials.refreshToken);
-        return api(path, options, false);
-      }
-      clearSession();
-      showLogin();
-    }
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
-    return data;
+  const sessionApi = window.MaddsSessionApi.create({ base: apiBase, storage: sessionStorage,
+    onExpired: () => { clearSession(); showLogin("Your session has ended. Please sign in again."); }
+  });
+  function api(path, options = {}, retry = true) { return sessionApi.api(path, options, retry); }
+
+  function canUpdateWorkspace() {
+    if (styleSaving || state.promptTestGenerating || document.querySelector('dialog[open]')) return false;
+    if (state.styleEditorBaseline !== null && styleEditorSnapshot() !== state.styleEditorBaseline) return false;
+    if ([settings, dailyRewards, rewardedCredits, adSettings, watermark, notifications, dailyReminder, homeOrder].some(tool => tool.hasPendingChanges())) return false;
+    if (!byId('user-details').hidden) return false;
+    if (document.querySelector('[aria-busy="true"], #upload-cover-image:disabled, #upload-before-image:disabled, #upload-after-image:disabled')) return false;
+    return !byId('collection-form').elements.name.value.trim();
   }
+  const workspaceApp = window.MaddsWorkspaceApp.create({ canReload: canUpdateWorkspace,
+    onRefresh: () => { if (!byId('app-view').hidden) byId('refresh-button').click(); }
+  });
+  window.addEventListener('beforeunload', event => {
+    if (!canUpdateWorkspace()) { event.preventDefault(); event.returnValue = ''; }
+  });
 
   function clearSession() {
+    sessionApi.reset();
+    workspaceApp.closeMenu();
     styleGroups.reset();
     performance.reset();
     feedback.reset();
@@ -79,6 +84,7 @@
     dailyReminder.reset();
     adSettings.reset();
     watermark.reset();
+    settingsNavigation.reset();
     homeOrder.reset();
     bulkStyles.reset();
     users.reset();
@@ -794,6 +800,7 @@
     submit.textContent = "Signing in…";
     try {
       const data = await api("/api/auth/login", { method: "POST", body: JSON.stringify({ email: form.get("email"), password: form.get("password") }) }, false);
+      sessionApi.reset();
       sessionStorage.setItem(tokenKey, data.accessToken);
       sessionStorage.setItem(refreshKey, data.refreshToken);
       showApp(data.user?.name);
@@ -823,7 +830,7 @@
       else if (state.activePanel === "users-panel") await users.refresh();
       else if (state.activePanel === "feedback-panel") await feedback.refresh();
       else if (state.activePanel === "storage-panel") await storage.refresh();
-      else if (state.activePanel === "app-settings-panel") await Promise.all([settings.refresh(), rewardedCredits.refresh(), dailyRewards.refresh(), watermark.refresh(), adSettings.refresh()]);
+      else if (state.activePanel === "app-settings-panel") await settingsNavigation.refresh();
       else await loadCatalog();
     } finally { button.disabled = false; button.setAttribute("aria-label", "Refresh workspace"); }
   });
@@ -894,7 +901,7 @@
     if (state.activePanel === "users-panel") void users.refresh();
     if (state.activePanel === "feedback-panel") void feedback.refresh();
     if (state.activePanel === "storage-panel") void storage.refresh();
-    if (state.activePanel === "app-settings-panel") { void settings.refresh(); void rewardedCredits.refresh(); void dailyRewards.refresh(); void watermark.refresh(); void adSettings.refresh(); }
+    if (state.activePanel === "app-settings-panel") void settingsNavigation.open();
   }));
   byId("log-member-filter").addEventListener("change", () => loadLogs(1));
   byId("log-action-filter").addEventListener("change", () => loadLogs(1));

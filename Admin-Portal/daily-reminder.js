@@ -55,7 +55,7 @@
       for (const id of ['status','hosting','editor','error','runs','history']) $(`daily-reminder-${id}`).textContent = ''; controls(); }
     function canLeave() { return !busy && !loading && (!dirty() || window.confirm('Discard unsaved daily reminder changes?')); }
     window.addEventListener('beforeunload', event => { if (dirty()) { event.preventDefault(); event.returnValue = ''; } });
-    controls(); return { refresh, reset, canLeave };
+    controls(); return { refresh, reset, canLeave, hasPendingChanges: () => busy || loading || dirty() };
   }
   window.MaddsDailyReminder = { create };
 })();

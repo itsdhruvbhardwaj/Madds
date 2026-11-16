@@ -97,3 +97,48 @@ Notifications > Automations > Daily credit reminder controls an automatic remind
 for unclaimed daily credits. It defaults off at 20:00 IST, supports editable content
 and shows recent runs and settings history. See [daily reminder behavior and rollout](../docs/daily-reminders.md)
 for device capability, expiry, deduplication and reliable worker hosting requirements.
+
+## Settings navigation
+
+App settings presents one category at a time: Welcome credits, Daily bonus,
+Ad rewards, Advertising and Watermark. Search filters categories and reveals
+matching ad detail groups. Only the selected category loads; returning to an
+already opened form preserves unsaved input. Refresh applies to that category
+only. Existing save confirmations, revisions, permission checks and settings APIs
+are unchanged. Advertising groups formats, in-feed ads, full-screen placements and
+timing separately. Related links connect ad reward amounts to visibility controls
+and daily bonuses to notification automations.
+
+## Installable, online-first Workspace
+
+Workspace can be installed from the existing HTTPS address. Use **Install
+Workspace** in the navigation, or Safari > Share > Add to Home Screen on iPhone.
+The manifest supplies standalone launch settings and standard, maskable and Apple
+touch icons. Mobile navigation is a keyboard-accessible drawer with safe-area
+padding. No new host, backend service, permission or account type is needed.
+
+`workspace-sw.js` manages update availability only. It has no fetch handler,
+Cache Storage, offline catalogue, background sync or action queue. API requests
+use `cache: no-store`; failed requests must be retried manually. Reconnection
+never repeats a save or sends a notification. An already open page may remain
+visible without a connection, but admin operations need the server.
+
+Updates are offered when a new worker release is detected. **Bump
+WORKSPACE_RELEASE in workspace-sw.js on every Workspace deployment**, including
+CSS-only releases. Apply updates explicitly after saving work and closing editors.
+Other open windows never reload automatically. Serve index.html and workspace-sw.js
+with revalidation (`Cache-Control: no-cache`); ensure manifest.webmanifest is served
+as JSON (`application/manifest+json` preferred), without authentication or an HTML
+fallback. Existing static hosting can serve all these files directly.
+
+Tokens remain in sessionStorage; installation does not put admin credentials into
+permanent storage. Reopening a closed session can require sign-in. Renewal shares
+one request across concurrent calls and retains the session on network/server errors.
+The existing backend's refreshAttemptId recovery handles lost renewal responses.
+Only confirmed invalid credentials clear the session. Logout clears local credentials
+even when offline; it can revoke the server session only when the server is reachable.
+
+Verify Chrome/Edge/Android installation and iPhone Safari Add to Home Screen after
+deployment. Check reopen/login, uploads/downloads, drawer navigation, offline error
+messages and explicit updates with unsaved forms. The in-app preview browser does
+not expose a native operating-system installation prompt.

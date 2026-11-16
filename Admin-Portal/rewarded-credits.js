@@ -46,7 +46,7 @@
       for (const id of ['rewarded-credits-current', 'rewarded-credits-error', 'rewarded-credits-editor']) $(id).textContent = '';
       controls();
     }
-    controls(); return { refresh, reset };
+    controls(); return { refresh, reset, hasPendingChanges: () => busy || loading || (revision !== null && input.value !== (saved === null ? '' : String(saved))) };
   }
   window.MaddsRewardedCredits = { create };
 })();

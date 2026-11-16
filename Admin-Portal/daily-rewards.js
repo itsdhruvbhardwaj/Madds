@@ -40,7 +40,7 @@
     form.elements.credits.addEventListener('input', controls); form.elements.enabled.addEventListener('change', controls);
     $('daily-rewards-refresh').addEventListener('click', refresh);
     function reset() { ++epoch; revision = null; busy = false; loading = false; saved = ''; form.elements.enabled.checked = false; form.elements.credits.value = ''; for (const id of ['daily-rewards-current','daily-rewards-editor','daily-rewards-error','daily-rewards-history']) $(id).textContent = ''; controls(); }
-    controls(); return { refresh, reset };
+    controls(); return { refresh, reset, hasPendingChanges: () => busy || loading || Boolean(saved && saved !== snapshot()) };
   }
   window.MaddsDailyRewards = { create };
 })();

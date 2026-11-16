@@ -505,7 +505,7 @@
       renderHistory();
     });
     window.addEventListener("beforeunload", (event) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } });
-    return { refresh, reset, catalogChanged, open, newNotification, leave, resend };
+    return { refresh, reset, catalogChanged, open, newNotification, leave, resend, hasPendingChanges: () => busy || dirty };
   }
   const exported = { create, buildDraft, localSchedule, personalizedPreview, prepareDelivery, campaignToDraft };
   if (typeof module !== "undefined" && module.exports) module.exports = exported;
