@@ -13,6 +13,7 @@ import { HomeSectionConfig } from "../models/HomeSectionConfig.js";
 import { StyleCollection } from "../models/StyleCollection.js";
 import { catalogDatabaseReady, listCatalogCollections, listCatalogStyles, optimizeCloudinaryThumbnailUrl, slugify } from "../services/styles/catalog.js";
 import type { Style } from "../services/styles/styleTypes.js";
+import { MAX_STYLE_TAGS, MAX_STYLE_TAG_LENGTH, suggestedStyleTags, tagAliases, validateStyleTags } from '../services/styles/styleTags.js';
 import { HomeOrderError, saveHomeOrder } from "../services/home/homeOrder.js";
 import { ensureHomeSection, renameHomeSectionCollection } from "../services/home/homeCatalog.js";
 import { cloudinaryIsConfigured, createStyleImageUploadSignature } from "../services/cloudinaryAssets.js";
@@ -20,6 +21,7 @@ import { getStyleImageIds, queueStyleImages, activateStyleImageCleanup, retryPen
 import { OpenRouterImageGenerator } from "../services/openrouter/generation.js";
 
 import { stylePerformanceRouter } from "./stylePerformance.js";
+import { styleGroupsRouter } from './styleGroups.js';
 
 const router = Router();
 const promptTestUpload = multer({
@@ -27,7 +29,7 @@ const promptTestUpload = multer({
   limits: { fileSize: env.maxUploadBytes, files: 1 },
 });
 const styleIdPattern = /^[a-z0-9](?:[a-z0-9-]{1,78}[a-z0-9])?$/;
-const auditActions = ["STYLE_CREATED", "STYLE_UPDATED", "STYLE_DELETED", "COLLECTION_CREATED", "COLLECTION_RENAMED", "COLLECTION_DELETED", "HOME_SECTION_UPDATED", "HOME_ORDER_UPDATED"] as const;
+const auditActions = ["STYLE_CREATED", "STYLE_UPDATED", "STYLE_DELETED", "COLLECTION_CREATED", "COLLECTION_RENAMED", "COLLECTION_DELETED", "HOME_SECTION_UPDATED", "HOME_ORDER_UPDATED", "GROUP_CREATED", "GROUP_UPDATED", "GROUP_ARCHIVED"] as const;
 
 router.use(requireAuth, (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   const email = req.user?.email?.toLowerCase();
@@ -43,6 +45,7 @@ router.use(requireAuth, (req: AuthenticatedRequest, res: Response, next: NextFun
 });
 
 router.use("/catalog/performance", stylePerformanceRouter);
+router.use('/catalog/groups', styleGroupsRouter);
 
 router.post("/catalog/test-generation", promptTestUpload.single("image"), async (req: Request, res: Response) => {
   const prompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
@@ -112,6 +115,8 @@ router.get("/catalog", async (req: AuthenticatedRequest, res: Response) => {
     collections: collections.map((collection) => ({ ...collection, ...(collectionTimes.get(collection.id) ?? {}) })),
     sections,
     pendingCloudinaryCleanup,
+    tagging: { version: 1, maxTags: MAX_STYLE_TAGS, maxTagLength: MAX_STYLE_TAG_LENGTH, aliases: tagAliases,
+      suggestions: [...new Set([...suggestedStyleTags, ...styles.flatMap(style => style.tags || [])])].sort() },
   });
 });
 
@@ -222,6 +227,38 @@ router.patch("/catalog/styles/verification", async (req: AuthenticatedRequest, r
     return res.json({ ok: true, changed, selected: selectedIds.length, verified });
   } catch (error) {
     return res.status(409).json({ ok: false, error: error instanceof Error && error.message.startsWith("Selection changed") ? error.message : "Could not update the styles. Refresh before trying again." });
+  } finally { await session.endSession(); }
+});
+
+router.patch('/catalog/styles/tags', async (req: AuthenticatedRequest, res: Response) => {
+  if (req.user?.emailVerified !== true) return res.status(403).json({ ok: false, error: 'Verified administrator access required.' });
+  const { ids, tags } = req.body || {};
+  const validation = validateStyleTags(tags);
+  if (validation.error || !validation.tags.length || !Array.isArray(ids) || !ids.length || ids.length > 2000 || ids.some(id => typeof id !== 'string' || !styleIdPattern.test(id))) {
+    return res.status(400).json({ ok: false, error: validation.error || 'Select styles and add at least one tag.' });
+  }
+  const selectedIds = [...new Set<string>(ids)];
+  const session = await mongoose.startSession();
+  try {
+    const changed = await session.withTransaction(async () => {
+      const styles = await CatalogStyle.find({ id: { $in: selectedIds } }).select('id name tags').session(session).lean();
+      if (styles.length !== selectedIds.length) throw new Error('Selection changed. Refresh styles and try again.');
+      const updates = styles.flatMap(style => {
+        const existing = Array.isArray(style.tags) ? style.tags : [];
+        const merged = validateStyleTags([...existing, ...validation.tags]);
+        if (merged.error) throw new Error(`Cannot add tags to “${style.name}”: ${merged.error}`);
+        return JSON.stringify(existing) === JSON.stringify(merged.tags) ? [] : [{ id: style.id, name: style.name, tags: merged.tags }];
+      });
+      if (!updates.length) return 0;
+      await CatalogStyle.bulkWrite(updates.map(style => ({ updateOne: { filter: { id: style.id }, update: { $set: { tags: style.tags, lastEditedByName: req.user!.name?.trim().slice(0, 160) || null } } } })), { session, ordered: true });
+      await CatalogAuditLog.create(updates.map(style => ({ actorEmail: req.user!.email, actorName: req.user!.name || '', action: 'STYLE_UPDATED', itemId: style.id, itemName: `${style.name} — Tags updated` })), { session, ordered: true });
+      return updates.length;
+    });
+    return res.json({ ok: true, changed, selected: selectedIds.length });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    if (message.startsWith('Cannot add tags')) return res.status(400).json({ ok: false, error: message });
+    return res.status(409).json({ ok: false, error: message.startsWith('Selection changed') ? message : 'Could not add tags. Refresh before trying again.' });
   } finally { await session.endSession(); }
 });
 
@@ -403,6 +440,8 @@ function validateStyle(body: unknown, fixedId?: string): { value?: Style; error?
   }
   // Older clients may omit this field while editing: preserve an existing tag.
   const genderTag = source.genderTag ?? (fixedId ? undefined : "none");
+  const tagValidation = source.tags === undefined && fixedId ? undefined : validateStyleTags(source.tags === undefined ? [] : source.tags);
+  if (tagValidation?.error) return { error: tagValidation.error };
   // Legacy styles used exampleBefore/After as the card image pair. Preserve them
   // when editing an old record, while new styles use thumbnail + previewImages.
   const thumbnailSource = typeof source.thumbnail === "string" && source.thumbnail.trim()
@@ -460,6 +499,7 @@ function validateStyle(body: unknown, fixedId?: string): { value?: Style; error?
       prompt,
       verified,
       ...(genderTag !== undefined ? { genderTag: genderTag as Style["genderTag"] } : {}),
+      ...(tagValidation ? { tags: tagValidation.tags } : {}),
       thumbnail,
       thumbnailPublicId,
       exampleBeforeUrl,

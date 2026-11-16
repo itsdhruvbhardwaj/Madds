@@ -107,6 +107,7 @@ import { OpenAIImageGenerator } from "./services/openai/generation.js";
 import { AdMobKeyFetchError, admobSsvVerifier, InvalidAdMobCallbackError } from "./services/rewardedAds/admobSsv.js";
 import { styles } from "./services/styles/styles.js";
 import * as styleCatalog from "./services/styles/catalog.js";
+import * as styleGroups from './services/styles/styleGroups.js';
 
 vi.mock("openai", () => {
   return {
@@ -1423,6 +1424,21 @@ describe("image generation flow", () => {
 
 
 describe("session discovery requests", () => {
+  it('finds tagged styles across query words before pagination and keeps normal discovery unchanged', async () => {
+    const sample = [
+      { ...styles[0], id: 'tag-only', name: 'Festive portrait', description: '', collections: ['Wedding'], tags: ['red', 'saree'] },
+      { ...styles[0], id: 'name-match', name: 'Red saree', description: '', collections: ['Wedding'], tags: [] },
+      { ...styles[0], id: 'other', name: 'Beach', description: '', collections: ['Outdoor'], tags: ['blue'] },
+    ];
+    const catalogue = vi.spyOn(styleCatalog, 'listCatalogStyles').mockResolvedValue(sample);
+    try {
+      const first = await request(app).get('/api/styles').query({ search: 'red wedding sari', page: 1, limit: 1 });
+      const next = await request(app).get('/api/styles').query({ search: 'red wedding sari', page: 2, limit: 1 });
+      expect(first.body.styles[0].id).toBe('name-match'); expect(next.body.styles[0].id).toBe('tag-only');
+      expect(first.body.pagination.totalCount).toBe(2); expect(first.body.searchAliases.sari).toBe('saree');
+      expect((await request(app).get('/api/styles')).body.styles.map((s: any) => s.id)).toEqual(sample.map(s => s.id));
+    } finally { catalogue.mockRestore(); }
+  });
   it("keeps Explore pages stable and Trending first without extra catalogue reads", async () => {
     const sample = Array.from({ length: 31 }, (_, i) => ({ ...styles[0], id: `shuffle-${i}`, name: `Style ${i}`, genderTag: i % 2 ? "him" as const : "none" as const, collections: i < 3 ? ["Trending", "Shuffle"] : ["Shuffle"] }));
     const catalogue = vi.spyOn(styleCatalog, "listCatalogStyles").mockResolvedValue(sample);
@@ -1463,5 +1479,30 @@ describe("shuffled Home discovery", () => {
       expect(await feed("session-two")).not.toEqual(first);
       expect(catalogue).toHaveBeenCalledTimes(3);
     } finally { catalogue.mockRestore(); }
+  });
+});
+
+describe('opt-in grouped discovery compatibility', () => {
+  afterEach(() => vi.restoreAllMocks());
+  it('keeps legacy cards flat, groups before pagination and opens the matching search variant', async () => {
+    const one = { ...styles[0], id: 'pink-look', name: 'Pink saree', collections: ['Fashion'], tags: ['pink'], genderTag: 'her' as const };
+    const two = { ...one, id: 'lavender-look', name: 'Lavender saree', tags: ['lavender'], tokensRequired: 15 };
+    const other = { ...one, id: 'other-look', name: 'Other', tags: [] };
+    vi.spyOn(styleCatalog, 'listCatalogStyles').mockResolvedValue([one, other, two]);
+    vi.spyOn(styleCatalog, 'listCatalogCollections').mockResolvedValue([]);
+    vi.spyOn(styleGroups, 'listPublishedGroups').mockResolvedValue([{ id: 'family', name: 'Pastel Editorial', coverStyleId: one.id, published: true, members: [{ styleId: one.id, label: 'Rose' }, { styleId: two.id, label: 'Lilac' }] }]);
+    const legacy = await request(app).get('/api/styles');
+    expect(legacy.body.styles.map((s: any) => s.id)).toEqual([one.id, other.id, two.id]);
+    expect(legacy.body.styles.every((s: any) => !s.group)).toBe(true);
+    expect(styleGroups.listPublishedGroups).not.toHaveBeenCalled();
+    const first = await request(app).get('/api/styles').query({ grouped: true, page: 1, limit: 1, gender: 'female' });
+    const second = await request(app).get('/api/styles').query({ grouped: true, page: 2, limit: 1, gender: 'female' });
+    expect(first.body.pagination.totalCount).toBe(2); expect(second.body.styles[0].id).toBe(other.id);
+    expect(first.body.styles[0].group.variants.map((s: any) => s.id)).toEqual([one.id, two.id]);
+    const search = await request(app).get('/api/styles').query({ grouped: true, search: 'pastel lilac' });
+    expect(search.body.styles).toHaveLength(1); expect(search.body.styles[0].id).toBe(two.id);
+    expect(search.body.styles[0].tokensRequired).toBe(15);
+    const filtered = await request(app).get('/api/styles').query({ grouped: true, gender: 'male' });
+    expect(filtered.body.styles).toEqual([]);
   });
 });

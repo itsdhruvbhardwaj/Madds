@@ -159,6 +159,7 @@ function toStyle(record: Record<string, unknown>): Style {
     id: String(record.id),
     name: String(record.name),
     description: String(record.description),
+    tags: Array.isArray(record.tags) ? record.tags.filter((tag): tag is string => typeof tag === 'string') : [],
     prompt: String(record.prompt),
     verified: record.verified === true,
     genderTag: record.genderTag === "her" || record.genderTag === "him" ? record.genderTag : "none",

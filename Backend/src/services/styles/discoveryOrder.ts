@@ -7,8 +7,8 @@ export function validDiscoverySeed(value: unknown): value is string {
 }
 export function orderDiscoveryStyles(styles: Style[], seed?: string, trendingFirst = false): Style[] {
   const ranked = styles.map(style => ({ style,
-    trending: style.collections.some(name => name.toLowerCase() === "trending"),
-    rank: seed ? createHash("sha256").update(`${seed}:${style.id}`).digest("hex") : ""
+    trending: (style.group?.variants || [style]).some(variant => variant.collections.some(name => name.toLowerCase() === "trending")),
+    rank: seed ? createHash("sha256").update(`${seed}:${style.group?.id || style.id}`).digest("hex") : ""
   }));
   ranked.sort((a, b) => {
     if (trendingFirst && a.trending !== b.trending) return Number(b.trending) - Number(a.trending);

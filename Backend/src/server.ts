@@ -62,6 +62,9 @@ import {
 } from "./services/credits/creditService.js";
 import { createImageGenerator } from "./services/generationProvider.js";
 import { buildCustomPrompt, buildPrompt } from "./services/styles/styles.js";
+import { searchStyles } from './services/styles/styleSearch.js';
+import { tagAliases } from './services/styles/styleTags.js';
+import { groupStyles, groupSearchNames, listPublishedGroups } from './services/styles/styleGroups.js';
 import { getCatalogStyle, listCatalogCollectionSummaries, listCatalogCollections, listCatalogStyles } from "./services/styles/catalog.js";
 import type { Style } from "./services/styles/styleTypes.js";
 import type { UploadedImage } from "./types/generation.js";
@@ -185,10 +188,27 @@ app.get("/api/home/config", async (req: Request, res: Response) => {
   }
   // Public catalogue only: one catalogue read replaces a request per section.
   const [sections, styles] = await Promise.all([getHomeSectionCatalog(), listCatalogStyles()]);
+  if (req.query.grouped === 'true') {
+    const groups = await listPublishedGroups();
+    const eligible = styles.filter(style => matchesStylePreference(style, String(req.query.gender || 'all')));
+    return res.json({ sections: sections.filter(section => section.visible).sort((a, b) => a.order - b.order).map(section => {
+      const members = section.slug ? eligible.filter(style => style.collections.some(name => name.toLowerCase() === section.slug!.toLowerCase())) : eligible;
+      return { ...section, styles: orderDiscoveryStyles(groupStyles(members, members, groups), req.query.shuffleSeed as string | undefined).slice(0, 10) };
+    }) });
+  }
   res.json(buildHomeFeed(sections, orderDiscoveryStyles(styles.filter(style => matchesStylePreference(style, String(req.query.gender || "all"))), req.query.shuffleSeed as string | undefined)));
 });
 
 app.get("/api/collections", async (req: Request, res: Response) => {
+  if (req.query.grouped === 'true') {
+    const [collections, styles, groups] = await Promise.all([listCatalogCollections(), listCatalogStyles(), listPublishedGroups()]);
+    const eligible = styles.filter(style => matchesStylePreference(style, String(req.query.gender || 'all')));
+    return res.json({ collections: collections.flatMap(collection => {
+      const members = eligible.filter(style => style.collections.some(name => name.toLowerCase() === collection.name.toLowerCase()));
+      const cards = groupStyles(members, members, groups);
+      return cards.length ? [{ ...collection, thumbnail: cards[0].thumbnail, styleCount: cards.length }] : [];
+    }) });
+  }
   res.json({ collections: await listCatalogCollectionSummaries(String(req.query.gender || "all")) });
 });
 
@@ -214,13 +234,14 @@ app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Resp
       )
     );
   }
-  if (searchQuery) {
-    filteredStyles = filteredStyles.filter((style) =>
-      style.name.toLowerCase().includes(searchQuery) ||
-      style.description.toLowerCase().includes(searchQuery)
-    );
-  }
+  const eligibleStyles = filteredStyles;
+  const publishedGroups = req.query.grouped === 'true' ? await listPublishedGroups() : [];
   filteredStyles = orderDiscoveryStyles(filteredStyles, req.query.shuffleSeed as string | undefined, trendingFirst);
+  filteredStyles = searchStyles(filteredStyles, searchQuery, groupSearchNames(publishedGroups));
+  if (req.query.grouped === 'true') {
+    filteredStyles = groupStyles(filteredStyles, eligibleStyles, publishedGroups, Boolean(searchQuery));
+    if (!searchQuery) filteredStyles = orderDiscoveryStyles(filteredStyles, req.query.shuffleSeed as string | undefined, trendingFirst);
+  }
 
   // Calculate pagination metadata
   const totalCount = filteredStyles.length;
@@ -239,9 +260,11 @@ app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Resp
     : new Set<string>();
 
   res.json({
+    searchAliases: tagAliases,
     styles: paginatedStyles.map((style) => ({
       ...style,
       isFavorite: favoriteIds.has(style.id),
+      ...(style.group ? { group: { ...style.group, variants: style.group.variants.map(variant => ({ ...variant, isFavorite: favoriteIds.has(variant.id) })) } } : {}),
     })),
     collections: [...new Set([
       ...catalogueCollections.map((collection) => collection.name),

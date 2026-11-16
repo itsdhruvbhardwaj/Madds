@@ -5,6 +5,9 @@ export interface Style {
   prompt: string;
   verified?: boolean;
   genderTag?: "her" | "him" | "none";
+  tags?: string[];
+  variantLabel?: string;
+  group?: { id: string; name: string; coverStyleId: string; variants: Style[] };
   thumbnail: string | null;
   thumbnailPublicId?: string | null;
   exampleBeforeUrl?: string | null;
