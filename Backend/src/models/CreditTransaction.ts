@@ -18,6 +18,7 @@ const CreditTransactionSchema = new Schema(
         "INITIAL_GRANT",
         "GENERATION",
         "REWARDED_AD",
+        "DAILY_REWARD",
         "PURCHASE",
         "REFUND",
         "ADMIN_ADJUSTMENT",

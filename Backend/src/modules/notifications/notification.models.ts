@@ -14,11 +14,13 @@ const campaignSchema = new Schema({
   leaseOwner: String, leaseUntil: Date, sentAt: Date,
   failureReason: String,
   historyClearedAt: Date,
+  automationKey: String, reminderDayKey: String, reminderRevision: Number, reminderCredits: Number, expiresAt: Date,
   totalRecipients: { type: Number, default: 0 }, successfulDeliveries: { type: Number, default: 0 },
   failedDeliveries: { type: Number, default: 0 }, skippedDeliveries: { type: Number, default: 0 },
 }, { timestamps: true });
 campaignSchema.index({ status: 1, nextRunAt: 1, leaseUntil: 1 });
 campaignSchema.index({ createdAt: -1 });
+campaignSchema.index({ automationKey: 1 }, { unique: true, sparse: true });
 
 const logSchema = new Schema({
   campaignId: { type: Schema.Types.ObjectId, required: true }, userId: { type: Schema.Types.ObjectId, required: true },
@@ -27,11 +29,13 @@ const logSchema = new Schema({
   status: { type: String, enum: ["PENDING", "PROCESSING", "ACCEPTED", "FAILED", "SKIPPED"], default: "PENDING" },
   attempts: { type: Number, default: 0 }, nextAttemptAt: { type: Date, default: Date.now },
   leaseOwner: String, leaseUntil: Date, error: String, sentAt: Date, firstAttemptAt: Date,
+  reminderKey: String,
 }, { timestamps: true });
 logSchema.index({ campaignId: 1, deviceTokenId: 1 }, { unique: true });
 logSchema.index({ campaignId: 1, status: 1, nextAttemptAt: 1 });
 logSchema.index({ status: 1, updatedAt: 1 });
 logSchema.index({ userId: 1, sentAt: -1 });
+logSchema.index({ reminderKey: 1 }, { unique: true, sparse: true });
 
 // Conservative user-wide cooldown: a reservation also counts when delivery fails.
 const gateSchema = new Schema({

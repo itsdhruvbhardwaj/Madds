@@ -11,6 +11,7 @@ import { getCatalogStyle } from "../../services/styles/catalog.js";
 import { NotificationCampaign, NotificationLog, NotificationUserGate, initializeNotificationModels } from "./notification.models.js";
 import { DAY, deliveryEnabled, notificationCooldownHours, type CampaignInput } from "./notification.types.js";
 import { personalizeNotification } from "./notification.personalization.js";
+import { dailyReminderSkipReason, preferredReminderDevice } from '../../services/dailyReminders.js';
 
 const LEASE_MS = 10 * 60_000;
 const BATCH_SIZE = 25;
@@ -81,8 +82,12 @@ export function buildPushMessage(campaign: any, log: any, device: any, name?: un
   if (campaign.imageUrl) data.imageUrl = campaign.imageUrl;
   if (campaign.relatedStyleId) data.styleId = campaign.relatedStyleId;
   if (campaign.collectionId) data.collectionId = campaign.collectionId;
+  if (campaign.reminderDayKey) {
+    data.reminderDayKey = campaign.reminderDayKey;
+    data.expiresAt = String(new Date(campaign.expiresAt).getTime());
+  }
   // Data-only: Android must check the account and deduplicate before displaying.
-  return { token: device.fcmToken, data, android: { priority: "high", ttl: DAY,
+  return { token: device.fcmToken, data, android: { priority: "high", ttl: campaign.reminderDayKey ? Math.max(0, Math.min(DAY, new Date(campaign.expiresAt).getTime() - Date.now())) : DAY,
     restrictedPackageName: "com.itsdhruvbhardwaj.picme" } };
 }
 
@@ -130,6 +135,13 @@ export class NotificationService {
     }, 30_000);
     heartbeat.unref();
     try {
+      const reminderStopped = campaign.reminderDayKey ? await dailyReminderSkipReason(campaign) : null;
+      if (reminderStopped) {
+        await NotificationLog.updateMany({ campaignId: campaign._id, status: { $in: ['PENDING', 'PROCESSING'] } },
+          { $set: { status: 'SKIPPED', error: reminderStopped }, $unset: { leaseOwner: 1, leaseUntil: 1 } });
+        await NotificationCampaign.updateOne(claim, { $set: { status: 'CANCELLED', failureReason: reminderStopped }, $unset: { leaseOwner: 1, leaseUntil: 1 } });
+        return true;
+      }
       try { await validateDestination(campaign); }
       catch (error) {
         if (error instanceof Error && ["Choose a published style.", "Choose an existing collection."].includes(error.message)) {
@@ -144,13 +156,18 @@ export class NotificationService {
       // Expand in bounded pages; a cursor is committed only after idempotent log upserts.
       if (!campaign.expandedAt) {
         const devices = await DeviceToken.find({ isActive: true, permissionGranted: true,
+          ...(campaign.reminderDayKey ? { dailyRewardReminders: true } : {}),
           createdAt: { $lte: campaign.recipientCutoffAt }, ...(campaign.scanCursor ? { _id: { $gt: campaign.scanCursor } } : {}) })
           .sort({ _id: 1 }).limit(BATCH_SIZE).lean();
         for (const device of devices) {
-          if (await eligible(campaign, device, campaign.recipientCutoffAt)) {
-            await NotificationLog.updateOne({ campaignId: campaign._id, deviceTokenId: device._id }, { $setOnInsert: {
+          // Expand reminders once per account. Claim status is checked when dispatching,
+          // so already-claimed skips remain visible in the delivery results.
+          const preferred = campaign.reminderDayKey ? await preferredReminderDevice(device.userId) : null;
+          if (campaign.reminderDayKey ? preferred && String(preferred._id) === String(device._id) : await eligible(campaign, device, campaign.recipientCutoffAt)) {
+            await NotificationLog.updateOne(campaign.reminderDayKey ? { reminderKey: `${campaign.reminderDayKey}:${device.userId}` } : { campaignId: campaign._id, deviceTokenId: device._id }, { $setOnInsert: {
               campaignId: campaign._id, deviceTokenId: device._id, userId: device.userId, sessionId: device.sessionId,
               bindingVersion: device.bindingVersion, status: "PENDING", nextAttemptAt: now,
+              ...(campaign.reminderDayKey ? { reminderKey: `${campaign.reminderDayKey}:${device.userId}` } : {}),
             } }, { upsert: true });
           }
         }
@@ -176,7 +193,8 @@ export class NotificationService {
         }
         const device = await DeviceToken.findOne({ _id: log.deviceTokenId, userId: log.userId, sessionId: log.sessionId,
           bindingVersion: log.bindingVersion }).select("+fcmToken").lean();
-        let skip = !device || !await eligible(campaign, device, campaign.recipientCutoffAt);
+        const reminderReason = campaign.reminderDayKey && device ? await dailyReminderSkipReason(campaign, device) : null;
+        let skip = Boolean(reminderReason) || !device || !await eligible(campaign, device, campaign.recipientCutoffAt);
         const hours = notificationCooldownHours();
         if (!skip && hours > 0) {
           try {
@@ -191,7 +209,7 @@ export class NotificationService {
         }
         if (skip || log.attempts > MAX_ATTEMPTS) {
           await NotificationLog.updateOne({ _id: log._id, leaseOwner: owner }, { $set: {
-            status: log.attempts > MAX_ATTEMPTS ? "FAILED" : "SKIPPED", error: skip ? "INELIGIBLE_OR_COOLDOWN" : "RETRY_LIMIT",
+            status: log.attempts > MAX_ATTEMPTS ? "FAILED" : "SKIPPED", error: skip ? reminderReason || "INELIGIBLE_OR_COOLDOWN" : "RETRY_LIMIT",
           }, $unset: { leaseOwner: 1, leaseUntil: 1 } });
           continue;
         }
@@ -213,10 +231,11 @@ export class NotificationService {
           const log = logs[index];
           const current = await DeviceToken.findOne({ _id: log.deviceTokenId, userId: log.userId,
             sessionId: log.sessionId, bindingVersion: log.bindingVersion }).lean();
-          if (current && await eligible(campaign, current, campaign.recipientCutoffAt)) {
+          const reminderReason = campaign.reminderDayKey && current ? await dailyReminderSkipReason(campaign, current) : null;
+          if (!reminderReason && current && await eligible(campaign, current, campaign.recipientCutoffAt)) {
             sendLogs.push(log); sendMessages.push(messages[index]);
           } else await NotificationLog.updateOne({ _id: log._id, leaseOwner: owner },
-            { $set: { status: "SKIPPED", error: "BINDING_OR_PREFERENCE_CHANGED" }, $unset: { leaseOwner: 1, leaseUntil: 1 } });
+            { $set: { status: "SKIPPED", error: reminderReason || "BINDING_OR_PREFERENCE_CHANGED" }, $unset: { leaseOwner: 1, leaseUntil: 1 } });
         }
         if (sendMessages.length && deliveryEnabled() && await NotificationCampaign.exists({ ...claim, leaseUntil: { $gt: new Date() } })) {
           try {

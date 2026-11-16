@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ firebase: vi.fn(), tick: vi.fn(), generation: vi.fn() }));
+const mocks = vi.hoisted(() => ({ firebase: vi.fn(), tick: vi.fn(), generation: vi.fn(), reminders: vi.fn() }));
+vi.mock('../../services/dailyReminders.js', () => ({ processDailyReminders: mocks.reminders }));
 vi.mock("../../config/firebase.js", () => ({ getNotificationFirebaseApp: mocks.firebase }));
 vi.mock("./notification.service.js", () => ({ notificationService: { tick: mocks.tick } }));
 vi.mock("../../services/generationNotifications.js", () => ({ processGenerationNotifications: mocks.generation }));

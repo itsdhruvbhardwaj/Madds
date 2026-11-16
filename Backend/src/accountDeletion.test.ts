@@ -3,6 +3,7 @@ vi.mock("./models/GenerationNotification.js", () => ({ GenerationNotification: {
 vi.mock("./models/GenerationResult.js", () => ({ GenerationResult: { deleteMany: vi.fn().mockResolvedValue({ deletedCount: 0 }) } }));
 vi.mock("./models/GenerationThumbnail.js", () => ({ GenerationThumbnail: { deleteMany: vi.fn().mockResolvedValue({ deletedCount: 0 }) } }));
 vi.mock("./models/Feedback.js", () => ({ Feedback: { deleteMany: vi.fn().mockResolvedValue({ deletedCount: 0 }) } }));
+vi.mock('./models/DailyReward.js', () => ({ DailyRewardClaim: { deleteMany: vi.fn().mockResolvedValue({ deletedCount: 0 }) } }));
 
 const deletionMocks = vi.hoisted(() => ({
   DeviceToken: { deleteMany: vi.fn() },

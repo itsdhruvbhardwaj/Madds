@@ -30,7 +30,7 @@ describe("authenticated push installation registration", () => {
       { upsert: true, runValidators: true });
   });
   it.each([{ deviceId: "hardware-id" }, { bindingVersion: 0 }, { bindingVersion: "1" },
-    { fcmToken: "short" }, { permissionGranted: "true" }])("rejects invalid data %j", async (change) => {
+    { fcmToken: "short" }, { permissionGranted: "true" }, { dailyRewardReminders: 'true' }])("rejects invalid data %j", async (change) => {
     expect((await request(app).put("/push/device").set("Authorization", "Bearer test").send({ ...registration, ...change })).status).toBe(400);
     expect(mocks.findOneAndUpdate).not.toHaveBeenCalled();
   });
@@ -45,6 +45,14 @@ describe("authenticated push installation registration", () => {
     expect(mocks.updateOne).toHaveBeenCalledWith(expect.objectContaining({ userId: "account-a", sessionId: "session-a",
       bindingVersion: { $lt: 1 } }), { $set: { isActive: false, bindingVersion: 1 } });
   });
+});
+
+it('records daily reminder capability explicitly and removes it for legacy registrations', async () => {
+  for (const capability of [true, undefined]) {
+    const result = await request(app).put('/push/device').set('Authorization', 'Bearer test').send({ ...registration, dailyRewardReminders: capability });
+    expect(result.status).toBe(200);
+    expect(mocks.findOneAndUpdate).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ $set: expect.objectContaining({ dailyRewardReminders: capability === true }) }), expect.anything());
+  }
 });
 
 it("stores reported version on the same guarded installation update", async () => {

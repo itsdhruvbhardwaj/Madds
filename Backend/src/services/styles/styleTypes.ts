@@ -6,6 +6,7 @@ export interface Style {
   verified?: boolean;
   genderTag?: "her" | "him" | "none";
   tags?: string[];
+  groupName?: string;
   variantLabel?: string;
   group?: { id: string; name: string; coverStyleId: string; variants: Style[] };
   thumbnail: string | null;

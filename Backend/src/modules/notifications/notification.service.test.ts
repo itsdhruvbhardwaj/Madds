@@ -3,10 +3,11 @@ const mocks = vi.hoisted(() => ({
   claim: vi.fn(), campaignExists: vi.fn(), campaignUpdate: vi.fn(),
   logClaim: vi.fn(), logUpdate: vi.fn(), aggregate: vi.fn(), logNext: vi.fn(),
   deviceFind: vi.fn(), devicePage: vi.fn(), deviceUpdate: vi.fn(), gate: vi.fn(), active: vi.fn(), user: vi.fn(), name: vi.fn(), sendEach: vi.fn(), init: vi.fn(),
+  reminderReason: vi.fn(), preferred: vi.fn(), logUpdateMany: vi.fn(),
 }));
 vi.mock("./notification.models.js", () => ({ initializeNotificationModels: mocks.init,
   NotificationCampaign: { findOneAndUpdate: mocks.claim, exists: mocks.campaignExists, updateOne: mocks.campaignUpdate },
-  NotificationLog: { findOneAndUpdate: mocks.logClaim, updateOne: mocks.logUpdate, aggregate: mocks.aggregate,
+  NotificationLog: { findOneAndUpdate: mocks.logClaim, updateOne: mocks.logUpdate, updateMany: mocks.logUpdateMany, aggregate: mocks.aggregate,
     findOne: () => ({ sort: () => ({ lean: mocks.logNext }) }) },
   NotificationUserGate: { findOneAndUpdate: mocks.gate },
 }));
@@ -17,6 +18,7 @@ vi.mock("../../models/DeviceToken.js", () => ({ DeviceToken: {
 vi.mock("../../models/User.js", () => ({ User: { exists: mocks.user, findById: (id: unknown) => ({ select: () => ({ lean: () => mocks.name(id) }) }) } }));
 vi.mock("../../services/notificationEligibility.js", () => ({ hasActiveNotificationSession: mocks.active }));
 vi.mock("../../config/firebase.js", () => ({ getNotificationMessaging: () => ({ sendEach: mocks.sendEach }) }));
+vi.mock('../../services/dailyReminders.js', () => ({ dailyReminderSkipReason: mocks.reminderReason, preferredReminderDevice: mocks.preferred }));
 import { NotificationService } from "./notification.service.js";
 
 const campaignId = "aaaaaaaaaaaaaaaaaaaaaaaa";
@@ -33,12 +35,34 @@ describe("persistent notification delivery worker", () => {
     mocks.deviceFind.mockResolvedValue(device); mocks.active.mockResolvedValue(true); mocks.user.mockResolvedValue(true);
     mocks.aggregate.mockResolvedValue([{ _id: "ACCEPTED", count: 1 }]);
     mocks.sendEach.mockResolvedValue({ responses: [{ success: true }] });
+    mocks.reminderReason.mockResolvedValue(null); mocks.preferred.mockResolvedValue(device);
   });
   afterEach(() => vi.unstubAllEnvs());
   it("does not claim work or initialize credentials while delivery is disabled", async () => {
     vi.stubEnv("NOTIFICATION_DELIVERY_ENABLED", "false");
     expect(await new NotificationService().tick()).toBe(false);
     expect(mocks.claim).not.toHaveBeenCalled(); expect(mocks.sendEach).not.toHaveBeenCalled();
+  });
+  it('stops unsent reminders when the automation is disabled or the reward day ends', async () => {
+    mocks.claim.mockResolvedValue({ ...campaign, reminderDayKey: '2026-11-16' });
+    mocks.reminderReason.mockResolvedValue('DAILY_REMINDER_EXPIRED');
+    await new NotificationService().tick();
+    expect(mocks.sendEach).not.toHaveBeenCalled(); expect(mocks.logClaim).not.toHaveBeenCalled();
+    expect(mocks.logUpdateMany).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ $set: { status: 'SKIPPED', error: 'DAILY_REMINDER_EXPIRED' } }));
+  });
+  it('checks daily claims again immediately before submitting the message', async () => {
+    mocks.claim.mockResolvedValue({ ...campaign, reminderDayKey: '2026-11-16' });
+    mocks.reminderReason.mockResolvedValueOnce(null).mockResolvedValueOnce(null).mockResolvedValue('DAILY_REWARD_ALREADY_CLAIMED');
+    await new NotificationService().tick();
+    expect(mocks.sendEach).not.toHaveBeenCalled();
+    expect(mocks.logUpdate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ $set: { status: 'SKIPPED', error: 'DAILY_REWARD_ALREADY_CLAIMED' } }));
+  });
+  it('expands reminders with an account-day key rather than one send for each device', async () => {
+    mocks.claim.mockResolvedValue({ ...campaign, expandedAt: undefined, reminderDayKey: '2026-11-16' });
+    mocks.devicePage.mockResolvedValue([device, { ...device, _id: 'other-device' }]);
+    await new NotificationService().tick();
+    expect(mocks.logUpdate).toHaveBeenCalledWith({ reminderKey: '2026-11-16:user' }, expect.objectContaining({ $setOnInsert: expect.objectContaining({ deviceTokenId: 'device', reminderKey: '2026-11-16:user' }) }), { upsert: true });
+    expect(mocks.logUpdate.mock.calls.filter(([filter]) => filter.reminderKey)).toHaveLength(1);
   });
   it("atomically claims only due campaigns with expired or absent leases", async () => {
     mocks.claim.mockResolvedValue(null);

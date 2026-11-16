@@ -2,6 +2,7 @@ import { getNotificationFirebaseApp } from "../../config/firebase.js";
 import { notificationService } from "./notification.service.js";
 import { deliveryEnabled } from "./notification.types.js";
 import { processGenerationNotifications } from "../../services/generationNotifications.js";
+import { processDailyReminders } from '../../services/dailyReminders.js';
 
 /** Free hosting: process durable jobs only while the web service is awake. */
 export function startWebNotificationProcessor(): (() => Promise<void>) | undefined {
@@ -12,6 +13,8 @@ export function startWebNotificationProcessor(): (() => Promise<void>) | undefin
   let timer: ReturnType<typeof setTimeout> | undefined;
   let inFlight: Promise<void>;
   const run = async () => {
+    try { await processDailyReminders(); }
+    catch { console.warn('Daily reminder scheduling deferred.'); }
     try { if (deliveryEnabled()) await notificationService.tick(); }
     catch { console.warn("Web notification processing deferred."); }
     try { await processGenerationNotifications(); }

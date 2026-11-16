@@ -11,6 +11,7 @@ import { personalizeNotification } from "./notification.personalization.js";
 import { notificationService, validateDestination } from "./notification.service.js";
 import { validateCampaign, validateSchedule } from "./notification.validation.js";
 import { welcomeBackCreditsRouter } from "../../routes/welcomeBackCredits.js";
+import { dailyReminderSettingsRouter } from '../../routes/dailyReminderSettings.js';
 
 const router = Router();
 const idPattern = /^[0-9a-f]{24}$/i;
@@ -22,6 +23,7 @@ router.use(requireAuth, (req: AuthenticatedRequest, res, next) => {
 });
 router.use(rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false }));
 router.use("/welcome-back", welcomeBackCreditsRouter);
+router.use('/daily-reminder', dailyReminderSettingsRouter);
 router.use(async (_req, _res, next) => { await initializeNotificationModels(); next(); });
 router.post("/upload-signature", (_req, res) => {
   if (!cloudinaryIsConfigured()) {
@@ -40,9 +42,15 @@ router.get("/device-versions", async (_req, res) => {
   return res.json({ ok: true, versions, note: "Last reported versions, not live install status. Device counts are before account and category eligibility checks." });
 });
 // Clear only finished activity. Keep delivery records for reconciliation and diagnostics.
-router.post("/history/clear", async (_req, res) => {
+router.post(['/history/clear', '/history/clear-selected'], async (req, res) => {
+  const requested = req.body?.ids;
+  if (req.path.endsWith('/clear-selected') && requested === undefined) return res.status(400).json({ ok: false, error: 'Select the finished notifications to remove.' });
+  if (requested !== undefined && (!Array.isArray(requested) || requested.length < 1 || requested.length > 500 || requested.some(id => typeof id !== 'string' || !idPattern.test(id))))
+    return res.status(400).json({ ok: false, error: 'Select 1–500 valid finished notifications.' });
+  const ids = requested === undefined ? undefined : [...new Set<string>(requested)];
   const clearedAt = new Date();
   const result = await NotificationCampaign.updateMany({
+    ...(ids ? { _id: { $in: ids } } : {}),
     status: { $in: ["SENT", "FAILED", "CANCELLED"] }, historyClearedAt: null, updatedAt: { $lte: clearedAt },
   }, { $set: { historyClearedAt: clearedAt } });
   return res.json({ ok: true, clearedCount: result.modifiedCount });

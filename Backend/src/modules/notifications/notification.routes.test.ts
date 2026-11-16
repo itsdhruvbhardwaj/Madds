@@ -55,6 +55,20 @@ describe("admin notification API", () => {
     expect(mocks.history).toHaveBeenCalledWith({ status: { $in: ["SENT", "FAILED", "CANCELLED"] },
       historyClearedAt: null, updatedAt: { $lte: expect.any(Date) } }, { $set: { historyClearedAt: expect.any(Date) } });
   });
+  it('clears only selected IDs and keeps the terminal-state and timestamp guards', async () => {
+    mocks.history.mockResolvedValue({ modifiedCount: 1 });
+    const response = await request(app).post('/admin/push/history/clear-selected').set('Authorization', 'Bearer admin').send({ ids: [id, id] });
+    expect(response.body).toEqual({ ok: true, clearedCount: 1 });
+    expect(mocks.history).toHaveBeenCalledWith({ _id: { $in: [id] }, status: { $in: ['SENT', 'FAILED', 'CANCELLED'] },
+      historyClearedAt: null, updatedAt: { $lte: expect.any(Date) } }, { $set: { historyClearedAt: expect.any(Date) } });
+  });
+  it('rejects empty, malformed or unbounded selections and requires approved authentication', async () => {
+    for (const body of [{}, { ids: [] }, { ids: ['bad'] }, { ids: id }, { ids: Array(501).fill(id) }])
+      expect((await request(app).post('/admin/push/history/clear-selected').set('Authorization', 'Bearer admin').send(body)).status).toBe(400);
+    expect((await request(app).post('/admin/push/history/clear-selected').send({ ids: [id] })).status).toBe(401);
+    expect((await request(app).post('/admin/push/history/clear-selected').set('Authorization', 'Bearer user').send({ ids: [id] })).status).toBe(403);
+    expect(mocks.history).not.toHaveBeenCalled();
+  });
   it("excludes cleared history on every page and keeps cursor filtering", async () => {
     mocks.list.mockResolvedValue([]);
     for (const suffix of ["", "?cursor=" + id]) {

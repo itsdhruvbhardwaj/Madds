@@ -1,5 +1,28 @@
 # Centralized push notifications
 
+### Release-only registration failure (version 5)
+
+The supplied version 5 AAB renamed `PushDeviceRequest` fields to `a`, `b`, `c`,
+and `d`, with no `SerializedName` annotations. Gson therefore sent keys that
+did not match `/api/notifications/device` validation. Debug builds retained the
+correct field names, hiding the failure in local tests. Both registration and
+logout detachment use this DTO.
+
+The DTO now explicitly annotates all four JSON keys and has a scoped R8 keep
+rule. `PushDeviceRequestTest` checks registration and detachment JSON. After
+building an optimized release, run:
+
+    cd App
+    python tools/check_push_registration_bundle.py app/build/outputs/bundle/release/app-release.aab
+
+The artifact check deliberately fails for the original version 5 AAB. A debug
+test alone cannot establish that the release contract survived optimization.
+Existing version 5 installations need a newly signed app update and should open
+Madds while signed in and connected so their current FCM token can register.
+No backend contract change or notification broadcast is part of this fix.
+Android permission and account/category choices still apply; this fix does not
+override explicit opt-outs or revive obsolete FCM tokens.
+
 ### Device diagnostic — cached active-account flag
 
 A real-device FCM test reached MaddsMessagingService but was suppressed because

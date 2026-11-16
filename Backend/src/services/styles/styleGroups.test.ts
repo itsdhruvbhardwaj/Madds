@@ -16,10 +16,17 @@ describe('Grouped style projection', () => {
     expect(one).not.toHaveProperty('group');
   });
   it('filters before grouping and never exposes ineligible, deleted or unverified members', () => {
-    expect(groupStyles([one], [one], [group])).toEqual([one]);
+    expect(groupStyles([one], [one], [group])).toEqual([{ ...one, groupName: group.name }]);
     expect(groupStyles([one, lone], [one, lone], [group]).map(card => card.id)).toEqual([one.id, lone.id]);
     expect(groupStyles([one, two], [one, two], [{ ...group, published: false }])).toEqual([one, two]);
     expect(groupStyles([one, two], [one, two], [{ ...group, archived: true }])).toEqual([one, two]);
+  });
+  it('keeps the group title when a collection contains only one member without exposing other members', () => {
+    const cards = groupStyles([two], [two], [group]);
+    expect(cards[0]).toMatchObject({ id: two.id, name: two.name, groupName: group.name });
+    expect(cards[0].group).toBeUndefined();
+    expect(cards).toHaveLength(1);
+    expect(groupStyles([lone], [lone], [group])[0]).not.toHaveProperty('groupName');
   });
   it('opens a search-matching variant and keeps other eligible variants available', () => {
     const matches = searchStyles([one, two], 'pink saree', groupSearchNames([group]));

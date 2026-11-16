@@ -45,6 +45,7 @@ router.get("/credit-history", requireAuth, async (req: AuthenticatedRequest, res
     const displayName = item.type === "GENERATION" ? styleName || "Image generation" :
       item.type === "REFUND" ? (styleName ? `Refund · ${styleName}` : "Generation refund") :
       item.type === "REWARDED_AD" ? "Rewarded ad" :
+      item.type === 'DAILY_REWARD' ? 'Daily bonus' :
       item.type === "PURCHASE" ? `${Math.abs(item.amount)} credit purchase` :
       item.type === "INITIAL_GRANT" ? "Welcome credits" : "Credit adjustment";
     return { ...item, displayName };

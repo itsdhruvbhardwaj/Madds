@@ -8,6 +8,7 @@ import {
   getRewardedAdsConfigurationStatus,
 } from "../config/rewardedAds.js";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth.js";
+import { getRewardedCredits } from '../services/rewardedCredits.js';
 import {
   createRewardedAdAttempt,
   grantRewardedAdCredits,
@@ -89,10 +90,15 @@ const attemptRateLimiter = rateLimit({
 });
 
 // Display-only configuration. Credit grants still require verified AdMob SSV.
-router.get("/rewarded-ads/config", (_req: Request, res: Response) => {
+router.get("/rewarded-ads/config", async (_req: Request, res: Response) => {
   const configuration = getRewardedAdsConfiguration();
   res.set("Cache-Control", "no-store");
-  return res.json({ ok: true, available: Boolean(configuration), credits: configuration?.picMeCreditAmount ?? null });
+  try {
+    const credits = configuration ? await getRewardedCredits() : null;
+    return res.json({ ok: true, available: Boolean(configuration), credits });
+  } catch {
+    return res.status(503).json({ ok: false, available: false, credits: null, error: 'Ad rewards are temporarily unavailable. Please try again.' });
+  }
 });
 
 router.post(
@@ -121,11 +127,12 @@ router.post(
 
     const expiresAt = new Date(Date.now() + configuration.attemptTtlSeconds * 1000);
     try {
-      const attempt = await createRewardedAdAttempt(userId, expiresAt, configuration.picMeCreditAmount);
+      const credits = await getRewardedCredits();
+      const attempt = await createRewardedAdAttempt(userId, expiresAt, credits);
       return res.status(201).json({
         ok: true,
         customData: attempt.customData,
-        credits: configuration.picMeCreditAmount,
+        credits,
         expiresAt: attempt.expiresAt.toISOString(),
       });
     } catch (error) {

@@ -26,14 +26,16 @@ export function groupSearchNames(groups: GroupRecord[]): Record<string, string> 
   return Object.fromEntries(groups.filter(group => group.published && !group.archived).flatMap(group => group.members.map(member => [member.styleId, `${group.name} ${member.label}`])));
 }
 export function groupStyles(matches: Style[], eligible: Style[], groups: GroupRecord[], searching = false): Style[] {
+  const published = groups.filter(group => group.published && !group.archived);
+  const names = new Map(published.flatMap(group => group.members.map(member => [member.styleId, group.name] as const)));
   const byId = new Map(eligible.map(style => [style.id, style]));
   const byMember = new Map<string, { record: GroupRecord; variants: Style[] }>();
-  for (const record of groups.filter(group => group.published && !group.archived)) {
+  for (const record of published) {
     const variants = record.members.flatMap(member => {
       const style = byId.get(member.styleId);
       if (!style) return [];
       const { group: _group, ...plain } = style;
-      return [{ ...plain, variantLabel: member.label || style.name }];
+      return [{ ...plain, groupName: record.name, variantLabel: member.label || style.name }];
     });
     if (variants.length < 2) continue;
     for (const variant of variants) byMember.set(variant.id, { record, variants });
@@ -41,10 +43,10 @@ export function groupStyles(matches: Style[], eligible: Style[], groups: GroupRe
   const emitted = new Set<string>();
   return matches.flatMap(style => {
     const family = byMember.get(style.id);
-    if (!family) return [style];
+    if (!family) return [names.has(style.id) ? { ...style, groupName: names.get(style.id) } : style];
     if (emitted.has(family.record.id)) return [];
     emitted.add(family.record.id);
     const selected = searching ? style : family.variants.find(member => member.id === family.record.coverStyleId) || family.variants[0];
-    return [{ ...selected, group: { id: family.record.id, name: family.record.name, coverStyleId: family.record.coverStyleId, variants: family.variants } }];
+    return [{ ...selected, groupName: family.record.name, group: { id: family.record.id, name: family.record.name, coverStyleId: family.record.coverStyleId, variants: family.variants } }];
   });
 }

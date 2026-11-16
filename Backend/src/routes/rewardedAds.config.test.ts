@@ -1,10 +1,13 @@
 import express from "express";
 import request from "supertest";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
+const setting = vi.hoisted(() => ({ read: vi.fn() }));
+vi.mock('../models/RewardedCreditSettings.js', () => ({ RewardedCreditSettings: { findById: () => ({ lean: setting.read }) } }));
 import { rewardedAdsRouter } from "./rewardedAds.js";
 const app = express(); app.use("/api", rewardedAdsRouter);
 describe("public rewarded-ad display configuration", () => {
   beforeEach(() => {
+    setting.read.mockReset().mockResolvedValue(null);
     vi.stubEnv("ADMOB_REWARDED_AD_UNIT_ID", "ca-app-pub-1234567890123456/1234567890");
     vi.stubEnv("ADMOB_REWARDED_AD_REWARD_ITEM", "credits");
     vi.stubEnv("ADMOB_REWARDED_AD_REWARD_AMOUNT", "1");
@@ -28,5 +31,18 @@ describe("public rewarded-ad display configuration", () => {
   it("disables unavailable or invalid offers without inventing a reward", async () => {
     vi.stubEnv("REWARDED_AD_CREDITS", "0");
     expect((await request(app).get("/api/rewarded-ads/config")).body).toEqual({ ok: true, available: false, credits: null });
+  });
+  it('uses the saved Workspace amount immediately without exposing editor details', async () => {
+    setting.read.mockResolvedValue({ credits: 7, revision: 3, updatedByName: 'Editor' });
+    expect((await request(app).get('/api/rewarded-ads/config')).body).toEqual({ ok: true, available: true, credits: 7 });
+    setting.read.mockResolvedValue({ credits: 9, revision: 4 });
+    expect((await request(app).get('/api/rewarded-ads/config')).body.credits).toBe(9);
+  });
+  it('fails closed instead of offering the old default when a saved setting is invalid or unavailable', async () => {
+    setting.read.mockResolvedValue({ credits: 0, revision: 1 });
+    expect((await request(app).get('/api/rewarded-ads/config')).status).toBe(503);
+    setting.read.mockRejectedValue(new Error('database unavailable'));
+    const response = await request(app).get('/api/rewarded-ads/config');
+    expect(response.status).toBe(503); expect(response.body).toMatchObject({ available: false, credits: null });
   });
 });

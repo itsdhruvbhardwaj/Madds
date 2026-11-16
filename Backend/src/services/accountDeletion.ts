@@ -11,6 +11,7 @@ import { PasswordResetToken } from "../models/PasswordResetToken.js";
 import { PasswordSetupToken } from "../models/PasswordSetupToken.js";
 import { Purchase } from "../models/Purchase.js";
 import { RewardedAdAttempt } from "../models/RewardedAdAttempt.js";
+import { DailyRewardClaim } from '../models/DailyReward.js';
 import { Session } from "../models/Session.js";
 import { User } from "../models/User.js";
 import { Feedback } from "../models/Feedback.js";
@@ -35,6 +36,7 @@ const userOwnedModels = [
   PasswordSetupToken,
   Purchase,
   RewardedAdAttempt,
+  DailyRewardClaim,
   Session,
 ];
 

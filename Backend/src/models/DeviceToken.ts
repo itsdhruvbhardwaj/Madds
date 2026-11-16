@@ -12,6 +12,7 @@ const schema = new Schema({
   appVersionCode: { type: Number, min: 1, max: 2100000000 },
   appVersionName: { type: String, maxlength: 100 },
   appVersionReportedAt: Date,
+  dailyRewardReminders: { type: Boolean, default: false },
   lastUsedAt: { type: Date, required: true },
 }, { timestamps: true });
 schema.index({ fcmToken: 1 }, { unique: true });

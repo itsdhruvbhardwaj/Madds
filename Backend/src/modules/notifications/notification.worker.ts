@@ -5,6 +5,7 @@ import { deliveryEnabled } from "./notification.types.js";
 import { notificationService } from "./notification.service.js";
 import { processGenerationNotifications } from "../../services/generationNotifications.js";
 import { processWelcomeBackGrants } from "../../services/welcomeBackCredits.js";
+import { processDailyReminders } from '../../services/dailyReminders.js';
 
 // Optional persistent process for hosting that must deliver while the web service sleeps.
 async function main() {
@@ -15,6 +16,8 @@ async function main() {
   process.once("SIGINT", () => { stopping = true; });
   console.log("Notification worker ready.");
   while (!stopping) {
+    try { await processDailyReminders(); }
+    catch { console.warn('Daily reminder scheduling deferred.'); }
     try { await processWelcomeBackGrants(); }
     catch { console.warn("Welcome-back credits iteration deferred."); }
     try { if (deliveryEnabled()) await notificationService.tick(); }

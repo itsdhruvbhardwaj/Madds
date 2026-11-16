@@ -37,6 +37,7 @@ import { adminUsersRouter } from "./routes/adminUsers.js";
 import { favoritesRouter } from "./routes/favorites.js";
 import { googlePlayBillingRouter } from "./routes/googlePlayBilling.js";
 import { rewardedAdsRouter } from "./routes/rewardedAds.js";
+import { dailyRewardsRouter } from './routes/dailyRewards.js';
 import { getHomeSectionCatalog, initializeHomeSectionCatalog } from "./services/home/homeCatalog.js";
 import { orderDiscoveryStyles, validDiscoverySeed } from "./services/styles/discoveryOrder.js";
 import { matchesStylePreference, validStylePreference } from "./services/styles/stylePreference.js";
@@ -295,6 +296,7 @@ app.use("/api/app-config/ads", publicAdSettingsRouter);
 app.use("/api/admin", adminCatalogRouter);
 app.use("/api/me", favoritesRouter);
 app.use("/api", rewardedAdsRouter);
+app.use('/api/daily-rewards', dailyRewardsRouter);
 app.use("/api", googlePlayBillingRouter);
 app.use("/api/me", accountHistoryRouter);
 

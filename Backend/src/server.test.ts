@@ -5,6 +5,7 @@ import request from "supertest";
 
 vi.mock("./services/generationRecovery.js", () => ({ saveGenerationResult: vi.fn().mockResolvedValue(undefined), readGenerationResult: vi.fn() }));
 vi.mock("./models/Generation.js", () => ({ Generation: { updateOne: vi.fn().mockResolvedValue({ modifiedCount: 1 }), exists: vi.fn().mockResolvedValue(true) } }));
+vi.mock('./models/RewardedCreditSettings.js', () => ({ RewardedCreditSettings: { findById: () => ({ lean: async () => null }) } }));
 
 process.env.OPENAI_API_KEY = "test-api-key";
 
@@ -1486,7 +1487,7 @@ describe('opt-in grouped discovery compatibility', () => {
   afterEach(() => vi.restoreAllMocks());
   it('keeps legacy cards flat, groups before pagination and opens the matching search variant', async () => {
     const one = { ...styles[0], id: 'pink-look', name: 'Pink saree', collections: ['Fashion'], tags: ['pink'], genderTag: 'her' as const };
-    const two = { ...one, id: 'lavender-look', name: 'Lavender saree', tags: ['lavender'], tokensRequired: 15 };
+    const two = { ...one, id: 'lavender-look', name: 'Lavender saree', tags: ['lavender'], collections: ['Travel'], tokensRequired: 15 };
     const other = { ...one, id: 'other-look', name: 'Other', tags: [] };
     vi.spyOn(styleCatalog, 'listCatalogStyles').mockResolvedValue([one, other, two]);
     vi.spyOn(styleCatalog, 'listCatalogCollections').mockResolvedValue([]);
@@ -1502,6 +1503,10 @@ describe('opt-in grouped discovery compatibility', () => {
     const search = await request(app).get('/api/styles').query({ grouped: true, search: 'pastel lilac' });
     expect(search.body.styles).toHaveLength(1); expect(search.body.styles[0].id).toBe(two.id);
     expect(search.body.styles[0].tokensRequired).toBe(15);
+    const singleCollection = await request(app).get('/api/styles').query({ grouped: true, collection: 'Travel' });
+    expect(singleCollection.body.styles).toHaveLength(1);
+    expect(singleCollection.body.styles[0]).toMatchObject({ id: two.id, name: two.name, groupName: 'Pastel Editorial' });
+    expect(singleCollection.body.styles[0].group).toBeUndefined();
     const filtered = await request(app).get('/api/styles').query({ grouped: true, gender: 'male' });
     expect(filtered.body.styles).toEqual([]);
   });
