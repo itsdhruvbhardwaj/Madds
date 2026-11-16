@@ -2,6 +2,12 @@
 
 Private team portal for managing the backend style catalogue. It is a static site with no embedded secrets; all edits go through authenticated backend endpoints.
 
+Search tags are edited as removable chips in the style editor, with catalogue
+suggestions, canonical aliases and a 10-tag limit. Use Missing tags to find older
+styles or Bulk style actions to add tags without replacing existing ones. See
+[style tag workflow and release notes](../docs/style-tags.md). Deploy the backend
+first; tag controls stay disabled against older servers.
+
 ## Backend setup
 
 1. Deploy the updated `Backend` service with its existing MongoDB connection.

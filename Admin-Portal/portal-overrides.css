@@ -229,3 +229,44 @@ body{background:radial-gradient(ellipse at 85% 0%,#262218 0,transparent 33%),var
 .home-toggle,.collection-check input,.test-export-controls input[type=range]{accent-color:#c7a653}
 .edit-button,.text-button{color:#ddc579}
 .brand b{color:#d4bd75}
+
+/* Manual search-tag editing and bulk catalogue tagging. */
+.style-tags-editor > label { display: flex; justify-content: space-between; gap: 12px; }
+.style-tag-entry { display: flex; gap: 8px; margin-top: 10px; }
+.style-tag-entry input { flex: 1; min-width: 0; }
+.style-tag-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.style-tag-chip { display: inline-flex; align-items: center; gap: 8px; padding: 5px 10px; border: 1px solid var(--line); background: var(--surface2); color: var(--text); border-radius: 20px; font-size: 12px; }
+.style-tag-chip button { padding: 0 3px; color: var(--muted); background: none; border: 0; font-size: 18px; cursor: pointer; }
+.style-tag-summary { font-size: 11px; color: var(--muted); line-height: 1.6; margin: 8px 0; overflow-wrap: anywhere; }
+.style-bulk-tag-entry { display: flex; align-items: flex-end; gap: 12px; margin: 16px 0 10px; }
+.style-bulk-tag-entry label { display: grid; gap: 7px; flex: 1; font-size: 12px; color: var(--muted); }
+.style-bulk-tag-entry input { width: 100%; }
+@media(max-width:600px) { .style-bulk-tag-entry { align-items: stretch; flex-direction: column; } }
+
+.workspace-tabs { display:flex; gap:8px; margin-bottom:18px; }
+.workspace-tabs button { padding:10px 20px; border:1px solid var(--line); background:var(--surface); color:var(--muted); border-radius:22px; cursor:pointer; }
+.workspace-tabs button[aria-pressed=true] { color:var(--text); border-color:#b99b5b; }
+#style-groups-list { display:grid; gap:16px; margin-top:20px; }
+.studio-group-card { display:flex; gap:18px; padding:16px; background:var(--surface); border:1px solid var(--line); border-radius:16px; }
+.studio-group-card > img { width:90px; height:110px; object-fit:cover; border-radius:10px; }
+.studio-group-card p { color:var(--muted); margin:9px 0; font-size:12px; }
+.group-editor-layout { display:grid; grid-template-columns:minmax(0,1fr) 180px; gap:22px; padding:20px; }
+.group-editor-layout label { display:grid; gap:8px; margin:12px 0; }
+.group-member-row { display:flex; align-items:center; gap:10px; border:1px solid var(--line); padding:10px; border-radius:12px; margin-bottom:10px; }
+.group-member-row img { width:48px; height:65px; object-fit:cover; border-radius:6px; }
+.group-member-main { flex:1; min-width:0; }
+.group-member-main strong,.group-member-main small { display:block; font-size:12px; overflow-wrap:anywhere; }
+.group-member-main small { color:var(--muted); margin:5px 0; }
+.group-member-main input { width:100%; min-width:0; font-size:12px; }
+.group-member-actions { display:flex; flex-wrap:wrap; max-width:120px; gap:5px; }
+.group-member-actions label { display:flex; align-items:center; font-size:11px; }
+.group-member-actions button { border:1px solid var(--line); color:var(--text); background:var(--surface2); border-radius:6px; font-size:11px; padding:6px; cursor:pointer; }
+#group-member-candidates { max-height:180px; overflow:auto; margin-bottom:16px; }
+.group-candidate { width:100%; text-align:left; display:flex; justify-content:space-between; gap:8px; padding:10px; background:var(--surface2); color:var(--text); border:1px solid var(--line); border-radius:8px; margin:5px 0; cursor:pointer; }
+.group-candidate small { color:var(--muted); }
+.group-cover-preview { position:relative; aspect-ratio:5/7; background:var(--surface2); border-radius:15px; overflow:hidden; }
+.group-cover-preview img { width:100%; height:100%; object-fit:cover; }
+.group-cover-preview strong { position:absolute; bottom:0; left:0; right:0; padding:40px 12px 14px; background:linear-gradient(transparent,#000d); color:white; }
+.group-cover-preview small { display:block; margin-top:6px; font-size:11px; }
+#style-group-form input[type=checkbox],#style-group-form input[type=radio] { width:auto; }
+@media(max-width:700px) { .group-editor-layout { grid-template-columns:1fr; padding:15px; } #group-card-preview { max-width:180px; } .group-member-row { flex-wrap:wrap; } }

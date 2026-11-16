@@ -35,7 +35,9 @@
   const homeOrder = window.MaddsHomeOrder.create({ api, notify, onSaved: sections => { state.sections = sections; renderCollections(); } });
   const performance = window.MaddsPerformance.create({ api, notify, onChanged: loadCatalog });
   const feedback = window.MaddsFeedback.create({ api, notify });
-  const bulkStyles = window.MaddsStyleBulk.create({ api, notify, getCatalog: () => state, reload: loadCatalog });
+  const bulkStyles = window.MaddsStyleBulk.create({ api, notify, getCatalog: () => state, reload: loadCatalog, groupSelected: ids => styleGroups.openNew(ids) });
+  const styleTags = window.MaddsStyleTags.create({ getCatalog: () => state });
+  const styleGroups = window.MaddsStyleGroups.create({ api, notify, getCatalog: () => state });
 
   async function api(path, options = {}, retry = true) {
     const headers = new Headers(options.headers || {});
@@ -64,6 +66,7 @@
   }
 
   function clearSession() {
+    styleGroups.reset();
     performance.reset();
     feedback.reset();
     storage.reset();
@@ -118,6 +121,9 @@
       const data = await api("/api/admin/catalog");
       byId("account-email").textContent = data.currentUser?.name || "Team member";
       state.styles = data.styles || [];
+      state.tagging = data.tagging || null;
+      styleTags.refresh();
+      await styleGroups.refresh();
       state.collections = data.collections || [];
       state.sections = data.sections || [];
       state.recentChanges = data.recentChanges || [];
@@ -186,6 +192,7 @@
     const actions = {
       STYLE_CREATED: "Style created", STYLE_UPDATED: "Style updated", STYLE_DELETED: "Style deleted",
       COLLECTION_CREATED: "Collection created", COLLECTION_RENAMED: "Collection renamed", COLLECTION_DELETED: "Collection deleted",
+      GROUP_CREATED: 'Group created', GROUP_UPDATED: 'Group updated', GROUP_ARCHIVED: 'Styles ungrouped',
       HOME_SECTION_UPDATED: "Home visibility changed", HOME_ORDER_UPDATED: "Home order changed",
     };
     const body = byId("logs-body");
@@ -204,11 +211,12 @@
     const query = byId("style-search").value.trim().toLowerCase();
     const collection = byId("collection-filter").value;
     const verification = byId("verification-filter").value;
+    const tagFilter = byId('tag-filter').value;
     const filtered = state.styles.filter((style) => {
       const matchesCollection = !collection || style.collections.includes(collection);
       const matchesVerification = verification === "all" || (verification === "verified" ? style.verified === true : style.verified !== true);
-      const searchable = `${style.name} ${style.id} ${style.description} ${style.prompt}`.toLowerCase();
-      return matchesCollection && matchesVerification && (!query || searchable.includes(query));
+      const matchesTags = !tagFilter || (tagFilter === 'missing' ? !style.tags?.length : Boolean(style.tags?.length));
+      return matchesCollection && matchesVerification && matchesTags && (!query || window.MaddsStyleTags.matches(style, query, state.tagging?.aliases));
     });
     sortItems(filtered, byId("style-sort").value);
     byId("style-count").textContent = String(state.styles.length);
@@ -228,7 +236,7 @@
       const verificationBadge = style.verified === true
         ? '<span class="verification-badge is-verified">✓ Verified</span>'
         : '<span class="verification-badge is-unverified">Unverified</span>';
-      return `<article class="style-card website-style-card" data-style-open="${escapeHtml(style.id)}"><div class="style-image ${coverUrl ? "" : "missing-image"}">${img}${collectionBadge}</div><div class="style-body"><h3 class="style-card-title">${escapeHtml(style.name)}</h3><div class="style-admin-footer">${verificationBadge}<span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
+      return `<article class="style-card website-style-card" data-style-open="${escapeHtml(style.id)}"><div class="style-image ${coverUrl ? "" : "missing-image"}">${img}${collectionBadge}</div><div class="style-body"><h3 class="style-card-title">${escapeHtml(style.name)}</h3><p class="style-tag-summary">${style.tags?.length ? escapeHtml(style.tags.slice(0, 3).join(' · ')) + (style.tags.length > 3 ? ` +${style.tags.length - 3}` : '') : 'Missing tags'}</p><div class="style-admin-footer">${verificationBadge}<span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
     }).join("");
     grid.querySelectorAll("[data-style-open]").forEach((card) => card.addEventListener("click", (event) => {
       if (event.target.closest("button, a, input, label")) return;
@@ -686,6 +694,8 @@
     byId("form-error").textContent = "";
     const style = state.styles.find((item) => item.id === id);
     byId("dialog-title").textContent = style ? "Edit style" : "Add a style";
+    styleTags.setValue(style?.tags || []);
+    byId('style-group-membership').textContent = styleGroups.membership(id) ? `Group: ${styleGroups.membership(id)}. Manage variants in the Groups tab.` : 'Not grouped. Select similar styles together to create a group.';
     const editor = byId("style-last-editor");
     editor.textContent = style ? `Last edited by ${style.lastEditedByName || "Unknown team member"}` : "";
     editor.hidden = !style;
@@ -787,6 +797,7 @@
   byId("style-search").addEventListener("input", renderStyles);
   byId("collection-filter").addEventListener("change", renderStyles);
   byId("verification-filter").addEventListener("change", renderStyles);
+  byId('tag-filter').addEventListener('change', renderStyles);
   byId("style-sort").addEventListener("change", renderStyles);
   byId("collection-sort").addEventListener("change", renderCollections);
   byId("add-style").addEventListener("click", () => openStyleEditor());
@@ -948,6 +959,7 @@
       byId("form-error").textContent = "Please wait for the image upload to finish."; return;
     }
     if (!updatePromptCount()) { byId("style-prompt").reportValidity(); return; }
+    if (!styleTags.commit()) return;
     const fields = new FormData(form);
     if (!fields.get("thumbnail") || !fields.get("thumbnailPublicId")) {
       byId("form-error").textContent = "Upload a cover image before saving.";
@@ -971,6 +983,7 @@
       ...(state.editingId ? { expectedUpdatedAt: state.styles.find(item => item.id === state.editingId)?.updatedAt } : {}),
       id: String(fields.get("name") || "").normalize("NFKD").toLowerCase().trim().replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""), name: fields.get("name"), description: fields.get("description"), prompt: fields.get("prompt"), verified: fields.get("verified") === "on",
       genderTag: fields.get("genderTag") || "none",
+      ...(state.tagging?.version === 1 ? { tags: styleTags.getValue() } : {}),
       thumbnail: fields.get("thumbnail"),
       thumbnailPublicId: fields.get("thumbnailPublicId"),
       exampleBeforeUrl: beforeUrl || null,
@@ -984,6 +997,7 @@
     };
     const save = form.querySelector('button[type="submit"]');
     styleSaving = true;
+    styleTags.setBusy(true);
     save.disabled = true; save.textContent = "Saving…";
     try {
       const wasEditing = Boolean(state.editingId);
@@ -1006,7 +1020,7 @@
         ? "Style saved. The replaced Cloudinary image cleanup is pending and will retry automatically."
         : state.editingId ? "Style saved. App and site will receive the new catalogue data from the backend." : "Style added to the live catalogue.", Boolean(result.cloudinaryCleanupPending));
     } catch (error) { byId("form-error").textContent = error.message; }
-    finally { styleSaving = false; save.disabled = false; save.textContent = "Save style"; }
+    finally { styleSaving = false; styleTags.setBusy(false); save.disabled = false; save.textContent = "Save style"; }
   });
 
   byId("collection-form").addEventListener("submit", async (event) => {

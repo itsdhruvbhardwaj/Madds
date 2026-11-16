@@ -1,6 +1,6 @@
 (() => {
   const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  function create({ api, notify, getCatalog, reload }) {
+  function create({ api, notify, getCatalog, reload, groupSelected }) {
     const $ = id => document.getElementById(id);
     let selected = new Set(), filteredIds = new Set(), busy = false, active = false;
     function update() {
@@ -16,6 +16,9 @@
         $(id).title = !selected.size ? "Select styles first" : "";
       }
       for (const id of ["style-select-all", "style-select-clear"]) $(id).disabled = busy;
+      if ($('style-bulk-tags')) $('style-bulk-tags').disabled = busy || !selected.size || getCatalog().tagging?.version !== 1;
+      if ($('bulk-style-tags')) $('bulk-style-tags').disabled = busy || getCatalog().tagging?.version !== 1;
+      if ($('style-bulk-group')) $('style-bulk-group').disabled = busy || selected.size < 2 || selected.size > 8 || !getCatalog().groupsAvailable;
       $("styles-grid").querySelectorAll("[data-bulk-style]").forEach(input => {
         input.checked = selected.has(input.dataset.bulkStyle); input.disabled = busy;
         input.closest("article").classList.toggle("is-bulk-selected", input.checked);
@@ -60,6 +63,22 @@
       if (e.target.checked) selected.add(id); else selected.delete(id); update();
     });
     $("style-bulk-verify").onclick = () => save(true); $("style-bulk-unverify").onclick = () => save(false);
+    if ($('style-bulk-group')) $('style-bulk-group').onclick = () => { if (!busy && selected.size >= 2 && selected.size <= 8 && getCatalog().groupsAvailable) groupSelected([...selected]); };
+    if ($('style-bulk-tags')) $('style-bulk-tags').onclick = async () => {
+      if (busy || !active || !selected.size || getCatalog().tagging?.version !== 1) return;
+      let tags;
+      try { tags = window.MaddsStyleTags.parse($('bulk-style-tags').value, getCatalog().tagging); }
+      catch (error) { notify(error.message, true); return; }
+      if (!tags.length) { notify('Enter at least one tag to add.', true); return; }
+      busy = true; update();
+      try {
+        const result = await api('/api/admin/catalog/styles/tags', { method: 'PATCH', body: JSON.stringify({ ids: [...selected].filter(id => filteredIds.has(id)), tags }) });
+        selected.clear(); $('bulk-style-tags').value = '';
+        notify(`Tags added to ${result.changed} styles. Existing tags were kept.`);
+        await reload();
+      } catch (error) { notify(error.message, true); }
+      finally { busy = false; update(); }
+    };
     update();
     return { catalogChanged, decorateCards, reset() { active = false; selected.clear(); filteredIds.clear(); update(); } };
   }

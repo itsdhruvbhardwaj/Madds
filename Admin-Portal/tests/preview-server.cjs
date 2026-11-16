@@ -4,8 +4,15 @@ const fs = require("node:fs");
 const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 let serial = 10;
+let styleGroups = [];
+const previewPort = Number(process.env.WORKSPACE_PREVIEW_PORT) || 4178;
 let welcomeBackBatches = [];
 let watermark = { enabled:false, logoUrl:"", logoPublicId:"", widthPercent:18, opacityPercent:85, paddingPercent:2, revision:0 };
+const tagging = { version: 1, maxTags: 10, maxTagLength: 40, aliases: { sari: 'saree', saari: 'saree', deepavali: 'diwali' }, suggestions: ['saree', 'red', 'silk', 'wedding', 'golden hour', 'portrait', 'cinematic'] };
+let catalogueStyles = [
+  { id: 'golden-hour', name: 'Golden hour', verified: true, collections: ['Portraits'], tags: [], description: 'Golden light', prompt: 'Create a golden hour portrait.', imageCount: 1, tokensRequired: 5, thumbnail: '/assets/madds-title.png', thumbnailPublicId: 'fixture-cover', previewImages: [], lastEditedByName: 'Preview Editor', updatedAt: new Date().toISOString() },
+  { id: 'festive-portrait', name: 'Festive portrait', verified: true, collections: ['Portraits'], tags: ['red', 'saree', 'wedding'], description: 'A festive look', prompt: 'Create a festive portrait.', imageCount: 1, tokensRequired: 5, thumbnail: '/assets/madds-title.png', thumbnailPublicId: 'fixture-cover-2', previewImages: [], lastEditedByName: 'Preview Editor', updatedAt: new Date().toISOString() },
+];
 const campaigns = [
   { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", title: "A little inspiration, just for you", body: "Find a fresh look in the latest Madds collection.", notificationType: "PRODUCT_UPDATE", targetAudience: "ALL_USERS", targetConditions: { userIds: [], recentDays: 7 }, status: "DRAFT", revision: 0, deepLink: "picme://home", createdAt: new Date().toISOString() },
   { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", title: "Weekend portraits are here", body: "Create something new this weekend.", notificationType: "NEW_STYLE", targetAudience: "ACTIVE_USERS", targetConditions: { userIds: [], recentDays: 7 }, relatedStyleId: "golden-hour", deepLink: "picme://styles/golden-hour", status: "SENT", revision: 0, createdAt: new Date().toISOString() },
@@ -58,7 +65,32 @@ http.createServer(async (req, res) => {
     Object.assign(batch,{status:"DONE",granted:batch.recipients.length,skipped:0,pending:0,creditsGranted:batch.recipients.length*batch.amount});
     return json(res,{batch});
   }
-  if (url.pathname === "/api/admin/catalog") return json(res, { styles: [{ id: "golden-hour", name: "Golden hour", verified: true, collections: ["Portraits"], description: "Golden light", imageCount: 1, tokensRequired: 5 }], collections: [{ id: "portraits", name: "Portraits" }], sections: [] });
+  const groupBase = '/api/admin/catalog/groups';
+  if (url.pathname === groupBase && req.method === 'GET') return json(res, { groups: styleGroups });
+  if (url.pathname === groupBase && req.method === 'POST') {
+    const group = { ...input, id: `fixture-group-${++serial}`, updatedAt: new Date().toISOString() };
+    styleGroups.push(group); return json(res, { group }, 201);
+  }
+  if (url.pathname.startsWith(groupBase + '/')) {
+    const id = url.pathname.split('/').pop(); const group = styleGroups.find(g => g.id === id);
+    if (!group) return json(res, { error: 'Group not found' }, 404);
+    if (input.expectedUpdatedAt !== group.updatedAt) return json(res, { error: 'Group changed. Reopen it.' }, 409);
+    if (req.method === 'DELETE') { styleGroups = styleGroups.filter(g => g.id !== id); return json(res, { ok: true }); }
+    Object.assign(group, input, { id, updatedAt: new Date().toISOString() }); return json(res, { group });
+  }
+  if (url.pathname === '/api/admin/catalog') return json(res, { styles: catalogueStyles, tagging, collections: [{ id: 'portraits', name: 'Portraits' }], sections: [] });
+  if (url.pathname === '/api/admin/catalog/styles/tags' && req.method === 'PATCH') {
+    const changes = catalogueStyles.filter(s => input.ids.includes(s.id)).map(s => ({ ...s, tags: [...new Set([...s.tags, ...input.tags])], updatedAt: new Date().toISOString() }));
+    if (changes.some(s => s.tags.length > 10)) return json(res, { error: 'Use no more than 10 tags per style.' }, 400);
+    catalogueStyles = catalogueStyles.map(s => changes.find(c => c.id === s.id) || s);
+    return json(res, { changed: changes.length });
+  }
+  if (url.pathname.startsWith('/api/admin/catalog/styles/')) {
+    const id = url.pathname.split('/').pop(); const style = catalogueStyles.find(s => s.id === id);
+    if (!style) return json(res, { error: 'Style not found' }, 404);
+    if (req.method === 'PUT') { Object.assign(style, input, { id, updatedAt: new Date().toISOString() }); }
+    return json(res, { style });
+  }
   const prefix = "/api/admin/notifications";
   if (!url.pathname.startsWith(prefix)) return json(res, { error: "Fixture route not found" }, 404);
   if (!req.headers.authorization) return json(res, { error: "Sign in required" }, 401);
@@ -77,4 +109,4 @@ http.createServer(async (req, res) => {
   if (parts[1] === "logs") return json(res, { logs: campaign.status === "SENT" ? [{ status: "ACCEPTED", attempts: 1, sentAt: new Date().toISOString() }, { status: "FAILED", attempts: 5, error: "messaging/server-unavailable" }] : [], nextCursor: null });
   if (["send", "schedule", "cancel"].includes(parts[1])) { campaign.status = parts[1] === "cancel" ? "CANCELLED" : "SCHEDULED"; campaign.scheduledAt = input.scheduledAt || new Date().toISOString(); console.log(`Fixture action: ${parts[1]}`); return json(res, { campaign }); }
   return json(res, { campaign });
-}).listen(4178, "127.0.0.1", () => console.log("Local fixture: http://127.0.0.1:4178 — no live sends"));
+}).listen(previewPort, "127.0.0.1", () => console.log("Local fixture: http://127.0.0.1:4178 — no live sends"));
