@@ -36,6 +36,21 @@ describe("remote ad settings",()=>{
   expect(result.body.placements.collection_open).toBe(true);
   expect(result.body.placements.home_see_all).toBe(false);expect(result.body.revision).toBe(4);
  });
+ it('daily bonus interstitial starts off for new and existing settings',async()=>{
+  expect(DEFAULT_AD_SETTINGS.placements.daily_bonus_claim).toBe(false);
+  const {daily_bonus_claim: _new, ...oldPlacements}=DEFAULT_AD_SETTINGS.placements;
+  m.read.mockResolvedValue({...DEFAULT_AD_SETTINGS,placements:{...oldPlacements,home_see_all:false},revision:4});
+  const result=await request(app).get('/public');
+  expect(result.body.placements.daily_bonus_claim).toBe(false);
+  expect(result.body.placements.home_see_all).toBe(false);
+ });
+ it('older Workspace saves preserve an explicitly configured daily bonus placement',async()=>{
+  m.read.mockResolvedValue({...DEFAULT_AD_SETTINGS,placements:{...DEFAULT_AD_SETTINGS.placements,daily_bonus_claim:true},revision:0});
+  const input=payload(); delete input.placements.daily_bonus_claim;
+  const result=await request(app).patch('/admin/ads').set('Authorization','Bearer admin').send(input);
+  expect(result.status).toBe(200); expect(m.write.mock.calls[0][1].$set.placements.daily_bonus_claim).toBe(true);
+  expect(validAdSettings({...payload(),placements:{...payload().placements,daily_bonus_claim:'true'}})).toBe(false);
+ });
  it("master off masks all public placements while preserving admin selections",async()=>{
   m.read.mockResolvedValue({...DEFAULT_AD_SETTINGS,enabled:false,revision:2});
   const publicResponse=await request(app).get("/public");

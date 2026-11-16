@@ -23,7 +23,7 @@ export function validAdSettings(body: any): boolean {
     (body.homeNativeEverySections === undefined || (Number.isInteger(body.homeNativeEverySections) && body.homeNativeEverySections>=2 && body.homeNativeEverySections<=10)) &&
     (body.exploreNativeEveryStyles === undefined || (Number.isInteger(body.exploreNativeEveryStyles) && body.exploreNativeEveryStyles>=12 && body.exploreNativeEveryStyles<=60 && body.exploreNativeEveryStyles%6===0)) &&
     Object.keys(body.placements).every(key => (AD_PLACEMENTS as readonly string[]).includes(key)) &&
-    AD_PLACEMENTS.every(key => (key === "collection_open" && body.placements[key] === undefined) || typeof body.placements[key] === "boolean");
+    AD_PLACEMENTS.every(key => ((key === "collection_open" || key === 'daily_bonus_claim') && body.placements[key] === undefined) || typeof body.placements[key] === "boolean");
 }
 publicRouter.get("/", async (_req,res) => {
   res.set("Cache-Control","no-store");
