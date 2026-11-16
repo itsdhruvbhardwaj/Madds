@@ -31,13 +31,16 @@
   const storage = window.MaddsStorage.create({ api, notify });
   const settings = window.MaddsSettings.create({ api, notify });
   const adSettings = window.MaddsAdSettings.create({ api, notify });
+  const rewardedCredits = window.MaddsRewardedCredits.create({ api, notify });
+  const dailyRewards = window.MaddsDailyRewards.create({ api, notify });
+  const dailyReminder = window.MaddsDailyReminder.create({ api, notify });
   const watermark = window.MaddsWatermark.create({ api, notify });
   const homeOrder = window.MaddsHomeOrder.create({ api, notify, onSaved: sections => { state.sections = sections; renderCollections(); } });
   const performance = window.MaddsPerformance.create({ api, notify, onChanged: loadCatalog });
   const feedback = window.MaddsFeedback.create({ api, notify });
   const bulkStyles = window.MaddsStyleBulk.create({ api, notify, getCatalog: () => state, reload: loadCatalog, groupSelected: ids => styleGroups.openNew(ids) });
   const styleTags = window.MaddsStyleTags.create({ getCatalog: () => state });
-  const styleGroups = window.MaddsStyleGroups.create({ api, notify, getCatalog: () => state });
+  const styleGroups = window.MaddsStyleGroups.create({ api, notify, getCatalog: () => state, onChange: renderStyles });
 
   async function api(path, options = {}, retry = true) {
     const headers = new Headers(options.headers || {});
@@ -71,6 +74,9 @@
     feedback.reset();
     storage.reset();
     settings.reset();
+    rewardedCredits.reset();
+    dailyRewards.reset();
+    dailyReminder.reset();
     adSettings.reset();
     watermark.reset();
     homeOrder.reset();
@@ -233,10 +239,12 @@
         ? `<img src="${escapeHtml(coverUrl)}" alt="${escapeHtml(style.name)} cover" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\'>Preview unavailable</div>'">`
         : '';
       const collectionBadge = `<span class="style-collection-pill">${escapeHtml(style.collections?.[0] || "No collection")}</span>`;
+      const groupName = styleGroups.membership(style.id);
+      const groupLabel = groupName ? `<p class="style-group-summary">Group: ${escapeHtml(groupName)}</p>` : '';
       const verificationBadge = style.verified === true
         ? '<span class="verification-badge is-verified">✓ Verified</span>'
         : '<span class="verification-badge is-unverified">Unverified</span>';
-      return `<article class="style-card website-style-card" data-style-open="${escapeHtml(style.id)}"><div class="style-image ${coverUrl ? "" : "missing-image"}">${img}${collectionBadge}</div><div class="style-body"><h3 class="style-card-title">${escapeHtml(style.name)}</h3><p class="style-tag-summary">${style.tags?.length ? escapeHtml(style.tags.slice(0, 3).join(' · ')) + (style.tags.length > 3 ? ` +${style.tags.length - 3}` : '') : 'Missing tags'}</p><div class="style-admin-footer">${verificationBadge}<span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
+      return `<article class="style-card website-style-card" data-style-open="${escapeHtml(style.id)}"><div class="style-image ${coverUrl ? "" : "missing-image"}">${img}${collectionBadge}</div><div class="style-body"><h3 class="style-card-title">${escapeHtml(style.name)}</h3>${groupLabel}<p class="style-tag-summary">${style.tags?.length ? escapeHtml(style.tags.slice(0, 3).join(' · ')) + (style.tags.length > 3 ? ` +${style.tags.length - 3}` : '') : 'Missing tags'}</p><div class="style-admin-footer">${verificationBadge}<span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
     }).join("");
     grid.querySelectorAll("[data-style-open]").forEach((card) => card.addEventListener("click", (event) => {
       if (event.target.closest("button, a, input, label")) return;
@@ -810,12 +818,12 @@
     button.setAttribute("aria-label", "Refreshing workspace");
     try {
       if (state.activePanel === "logs-panel") await loadLogs(1);
-      else if (state.activePanel === "notifications-panel") await Promise.all([notifications.refresh(), welcomeBack.refresh()]);
+      else if (state.activePanel === "notifications-panel") await Promise.all([notifications.refresh(), welcomeBack.refresh(), dailyReminder.refresh()]);
       else if (state.activePanel === "performance-panel") await performance.refresh();
       else if (state.activePanel === "users-panel") await users.refresh();
       else if (state.activePanel === "feedback-panel") await feedback.refresh();
       else if (state.activePanel === "storage-panel") await storage.refresh();
-      else if (state.activePanel === "app-settings-panel") await Promise.all([settings.refresh(), watermark.refresh(), adSettings.refresh()]);
+      else if (state.activePanel === "app-settings-panel") await Promise.all([settings.refresh(), rewardedCredits.refresh(), dailyRewards.refresh(), watermark.refresh(), adSettings.refresh()]);
       else await loadCatalog();
     } finally { button.disabled = false; button.setAttribute("aria-label", "Refresh workspace"); }
   });
@@ -873,16 +881,20 @@
     }, 1800);
   });
   document.querySelectorAll(".side-link").forEach((button) => button.addEventListener("click", () => {
+    if (button.dataset.panel === 'notifications-panel' && !notifications.newNotification()) return;
+    if (state.activePanel === 'notifications-panel' && button.dataset.panel !== 'notifications-panel' && !dailyReminder.canLeave()) return;
+    if (state.activePanel === 'notifications-panel' && button.dataset.panel !== 'notifications-panel' && !notifications.leave()) return;
+    if (state.activePanel === 'notifications-panel' && button.dataset.panel !== 'notifications-panel') dailyReminder.reset();
     state.activePanel = button.dataset.panel;
     document.querySelectorAll(".side-link").forEach((item) => item.classList.toggle("active", item === button));
     document.querySelectorAll(".panel-view").forEach((panel) => { panel.hidden = panel.id !== button.dataset.panel; });
     if (state.activePanel === "logs-panel") void loadLogs(1);
-    if (state.activePanel === "notifications-panel") { void notifications.refresh(); void welcomeBack.refresh(); }
+    if (state.activePanel === "notifications-panel") { void notifications.refresh(); void welcomeBack.refresh(); void dailyReminder.refresh(); }
     if (state.activePanel === "performance-panel") void performance.refresh();
     if (state.activePanel === "users-panel") void users.refresh();
     if (state.activePanel === "feedback-panel") void feedback.refresh();
     if (state.activePanel === "storage-panel") void storage.refresh();
-    if (state.activePanel === "app-settings-panel") { void settings.refresh(); void watermark.refresh(); void adSettings.refresh(); }
+    if (state.activePanel === "app-settings-panel") { void settings.refresh(); void rewardedCredits.refresh(); void dailyRewards.refresh(); void watermark.refresh(); void adSettings.refresh(); }
   }));
   byId("log-member-filter").addEventListener("change", () => loadLogs(1));
   byId("log-action-filter").addEventListener("change", () => loadLogs(1));

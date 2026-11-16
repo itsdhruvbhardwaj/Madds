@@ -4,7 +4,7 @@
     if (from < 0 || to < 0 || from >= members.length || to >= members.length) return members;
     const result = members.slice(); result.splice(to, 0, result.splice(from, 1)[0]); return result;
   }
-  function create({ api, notify, getCatalog }) {
+  function create({ api, notify, getCatalog, onChange = () => {} }) {
     const $ = id => document.getElementById(id);
     let groups = [], available = false, editing = null, members = [], cover = '', busy = false, baseline = '', revision = 0, dragged = -1;
     const dialog = $('style-group-dialog'), form = $('style-group-form');
@@ -27,7 +27,7 @@
       const ticket = ++revision;
       try { const data = await api('/api/admin/catalog/groups'); if (ticket !== revision) return; groups = data.groups || []; available = true; }
       catch { if (ticket !== revision) return; available = false; }
-      render();
+      render(); onChange();
     }
     function renderEditor() {
       $('group-member-count').textContent = `${members.length} / 8 variants · drag or use arrows to reorder`;

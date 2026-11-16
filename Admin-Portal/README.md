@@ -27,6 +27,13 @@ Set `window.PICMEE_API_BASE` in `config.js` to the backend URL, then serve this 
 The Notifications tab uses the existing approved Workspace login. It supports:
 
 - Draft creation/editing with a live text preview and optional HTTPS image preview.
+- A blank composer on each visit and after saving or sending; saved drafts open only
+  when selected. Personalized previews use **Maddies** as the sample first name.
+- Select finished notifications individually or select all shown, then **Delete selected**
+  to remove them from recent activity. Delivery records remain available for diagnostics;
+  scheduled and processing notifications cannot be selected for deletion.
+- **Resend** copies a finished notification's message, image, audience and destination
+  into a new editable draft. It never sends automatically or reuses the old schedule.
 - All seven audience types, category selection, selected account IDs and creation windows.
 - Home, published-style and collection destinations from the current catalogue.
 - Audience sampling, immediate-send review and scheduling in the browser's timezone
@@ -36,7 +43,9 @@ The Notifications tab uses the existing approved Workspace login. It supports:
 - Unsaved-change protection, operation locking, session cleanup and stale-draft
   checks when another administrator edits a reviewed campaign.
 
-Deploy the updated backend notification APIs alongside these static assets. Workspace
+Deploy the updated backend notification APIs before these static assets. Selected
+history deletion uses `/history/clear-selected`; older servers reject that action
+without clearing other history. Workspace
 reads the backend's deliveryEnabled flag. With delivery paused, drafts and previews
 remain usable while send/schedule controls are disabled. Leave backend delivery
 disabled until Android account-safe display and deduplication are tested.
@@ -75,3 +84,16 @@ Production connectivity and real delivery still require deployment/device checks
 - Deleting a collection moves styles assigned only to it into `Other`; styles assigned to multiple collections keep their remaining assignments. The collection's Home section and collection record are removed, but styles and Cloudinary images are retained. `Other` is protected as the fallback.
 - Deleting a style removes it from the live catalogue and favorites. Its ID can be reused after deletion; IDs already assigned to a live style remain unique. Existing generation history is kept.
 - The backend writes a small audit record for each create, edit, and collection change.
+
+## Rewarded-ad amount
+
+App settings > Rewarded-ad credits shows the current server default or saved Workspace override. Save a whole-number amount to change the offer for newly started rewarded ads. In-progress ads retain their promised amount, and AdMob verification remains unchanged. See [rewarded-credit settings](../docs/rewarded-credit-settings.md) for compatibility and rollout details.
+
+## Daily login rewards
+
+App settings > Daily login rewards controls the daily claim amount and launch switch for the updated Android app. Defaults are disabled and 2 credits. Render-approved administrators can change the amount only within the server's daily ceiling. The panel includes before/after change history. See [daily reward behavior and release notes](../docs/daily-rewards.md).
+
+Notifications > Automations > Daily credit reminder controls an automatic reminder
+for unclaimed daily credits. It defaults off at 20:00 IST, supports editable content
+and shows recent runs and settings history. See [daily reminder behavior and rollout](../docs/daily-reminders.md)
+for device capability, expiry, deduplication and reliable worker hosting requirements.

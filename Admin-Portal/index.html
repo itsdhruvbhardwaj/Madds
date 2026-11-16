@@ -9,7 +9,7 @@
   <title>Madds Workspace</title>
   <script src="theme.js?v=20261105-themes"></script>
   <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="portal-overrides.css?v=20261116-groups">
+  <link rel="stylesheet" href="portal-overrides.css?v=20261116-daily-reminder">
   <link rel="stylesheet" href="studio-modern.css?v=20261114-feedback">
   <link rel="stylesheet" href="themes.css?v=20261105-themes">
   <link rel="stylesheet" href="performance.css?v=20261108-performance">
@@ -121,6 +121,20 @@
         <div class="page-heading"><div><p class="eyebrow">KEEP YOUR COMMUNITY CONNECTED</p><h1>Notifications</h1><p class="muted">Create, schedule, and follow your notifications.</p></div><button id="push-new" class="button primary" type="button">＋ New notification</button></div>
         <div id="push-delivery-status" class="push-banner" role="status">Checking notification availability…</div>
         <div id="push-error" class="form-error" role="alert"></div>
+        <details class="welcome-back-panel daily-reminder-panel"><summary>Automations <span class="field-hint">Daily credit reminder</span></summary>
+          <div class="push-section-heading"><h2>Daily credit reminder</h2><button id="daily-reminder-refresh" class="button secondary" type="button">Refresh</button></div>
+          <p class="muted">Remind users who have not claimed today. Once per account per day, on the most recently active eligible Android device. Respects Offers &amp; Rewards preferences and expires at India midnight.</p>
+          <form id="daily-reminder-form" class="push-form push-fields">
+            <div class="push-two-fields"><label class="daily-reminder-toggle"><input type="checkbox" name="enabled">Send automatically each day</label><label>Send time (IST)<input type="time" name="sendTime" required></label></div>
+            <label>Title<input name="title" maxlength="120" required></label><label>Message<textarea name="body" maxlength="500" rows="3" required></textarea></label>
+            <p class="field-hint">Use {firstName} and {credits}. Tapping opens Home to claim; notifications never grant credits.</p>
+            <div class="push-phone-preview"><span class="push-app-name">madds · preview for Maddies</span><strong id="daily-reminder-preview-title"></strong><p id="daily-reminder-preview-body"></p></div>
+            <p id="daily-reminder-status" role="status"></p><p id="daily-reminder-hosting" class="field-hint"></p><p id="daily-reminder-editor" class="field-hint"></p>
+            <p class="field-hint">One run per reward day. Enabling after the selected time queues today's reminder on the next worker check. Changes stop unsent work from the previous setting; a day already started will not send again. Previously submitted notifications cannot be recalled.</p>
+            <p id="daily-reminder-error" class="form-error" role="alert"></p><button id="daily-reminder-save" class="button primary" type="submit" disabled>Save automation</button>
+          </form>
+          <h3>Last 7 runs</h3><div id="daily-reminder-runs"></div><details><summary>Settings history</summary><div id="daily-reminder-history"></div></details>
+        </details>
         <details class="welcome-back-panel"><summary>Welcome-back credits <span class="field-hint">Reward users with fewer than 10 credits</span></summary>
           <p class="muted">Only verified, active accounts with 0–9 credits qualify. If last activity was never recorded, account creation is used. Preview first, then choose recipients and confirm. No credits are added during preview.</p>
           <form id="welcome-back-form" class="welcome-back-controls"><label>Activity filter<select name="inactiveDays"><option value="2">2 days</option><option value="7">7 days</option><option value="15">15 days</option><option value="30">30 days</option><option value="0">Any activity · low credits only</option></select></label><label>Credits per user<input name="amount" type="number" min="1" max="100000" step="1" value="20" required></label><button id="welcome-back-preview" class="button secondary" type="submit">Preview eligible users</button></form>
@@ -149,6 +163,23 @@
           <h2>New-user welcome credits</h2><p class="muted">Applies once when a new account is created, through email or Google. Existing accounts, logins and reinstalls receive no extra grant.</p>
           <p id="app-settings-current" class="field-hint"></p><label>Credits per new account<input name="welcomeCredits" type="number" min="0" max="100000" step="1" inputmode="numeric" required></label><p class="field-hint">Use 0 to disable welcome credits. Changes apply to account creations that start after the setting is saved.</p>
           <p id="app-settings-error" class="form-error" role="alert"></p><button id="app-settings-save" class="button primary" type="submit" disabled>Save changes</button><p id="app-settings-editor" class="field-hint"></p>
+        </form>
+        <form id="daily-rewards-form" class="app-settings-form">
+          <div class="push-section-heading"><h2>Daily login rewards</h2><button id="daily-rewards-refresh" class="button secondary" type="button">Refresh daily rewards</button></div>
+          <p class="muted">Verified users can claim once per calendar day. A pop-up appears on each visit until claimed; a compact Claim option remains on Home after dismissal.</p>
+          <label class="watermark-enable"><input name="enabled" type="checkbox"> Enable daily rewards</label>
+          <p id="daily-rewards-current" class="field-hint"></p><label>Credits per daily claim<input name="credits" type="number" min="1" max="10" step="1" inputmode="numeric" required></label>
+          <p class="field-hint">Resets at midnight in India time (Asia/Kolkata). Unclaimed days do not accumulate. After claiming, both the pop-up and Home strip disappear until the next reward day. Changes do not re-credit accounts that already claimed today.</p>
+          <p id="daily-rewards-error" class="form-error" role="alert"></p><button id="daily-rewards-save" class="button primary" type="submit" disabled>Save daily rewards</button><p id="daily-rewards-editor" class="field-hint"></p>
+          <details><summary>Daily reward change history</summary><div id="daily-rewards-history"></div></details>
+        </form>
+        <form id="rewarded-credits-form" class="app-settings-form">
+          <div class="push-section-heading"><h2>Rewarded-ad credits</h2><button id="rewarded-credits-refresh" class="button secondary" type="button">Refresh reward</button></div>
+          <p class="muted">Choose how many Madds credits a user earns for one completed, verified rewarded ad.</p>
+          <p id="rewarded-credits-current" class="field-hint"></p>
+          <label>Credits per rewarded ad<input name="credits" type="number" min="1" max="100000" step="1" inputmode="numeric" required></label>
+          <p class="field-hint">Applies to newly started ads. Ads already started keep their promised reward. Existing balances stay unchanged. To disable rewarded ads, use Ad placements below. AdMob's verification reward settings stay unchanged.</p>
+          <p id="rewarded-credits-error" class="form-error" role="alert"></p><button id="rewarded-credits-save" class="button primary" type="submit" disabled>Save ad reward</button><p id="rewarded-credits-editor" class="field-hint"></p>
         </form>
         <form id="ad-settings-form" class="app-settings-form">
           <div class="push-section-heading"><h2>Ad placements</h2><button id="ad-settings-refresh" class="button secondary" type="button">Refresh ads</button></div>
@@ -265,19 +296,22 @@
   <script src="config.js"></script>
   <script src="dates.js?v=20261108-date-format" defer></script>
   <script src="refresh-ui.js?v=20261114-refresh" defer></script>
-  <script src="notifications.js?v=20261114-new-users" defer></script>
+  <script src="notifications.js?v=20261116-daily-reminder" defer></script>
+  <script src="daily-reminder.js?v=20261116-automation" defer></script>
   <script src="welcome-back.js?v=20261114-refresh" defer></script>
   <script src="home-order.js?v=20261105-home-order" defer></script>
   <script src="ad-settings.js?v=20261109-native-ads" defer></script>
+  <script src="daily-rewards.js?v=20261116" defer></script>
+  <script src="rewarded-credits.js?v=20261116" defer></script>
   <script src="settings.js?v=20261108-date-format" defer></script>
   <script src="watermark.js?v=20261108-date-format" defer></script>
   <script src="storage.js?v=20261114-refresh" defer></script>
   <script src="users.js?v=20261108-date-format" defer></script>
   <script src="feedback.js?v=20261114-sender" defer></script>
-  <script src="style-groups.js?v=20261116-groups" defer></script><script src="style-tags.js?v=20261116-tags" defer></script>
-  <script src="style-bulk.js?v=20261116-groups" defer></script>
+  <script src="style-groups.js?v=20261116-group-cards" defer></script><script src="style-tags.js?v=20261116-tags" defer></script>
+  <script src="style-bulk.js?v=20261116-group-cards" defer></script>
   <script src="style-uploads.js?v=20261107-preview-reset" defer></script>
   <script src="performance.js?v=20261108-date-format" defer></script>
-  <script src="app.js?v=20261116-groups" defer></script>
+  <script src="app.js?v=20261116-daily-reminder" defer></script>
 </body>
 </html>

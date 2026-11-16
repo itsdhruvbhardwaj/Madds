@@ -54,6 +54,14 @@
       ...(values.imageUrl.trim() ? { imageUrl: values.imageUrl.trim() } : {}) };
   }
 
+  function campaignToDraft(campaign) {
+    return { title: campaign.title || '', body: campaign.body || '', notificationType: campaign.notificationType,
+      targetAudience: campaign.targetAudience, targetConditions: { ...(campaign.targetConditions || {}), userIds: [...(campaign.targetConditions?.userIds || [])] },
+      ...(campaign.relatedStyleId ? { relatedStyleId: campaign.relatedStyleId } : {}),
+      ...(campaign.collectionId ? { collectionId: campaign.collectionId } : {}),
+      ...(campaign.imageUrl ? { imageUrl: campaign.imageUrl } : {}), status: 'DRAFT' };
+  }
+
   async function prepareDelivery({ api, base, selected, draft, dirty, previewName, onSaved, isCurrent = () => true }) {
     const save = !selected || dirty;
     const result = save ? await api(selected ? `${base}/${selected._id}` : base, {
@@ -106,7 +114,8 @@
   function create({ api, notify, getCatalog }) {
     const $ = (id) => document.getElementById(id);
     const base = "/api/admin/notifications";
-    let campaigns = [], nextCursor = null, selected = null, enabled = false, available = false;
+    let campaigns = [], nextCursor = null, selected = null, copiedDraft = null, enabled = false, available = false;
+    const historySelection = new Set(), finishedStatuses = ['SENT', 'FAILED', 'CANCELLED'];
     let busy = false, loading = false, epoch = 0, selection = 0, baseline = "", dirty = false;
     let stats = null, logs = [], logCursor = null, review = null, cooldownHours = 0;
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -121,16 +130,20 @@
       $("push-delivery-status").classList.remove("is-enabled");
     }
     function renderHistory() {
-      const drafts = campaigns.filter((item) => item.status === "DRAFT");
-      const recent = campaigns.filter((item) => item.status !== "DRAFT");
-      $("push-campaigns").innerHTML = drafts.map((item) => `<div class="push-draft-card"><button type="button" class="push-campaign ${selected?._id === item._id ? "is-selected" : ""}" data-campaign="${escape(item._id)}" aria-pressed="${selected?._id === item._id}"><span class="push-status">${escape(statusLabel(item.status))}</span><strong>${escape(item.title)}</strong><small>${escape(labels[item.targetAudience] || item.targetAudience)}</small><small>Last edited ${escape(formatDate(item.updatedAt || item.createdAt))}</small></button><button type="button" class="delete-button push-card-clear" data-clear-draft="${escape(item._id)}" aria-label="Clear draft: ${escape(item.title)}" ${busy ? "disabled" : ""}>Clear</button></div>`).join("") || '<p class="muted push-empty">No saved drafts. Start a notification when you are ready.</p>';
-      $("push-recent").innerHTML = `<div class="push-recent-heading"><h3>Recent activity</h3><button type="button" class="delete-button" data-clear-history ${busy || loading || !available ? "disabled" : ""}>Delete history</button></div>${recent.length ? recent.map((item) => `<button type="button" class="push-campaign ${selected?._id === item._id ? "is-selected" : ""}" data-campaign="${escape(item._id)}" aria-pressed="${selected?._id === item._id}"><span class="push-status">${escape(statusLabel(item.status))}</span><strong>${escape(item.title)}</strong><small>${escape(formatDate(item.scheduledAt || item.createdAt))}</small></button>`).join("") : '<p class="muted">No recent activity.</p>'}`;
-      $("push-more").hidden = !nextCursor;
-      $("push-more").disabled = loading || busy;
+      const drafts = campaigns.filter(item => item.status === 'DRAFT');
+      const recent = campaigns.filter(item => item.status !== 'DRAFT');
+      const finished = recent.filter(item => finishedStatuses.includes(item.status));
+      for (const id of historySelection) if (!finished.some(item => item._id === id)) historySelection.delete(id);
+      $('push-campaigns').innerHTML = drafts.map(item => `<div class="push-draft-card"><button type="button" class="push-campaign ${selected?._id === item._id ? 'is-selected' : ''}" data-campaign="${escape(item._id)}" aria-pressed="${selected?._id === item._id}" ${busy ? 'disabled' : ''}><span class="push-status">${escape(statusLabel(item.status))}</span><strong>${escape(item.title)}</strong><small>${escape(labels[item.targetAudience] || item.targetAudience)}</small><small>Last edited ${escape(formatDate(item.updatedAt || item.createdAt))}</small></button><button type="button" class="delete-button push-card-clear" data-clear-draft="${escape(item._id)}" aria-label="Clear draft: ${escape(item.title)}" ${busy ? 'disabled' : ''}>Clear</button></div>`).join('') || '<p class="muted push-empty">No saved drafts. Start a notification when you are ready.</p>';
+      $('push-recent').innerHTML = `<div class="push-recent-heading"><h3>Recent activity</h3><button type="button" class="delete-button" data-clear-history ${busy || loading || !available || !historySelection.size ? 'disabled' : ''}>Delete selected (${historySelection.size})</button></div>${finished.length ? `<label class="push-history-select-all"><input type="checkbox" data-history-all ${historySelection.size === finished.length ? 'checked' : ''} ${busy || loading ? 'disabled' : ''}>Select all shown</label>` : ''}${recent.length ? recent.map(item => {
+        const terminal = finishedStatuses.includes(item.status), canResend = terminal && !item.reminderDayKey;
+        return `<article class="push-history-card">${terminal ? `<label class="push-history-select"><input type="checkbox" data-history-select="${escape(item._id)}" aria-label="Select ${escape(item.title)}" ${historySelection.has(item._id) ? 'checked' : ''} ${busy || loading ? 'disabled' : ''}></label>` : ''}<button type="button" class="push-campaign ${selected?._id === item._id ? 'is-selected' : ''}" data-campaign="${escape(item._id)}" aria-pressed="${selected?._id === item._id}" ${busy ? 'disabled' : ''}><span class="push-status">${escape(statusLabel(item.status))}</span><strong>${escape(item.title)}</strong>${item.reminderDayKey ? `<small>Automatic daily reminder · ${escape(item.reminderDayKey)}</small>` : ''}<small>${escape(formatDate(item.scheduledAt || item.createdAt))}</small></button>${canResend ? `<button type="button" class="button secondary push-resend" data-resend="${escape(item._id)}" ${busy || !available ? 'disabled' : ''}>Resend</button>` : ''}</article>`;
+      }).join('') : '<p class="muted">No recent activity.</p>'}`;
+      $('push-more').hidden = !nextCursor; $('push-more').disabled = loading || busy;
     }
     function values() { return Object.fromEntries(new FormData($("push-form"))); }
     function updateDirty() {
-      dirty = JSON.stringify(values()) !== baseline;
+      dirty = Boolean(copiedDraft) || JSON.stringify(values()) !== baseline;
       $("push-save-state").textContent = dirty ? "Unsaved changes" : selected ? (selected.status === "DRAFT" ? "Saved draft" : statusLabel(selected.status)) : "New draft";
       updateActions(); livePreview();
     }
@@ -182,14 +195,14 @@
         ["styleId", getCatalog().styles.filter((item) => item.verified === true), "Choose a published style"],
         ["collectionId", getCatalog().collections, "Choose a collection"],
       ]) {
-        const input = form.elements[name], current = input.value || (name === "styleId" ? selected?.relatedStyleId : selected?.collectionId) || "";
+        const input = form.elements[name], source = selected || copiedDraft, current = input.value || (name === "styleId" ? source?.relatedStyleId : source?.collectionId) || "";
         input.innerHTML = `<option value="">${placeholder}</option>` + items.map((item) => `<option value="${escape(item.id)}">${escape(item.name)}</option>`).join("");
         if (current && !items.some((item) => item.id === current)) input.insertAdjacentHTML("beforeend", `<option value="${escape(current)}">${escape(current)} (unavailable)</option>`);
         input.value = current;
       }
     }
     function renderEditor() {
-      const item = selected || {}, draft = isDraft();
+      const item = selected || copiedDraft || {}, draft = isDraft();
       $("push-editor").innerHTML = `<div class="push-section-heading"><div><span class="push-status">${escape(statusLabel(item.status))}</span><h2>${item._id ? "Notification details" : "New notification"}</h2></div><span id="push-save-state" class="muted"></span></div>
         <form id="push-form" class="push-form"><fieldset ${draft ? "" : "disabled"} class="push-fields">
           <div class="push-two-fields"><label>Category<select name="notificationType">${options(types, item.notificationType || "PRODUCT_UPDATE")}</select></label><label>Audience<select name="targetAudience">${options(labels, item.targetAudience || "ALL_USERS")}</select></label></div>
@@ -203,7 +216,7 @@
           <div class="push-two-fields"><label>Open when tapped<select name="destination">${options({ update: "Google Play · update app", home: "Home", style: "A published style", collection: "A collection" }, item.notificationType === "APP_UPDATE" ? "update" : item.relatedStyleId ? "style" : item.collectionId ? "collection" : "home")}</select></label><label id="push-style-field" hidden>Style<select name="styleId"></select></label><label id="push-collection-field" hidden>Collection<select name="collectionId"></select></label></div>
           <label>Notification image <span class="field-hint">Optional · JPG, PNG, or WebP · compressed to 300 KB</span><input name="imageUrl" type="hidden" value="${escape(item.imageUrl)}"><div class="image-upload-row"><input id="push-image-file" type="file" accept="image/jpeg,image/png,image/webp"><button id="push-image-upload" type="button" class="button secondary">Upload image</button><span id="push-image-status" class="field-hint">${item.imageUrl ? "Image uploaded" : "No image selected"}</span></div></label>
         </fieldset>
-        <label>Preview name<input id="push-preview-name" maxlength="80" value="Thrope"><small class="field-hint">Preview only. Recipients use their own profile first name, or "there" if missing. Use {firstName} in your title or message.</small></label>
+        <label>Preview name<input id="push-preview-name" maxlength="80" value="Maddies"><small class="field-hint">Preview only. Recipients use their own profile first name, or "there" if missing. Use {firstName} in your title or message.</small></label>
         <p id="push-cooldown-state" class="field-hint">${cooldownHours ? `Notification cooldown: ${cooldownHours} hours.` : "Testing mode: notification cooldown is off."}</p>
         <div class="push-phone-preview" aria-label="Notification preview"><span class="push-app-name">madds · now</span><strong id="push-preview-title"></strong><p id="push-preview-body"></p><img id="push-preview-image" alt="Notification image preview" referrerpolicy="no-referrer" hidden><small>Preview · Appearance varies by device</small></div>
         <p class="field-hint">Only users who allow this category and device notifications are eligible. Inactivity audiences exclude unknown activity.</p>
@@ -282,6 +295,26 @@
       } catch (failure) { if (ticket === selection && session === epoch) error(`Could not load delivery results: ${failure.message}`); }
       finally { if (button?.isConnected) button.disabled = false; }
     }
+    function clearComposer() {
+      selection++; selected = null; copiedDraft = null; stats = null; logs = []; logCursor = null; review = null; dirty = false;
+      error(); renderHistory(); renderEditor();
+    }
+    function newNotification() { if (!canLeave()) return false; clearComposer(); return true; }
+    function leave() { if (!canLeave()) return false; selection++; dirty = false; return true; }
+    async function resend(id) {
+      if (!canLeave() || !available) return;
+      const ticket = ++selection, session = epoch;
+      busy = true; updateActions(); renderHistory(); error();
+      try {
+        const result = await api(`${base}/${encodeURIComponent(id)}`);
+        if (ticket !== selection || session !== epoch) return;
+        if (!result.campaign || !finishedStatuses.includes(result.campaign.status)) throw Error('Only finished notifications can be loaded for resend.');
+        if (result.campaign.reminderDayKey) throw Error('Daily reminders are managed in Automations and cannot be resent as a general announcement.');
+        copiedDraft = campaignToDraft(result.campaign); selected = null; stats = null; logs = []; logCursor = null; review = null;
+        renderHistory(); renderEditor(); notify('Content loaded into a new draft. Review it, then choose Send notification.');
+      } catch (failure) { if (ticket === selection && session === epoch) error(failure.message); }
+      finally { if (session === epoch) { busy = false; updateActions(); renderHistory(); } }
+    }
     async function open(id) {
       if (!canLeave()) return;
       const ticket = ++selection, session = epoch;
@@ -289,7 +322,7 @@
       try {
         const result = await api(`${base}/${encodeURIComponent(id)}`);
         if (ticket !== selection || session !== epoch) return;
-        selected = result.campaign; stats = null; logs = []; logCursor = null;
+        selected = result.campaign; copiedDraft = null; stats = null; logs = []; logCursor = null;
         renderHistory(); renderEditor(); void loadDetails();
       } catch (failure) { if (ticket === selection && session === epoch) error(failure.message); }
     }
@@ -309,6 +342,7 @@
     }
     async function refresh() {
       if (loading || busy) return;
+      if (!$("push-form")) renderEditor();
       await loadCampaigns();
       if (selected && !dirty && !busy) await open(selected._id);
     }
@@ -325,9 +359,9 @@
           body: JSON.stringify({ ...draft, ...(selected ? { expectedRevision: selected.revision ?? 0 } : {}) }) });
         if (session !== epoch) return;
         selected = result.campaign; selection++; stats = null; logs = []; logCursor = null;
-        campaigns = [selected, ...campaigns.filter((item) => item._id !== selected._id)]; renderHistory(); renderEditor(); notify("Notification draft saved.");
+        campaigns = [selected, ...campaigns.filter((item) => item._id !== selected._id)]; clearComposer(); notify("Notification draft saved.");
       } catch (failure) { if (session === epoch) error(failure.message); }
-      finally { if (session === epoch) { busy = false; updateActions(); } }
+      finally { if (session === epoch) { busy = false; updateActions(); renderHistory(); } }
     }
     async function checkAudience() { await prepareReview("audience"); }
     async function prepareReview(action) {
@@ -344,7 +378,7 @@
         const result = await prepareDelivery({ api, base, selected, draft, dirty, previewName,
           isCurrent: () => session === epoch,
           onSaved: campaign => {
-            selected = campaign; selection++; stats = null; logs = []; logCursor = null;
+            selected = campaign; copiedDraft = null; selection++; stats = null; logs = []; logCursor = null;
             baseline = snapshot; dirty = false; saved = true;
             campaigns = [selected, ...campaigns.filter(item => item._id !== selected._id)]; renderHistory();
           } });
@@ -383,25 +417,23 @@
         const result = await api(`${base}/${current.id}/${current.action}`, { method: "POST", body: JSON.stringify({ expectedRevision: current.expectedRevision, ...(current.scheduledAt ? { scheduledAt: current.scheduledAt } : {}) }) });
         if (session !== epoch) return;
         selected = result.campaign; campaigns = campaigns.map((item) => item._id === selected._id ? selected : item);
-        $("push-review-dialog").close(); review = null; selection++; renderHistory(); renderEditor(); void loadDetails(); notify(current.action === "schedule" ? "Notification scheduled." : "Notification queued for delivery.");
+        $("push-review-dialog").close(); clearComposer(); notify(current.action === "schedule" ? "Notification scheduled." : "Notification queued for delivery.");
       } catch (failure) { if (session === epoch) $("push-review-error").textContent = `${failure.message} Refresh the notification before retrying if the outcome is uncertain.`; }
-      finally { if (session === epoch) { busy = false; updateActions(); if ($("push-review-confirm")) { $("push-review-confirm").disabled = false; $("push-review-back").disabled = false; } } }
+      finally { if (session === epoch) { busy = false; updateActions(); renderHistory(); if ($("push-review-confirm")) { $("push-review-confirm").disabled = false; $("push-review-back").disabled = false; } } }
     }
     async function clearHistory() {
-      if (busy || loading || !available || !window.confirm("Delete finished notification history from Recent activity? This applies to all pages. Drafts, scheduled and sending notifications will stay. Delivery records remain for troubleshooting.")) return;
+      const ids = [...historySelection];
+      if (busy || loading || !available || !ids.length || !window.confirm(`Delete ${ids.length} selected finished notification${ids.length === 1 ? '' : 's'} from Recent activity? Delivery records remain for troubleshooting. Scheduled and sending notifications stay.`)) return;
       busy = true; updateActions(); renderHistory(); error(); const session = epoch;
       try {
-        const result = await api(`${base}/history/clear`, { method: "POST" });
+        const result = await api(`${base}/history/clear-selected`, { method: 'POST', body: JSON.stringify({ ids }) });
         if (session !== epoch) return;
-        if (selected && ["SENT", "FAILED", "CANCELLED"].includes(selected.status)) {
-          selected = null; selection++; stats = null; logs = []; logCursor = null; renderEditor();
-        }
-        campaigns = campaigns.filter(item => !["SENT", "FAILED", "CANCELLED"].includes(item.status));
-        renderHistory();
+        historySelection.clear();
+        if (selected && ids.includes(selected._id)) clearComposer();
+        notify(`${result.clearedCount || 0} finished notification${result.clearedCount === 1 ? '' : 's'} removed from Recent activity.`);
         const refreshed = await api(base);
         if (session !== epoch) return;
         campaigns = refreshed.campaigns || []; nextCursor = refreshed.nextCursor;
-        if (session === epoch) notify(`${result.clearedCount || 0} finished notification${result.clearedCount === 1 ? "" : "s"} cleared from history.`);
       } catch (failure) { if (session === epoch) error(failure.message); }
       finally { if (session === epoch) { busy = false; updateActions(); renderHistory(); } }
     }
@@ -413,7 +445,7 @@
         await api(`${base}/${id}`, { method: "DELETE", body: JSON.stringify({ expectedRevision: item.revision ?? 0 }) });
         if (session !== epoch) return;
         campaigns = campaigns.filter(item => item._id !== id);
-        if (selected?._id === id) { selected = null; selection++; stats = null; logs = []; logCursor = null; renderEditor(); }
+        if (selected?._id === id) { selected = null; copiedDraft = null; selection++; stats = null; logs = []; logCursor = null; renderEditor(); }
         renderHistory(); notify("Draft cleared.");
       } catch (failure) { if (session === epoch) error(failure.message); }
       finally { if (session === epoch) { busy = false; updateActions(); renderHistory(); } }
@@ -428,10 +460,10 @@
           if (session !== epoch) return;
           campaigns = campaigns.filter(item => item._id !== id);
         }
-        selected = null; selection++; stats = null; logs = []; logCursor = null;
+        selected = null; copiedDraft = null; selection++; stats = null; logs = []; logCursor = null;
         renderHistory(); renderEditor(); notify("Draft cleared.");
       } catch (failure) { if (session === epoch) error(failure.message); }
-      finally { if (session === epoch) { busy = false; updateActions(); } }
+      finally { if (session === epoch) { busy = false; updateActions(); renderHistory(); } }
     }
     async function cancelCampaign() {
       if (busy || !selected || dirty || !window.confirm("Cancel this notification? Unsent work will stop. A batch already submitted cannot be recalled.")) return;
@@ -440,24 +472,42 @@
         const result = await api(`${base}/${selected._id}/cancel`, { method: "POST" });
         if (session !== epoch) return;
         selected = result.campaign; campaigns = campaigns.map((item) => item._id === selected._id ? selected : item);
-        selection++; renderHistory(); renderEditor(); void loadDetails(); notify("Notification cancelled. Already submitted batches cannot be recalled.");
+        clearComposer(); notify("Notification cancelled. Already submitted batches cannot be recalled.");
       } catch (failure) { if (session === epoch) error(failure.message); }
-      finally { if (session === epoch) { busy = false; updateActions(); } }
+      finally { if (session === epoch) { busy = false; updateActions(); renderHistory(); } }
     }
     function reset() {
-      epoch++; selection++; campaigns = []; selected = null; nextCursor = null; stats = null; logs = []; logCursor = null;
+      epoch++; selection++; campaigns = []; selected = null; copiedDraft = null; historySelection.clear(); nextCursor = null; stats = null; logs = []; logCursor = null;
       busy = false; loading = false; available = false; enabled = false; dirty = false; review = null;
       $("push-review-dialog")?.remove(); error(); renderHistory(); banner(); $("push-editor").innerHTML = '<p class="muted">Select a draft or create a new notification.</p>'; $("push-refresh").disabled = false; $("push-new").disabled = false;
     }
-    $("push-new").addEventListener("click", () => { if (!canLeave()) return; selection++; selected = null; stats = null; logs = []; logCursor = null; error(); renderHistory(); renderEditor(); });
+    $("push-new").addEventListener("click", newNotification);
     $("push-refresh").addEventListener("click", refresh);
     $("push-more").addEventListener("click", () => loadCampaigns(true));
     $("push-campaigns").addEventListener("click", (event) => { const clear = event.target.closest("[data-clear-draft]"); if (clear) { void clearDraftCard(clear.dataset.clearDraft); return; } const button = event.target.closest("[data-campaign]"); if (button) void open(button.dataset.campaign); });
-    $("push-recent").addEventListener("click", (event) => { if (event.target.closest("[data-clear-history]")) { void clearHistory(); return; } const button = event.target.closest("[data-campaign]"); if (button) void open(button.dataset.campaign); });
+    $('push-recent').addEventListener('click', event => {
+      if (event.target.closest('[data-clear-history]')) { void clearHistory(); return; }
+      const again = event.target.closest('[data-resend]'); if (again) { void resend(again.dataset.resend); return; }
+      const button = event.target.closest('[data-campaign]'); if (button) void open(button.dataset.campaign);
+    });
+    $('push-recent').addEventListener('change', event => {
+      if (busy || loading) return;
+      if (event.target.closest('[data-history-all]')) {
+        historySelection.clear();
+        if (event.target.checked) campaigns.filter(item => finishedStatuses.includes(item.status)).slice(0, 500).forEach(item => historySelection.add(item._id));
+      } else {
+        const input = event.target.closest('[data-history-select]'); if (!input) return;
+        const id = input.dataset.historySelect;
+        if (!campaigns.some(item => item._id === id && finishedStatuses.includes(item.status))) return;
+        if (input.checked) { if (historySelection.size >= 500) { notify('Select up to 500 notifications at a time.', true); renderHistory(); return; } historySelection.add(id); }
+        else historySelection.delete(id);
+      }
+      renderHistory();
+    });
     window.addEventListener("beforeunload", (event) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } });
-    return { refresh, reset, catalogChanged, open };
+    return { refresh, reset, catalogChanged, open, newNotification, leave, resend };
   }
-  const exported = { create, buildDraft, localSchedule, personalizedPreview, prepareDelivery };
+  const exported = { create, buildDraft, localSchedule, personalizedPreview, prepareDelivery, campaignToDraft };
   if (typeof module !== "undefined" && module.exports) module.exports = exported;
   else window.MaddsNotifications = exported;
 })();

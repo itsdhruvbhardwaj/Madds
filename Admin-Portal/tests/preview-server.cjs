@@ -5,6 +5,9 @@ const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 let serial = 10;
 let styleGroups = [];
+let rewardedCredits = { credits: 2, revision: 0, source: 'environment' };
+let dailyRewards = { enabled: false, credits: 2, revision: 0, maximum: 10, history: [] };
+let dailyReminder = { enabled: false, sendTime: '20:00', title: 'Your daily credits are waiting ✨', body: 'Hi {firstName}, claim your {credits} free credits before midnight.', revision: 0, history: [], runs: [] };
 const previewPort = Number(process.env.WORKSPACE_PREVIEW_PORT) || 4178;
 let welcomeBackBatches = [];
 let watermark = { enabled:false, logoUrl:"", logoPublicId:"", widthPercent:18, opacityPercent:85, paddingPercent:2, revision:0 };
@@ -48,6 +51,36 @@ http.createServer(async (req, res) => {
   let input = {}; try { input = body ? JSON.parse(body) : {}; } catch { return json(res, { error: "Invalid JSON" }, 400); }
   if (url.pathname === "/api/auth/login") return json(res, { accessToken: "fixture-access", refreshToken: "fixture-refresh", user: { email: "preview@example.com" } });
   if (url.pathname === "/api/auth/logout") return json(res, { ok: true });
+  if (url.pathname === '/api/admin/notifications/daily-reminder') {
+    if (req.method === 'PATCH') {
+      if (input.expectedRevision !== dailyReminder.revision) return json(res, { error: 'Reminders changed. Refresh before saving.' }, 409);
+      const previous = { ...dailyReminder }; delete previous.history; delete previous.runs;
+      dailyReminder = { ...dailyReminder, enabled: input.enabled, sendTime: input.sendTime, title: input.title, body: input.body,
+        revision: dailyReminder.revision + 1, updatedByName: 'Preview Owner', updatedAt: new Date().toISOString(),
+        history: [{ actorName: 'Preview Owner', createdAt: new Date().toISOString(), previous, next: input }, ...dailyReminder.history] };
+    }
+    return json(res, { ...dailyReminder, timezone: 'Asia/Kolkata', credits: dailyRewards.credits, rewardsEnabled: dailyRewards.enabled,
+      deliveryEnabled: false, processorMode: 'worker', nextRunAt: new Date(Date.now() + 86400000).toISOString() });
+  }
+  if (url.pathname === '/api/admin/settings/daily-rewards') {
+    if (req.method === 'PATCH') {
+      if (input.expectedRevision !== dailyRewards.revision) return json(res, { error: 'Daily rewards changed. Refresh and review.' }, 409);
+      if (typeof input.enabled !== 'boolean' || !Number.isSafeInteger(input.credits) || input.credits < 1 || input.credits > 10) return json(res, { error: 'Use 1–10 whole credits.' }, 400);
+      const previous = { enabled: dailyRewards.enabled, credits: dailyRewards.credits, revision: dailyRewards.revision };
+      const updatedAt = new Date().toISOString();
+      dailyRewards = { ...dailyRewards, enabled: input.enabled, credits: input.credits, revision: dailyRewards.revision + 1, updatedByName: 'Preview Owner', updatedAt,
+        history: [{ actorName: 'Preview Owner', createdAt: updatedAt, previous, next: { enabled: input.enabled, credits: input.credits, revision: dailyRewards.revision + 1 } }, ...dailyRewards.history] };
+    }
+    return json(res, dailyRewards);
+  }
+  if (url.pathname === '/api/admin/settings/rewarded-credits') {
+    if (req.method === 'PATCH') {
+      if (input.expectedRevision !== rewardedCredits.revision) return json(res, { error: 'Ad reward changed. Refresh and review.' }, 409);
+      if (!Number.isSafeInteger(input.credits) || input.credits < 1 || input.credits > 100000) return json(res, { error: 'Use 1 to 100,000 whole credits.' }, 400);
+      rewardedCredits = { credits: input.credits, revision: rewardedCredits.revision + 1, source: 'workspace', updatedByName: 'Preview Editor', updatedAt: new Date().toISOString() };
+    }
+    return json(res, rewardedCredits);
+  }
   if (url.pathname === "/api/admin/settings/credits") return json(res,{welcomeCredits:100,revision:1});
   if (url.pathname === "/api/admin/settings/watermark") {
     if (req.method === "PATCH") watermark={...watermark,...input,revision:watermark.revision+1,updatedByName:"Preview Editor",updatedAt:new Date().toISOString()};
@@ -95,7 +128,15 @@ http.createServer(async (req, res) => {
   if (!url.pathname.startsWith(prefix)) return json(res, { error: "Fixture route not found" }, 404);
   if (!req.headers.authorization) return json(res, { error: "Sign in required" }, 401);
   const parts = url.pathname.slice(prefix.length).split("/").filter(Boolean);
-  if (!parts.length && req.method === "GET") return json(res, { campaigns, nextCursor: null, deliveryEnabled: process.argv.includes("--enabled") });
+  if (parts.join('/') === 'history/clear-selected' && req.method === 'POST') {
+    if (!Array.isArray(input.ids) || !input.ids.length || input.ids.length > 500 || input.ids.some(id => typeof id !== 'string' || !/^[0-9a-f]{24}$/i.test(id))) return json(res, { error: 'Select 1–500 valid finished notifications.' }, 400);
+    let clearedCount = 0;
+    for (const item of campaigns) {
+      if (input.ids.includes(item._id) && ['SENT', 'FAILED', 'CANCELLED'].includes(item.status) && !item.historyClearedAt) { item.historyClearedAt = new Date().toISOString(); clearedCount++; }
+    }
+    return json(res, { ok: true, clearedCount });
+  }
+  if (!parts.length && req.method === "GET") return json(res, { campaigns: campaigns.filter(item => !item.historyClearedAt), nextCursor: null, deliveryEnabled: process.argv.includes("--enabled") });
   if (!parts.length && req.method === "POST") {
     const campaign = { ...input, _id: (++serial).toString(16).padStart(24, "0"), revision: 0, status: "DRAFT", createdAt: new Date().toISOString(), deepLink: input.relatedStyleId ? `picme://styles/${input.relatedStyleId}` : input.collectionId ? `picme://collections/${input.collectionId}` : "picme://home" };
     campaigns.unshift(campaign); return json(res, { campaign }, 201);
@@ -103,10 +144,14 @@ http.createServer(async (req, res) => {
   const campaign = campaigns.find((item) => item._id === parts[0]);
   if (!campaign) return json(res, { error: "Campaign not found" }, 404);
   if (input.expectedRevision !== undefined && input.expectedRevision !== campaign.revision) return json(res, { error: "Campaign changed" }, 409);
+  if (parts.length === 1 && req.method === 'DELETE') {
+    if (campaign.status !== 'DRAFT' || input.expectedRevision !== campaign.revision) return json(res, { error: 'Draft changed. Refresh before clearing it.' }, 409);
+    campaigns.splice(campaigns.indexOf(campaign), 1); return json(res, { ok: true });
+  }
   if (parts.length === 1 && req.method === "PATCH") { Object.assign(campaign, input, { revision: campaign.revision + 1 }); return json(res, { campaign }); }
   if (parts[1] === "preview") return json(res, { audience: { scannedDevices: 100, eligibleDevicesInSample: 73, hasMoreDevices: true } });
   if (parts[1] === "stats") return json(res, { stats: { totalRecipients: campaign.status === "SENT" ? 100 : 0, successfulDeliveries: campaign.status === "SENT" ? 92 : 0, failedDeliveries: campaign.status === "SENT" ? 3 : 0, skippedDeliveries: campaign.status === "SENT" ? 5 : 0, pendingDeliveries: 0 } });
   if (parts[1] === "logs") return json(res, { logs: campaign.status === "SENT" ? [{ status: "ACCEPTED", attempts: 1, sentAt: new Date().toISOString() }, { status: "FAILED", attempts: 5, error: "messaging/server-unavailable" }] : [], nextCursor: null });
   if (["send", "schedule", "cancel"].includes(parts[1])) { campaign.status = parts[1] === "cancel" ? "CANCELLED" : "SCHEDULED"; campaign.scheduledAt = input.scheduledAt || new Date().toISOString(); console.log(`Fixture action: ${parts[1]}`); return json(res, { campaign }); }
   return json(res, { campaign });
-}).listen(previewPort, "127.0.0.1", () => console.log("Local fixture: http://127.0.0.1:4178 — no live sends"));
+}).listen(previewPort, "127.0.0.1", () => console.log(`Local fixture: http://127.0.0.1:${previewPort} — no live sends`));
