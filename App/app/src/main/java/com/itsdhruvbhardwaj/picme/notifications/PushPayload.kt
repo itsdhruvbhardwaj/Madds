@@ -29,7 +29,8 @@ private val slug = Regex("[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?")
 
 data class PushPayload(val title: String, val body: String, val category: PushCategory,
     val deliveryId: String, val campaignId: String, val userId: String, val bindingVersion: Long,
-    val styleId: String?, val collectionId: String?, val imageUrl: String?, val deepLink: String) {
+    val styleId: String?, val collectionId: String?, val imageUrl: String?, val deepLink: String,
+    val reminderDayKey: String? = null, val expiresAt: Long? = null) {
     companion object {
         fun parse(data: Map<String, String>): PushPayload? = runCatching {
             val title = data["title"]?.takeIf { it.isNotBlank() && it.length <= 120 } ?: return null
@@ -51,11 +52,25 @@ data class PushPayload(val title: String, val body: String, val category: PushCa
             if (update && (style != null || collection != null)) return null
             val link = if (update) APP_UPDATE_LINK else if (style != null) "picme://styles/$style" else if (collection != null) "picme://collections/$collection" else "picme://home"
             if (data["deepLink"] != link) return null
+            val reminderDay = data["reminderDayKey"]
+            val expiry = data["expiresAt"]?.toLongOrNull()
+            if (reminderDay != null || data.containsKey("expiresAt")) {
+                if (data["type"] != "OFFER" || style != null || collection != null || reminderDay == null || expiry == null ||
+                    !Regex("\\d{4}-\\d{2}-\\d{2}").matches(reminderDay)) return null
+                val date = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).apply {
+                    isLenient = false; timeZone = java.util.TimeZone.getTimeZone("UTC")
+                }
+                val start = date.parse(reminderDay)?.time ?: return null
+                if (date.format(java.util.Date(start)) != reminderDay || expiry != start + 66_600_000L) return null
+            }
             PushPayload(title, body, expectedCategory, id, campaign, user, version, style, collection,
-                data["imageUrl"]?.takeIf(::isSafePushImage), link)
+                data["imageUrl"]?.takeIf(::isSafePushImage), link, reminderDay, expiry)
         }.getOrNull()
     }
 }
+
+fun dailyReminderUsable(payload: PushPayload, now: Long, claimedDay: String?): Boolean =
+    payload.reminderDayKey == null || (payload.expiresAt != null && payload.expiresAt - now in 1..86_400_000L && claimedDay != payload.reminderDayKey)
 
 fun isSafePushImage(value: String): Boolean = runCatching {
     val uri = java.net.URI(value)

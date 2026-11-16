@@ -88,6 +88,7 @@ object PushNotifications {
 
     @Suppress("MissingPermission")
     fun post(context: Context, payload: PushPayload, image: Bitmap? = null) {
+        if (payload.reminderDayKey != null && !PushLocalState(context).eligible(payload, AuthTokenStorage(context), checkSeen = false)) return
         val intent = Intent(context, MainActivity::class.java).apply {
             action = OPEN_ACTION
             data = Uri.parse("madds-notification://open/${payload.deliveryId}")
@@ -102,8 +103,9 @@ object PushNotifications {
             .setStyle(if (image != null) NotificationCompat.BigPictureStyle().bigPicture(image).setSummaryText(payload.body)
                 else NotificationCompat.BigTextStyle().bigText(payload.body))
             .setContentIntent(pending).setAutoCancel(true).setOnlyAlertOnce(true)
-            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE).setTimeoutAfter(86_400_000L)
-            .addExtras(Bundle().apply { putString("madds_category", payload.category.key) })
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE).setTimeoutAfter(payload.expiresAt?.let { (it - System.currentTimeMillis()).coerceAtLeast(1) } ?: 86_400_000L)
+            .addExtras(Bundle().apply { putString("madds_category", payload.category.key)
+                putString("madds_daily_day", payload.reminderDayKey); putString("madds_daily_user", payload.userId) })
             .build()
         try { NotificationManagerCompat.from(context).notify(PushLocalState.TAG_PREFIX + payload.deliveryId, 0, notification) }
         catch (_: SecurityException) { /* Permission can be revoked between checking and posting. */ }

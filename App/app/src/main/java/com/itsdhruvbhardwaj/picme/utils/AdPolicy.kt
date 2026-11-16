@@ -17,7 +17,8 @@ import java.util.concurrent.TimeUnit
 enum class AdPlacement(val key:String) {
     GENERATION_CONTINUE("generation_continue"), AVATAR_SAVED("avatar_saved"),
     BUY_MORE("buy_more"), MY_GENERATIONS("my_generations"), HOME_SEE_ALL("home_see_all"), COLLECTION_OPEN("collection_open"),
-    IMAGE_DOWNLOAD("image_download"), APPEARANCE_APPLIED("appearance_applied"), TIMED_NAVIGATION("timed_navigation")
+    IMAGE_DOWNLOAD("image_download"), APPEARANCE_APPLIED("appearance_applied"), TIMED_NAVIGATION("timed_navigation"),
+    DAILY_BONUS_CLAIM("daily_bonus_claim")
 }
 data class AdConfig(
     val enabled:Boolean=true, val bannersEnabled:Boolean=true, val rewardedEnabled:Boolean=true,
@@ -88,6 +89,6 @@ object AdPolicy {
             nativeHomeEnabled=json.optBoolean("nativeHomeEnabled",false),nativeExploreEnabled=json.optBoolean("nativeExploreEnabled",false),
             homeNativeEverySections=homeSpacing,exploreNativeEveryStyles=exploreSpacing,minGapSeconds=gap,timedIntervalSeconds=interval,
             placements=
-            AdPlacement.entries.associate{it.key to if(it==AdPlacement.COLLECTION_OPEN) placements.optBoolean(it.key,false) else placements.getBoolean(it.key)})
+            AdPlacement.entries.associate{it.key to if(it in listOf(AdPlacement.COLLECTION_OPEN,AdPlacement.DAILY_BONUS_CLAIM)) placements.optBoolean(it.key,false) else placements.getBoolean(it.key)})
     }.getOrNull()
 }

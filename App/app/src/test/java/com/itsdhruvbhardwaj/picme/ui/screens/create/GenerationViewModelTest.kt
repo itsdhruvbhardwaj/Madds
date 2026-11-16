@@ -21,6 +21,7 @@ import org.mockito.kotlin.doSuspendableAnswer
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.times
 import org.mockito.kotlin.never
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CompletableDeferred
 import com.itsdhruvbhardwaj.picme.data.model.RecoverableGeneration
 import com.itsdhruvbhardwaj.picme.data.model.GenerationOperationsResponse
@@ -162,6 +163,222 @@ class GenerationViewModelTest {
         assertTrue(!error.canRetryWithNewKey)
         assertTrue(viewModel.operations.value.isEmpty())
         verify(repository, times(1)).generateImage(any(), any(), any())
+    }
+
+    @Test fun `viewing a recent photo clears the header but keeps the gallery and does not generate again`() = runTest {
+        val photo = RecoverableGeneration("operation", status = "completed", resultAvailable = true, resultExpiresAt = "2030-01-01T00:00:00.000Z")
+        whenever(repository.gallery(null)).thenReturn(Response.success(com.itsdhruvbhardwaj.picme.data.model.GenerationGalleryResponse(listOf(photo))))
+        whenever(repository.details("operation")).thenReturn(Response.success(photo))
+        whenever(repository.operations()).thenReturn(Response.success(GenerationOperationsResponse(listOf(photo))))
+        whenever(repository.result("operation")).thenReturn(Response.success(GenerationResponse(true, "photo", resultExpiresAt = photo.resultExpiresAt)))
+        whenever(repository.viewed("operation")).thenReturn(Response.success(Unit))
+        viewModel.refreshGallery(); advanceUntilIdle()
+        viewModel.openOperation("operation"); advanceUntilIdle()
+        viewModel.markFocusedViewed(); advanceUntilIdle()
+        assertTrue(viewModel.operations.value.isEmpty())
+        assertEquals("operation", viewModel.gallery.value.items.single().id)
+        assertTrue(viewModel.focusedExpiry.value != null)
+        viewModel.resetState()
+        assertEquals("operation", viewModel.gallery.value.items.single().id)
+        verify(repository, never()).generateImage(any(), any(), any())
+        verify(repository, never()).deleteResult(any())
+    }
+
+    @Test fun `gallery cursor appends without duplicating an existing generation`() = runTest {
+        val first = RecoverableGeneration("one", status = "processing")
+        val second = RecoverableGeneration("two", status = "processing")
+        whenever(repository.gallery(null)).thenReturn(Response.success(com.itsdhruvbhardwaj.picme.data.model.GenerationGalleryResponse(listOf(first), "cursor")))
+        whenever(repository.gallery("cursor")).thenReturn(Response.success(com.itsdhruvbhardwaj.picme.data.model.GenerationGalleryResponse(listOf(first, second))))
+        viewModel.refreshGallery(); advanceUntilIdle()
+        viewModel.refreshGallery(loadMore = true); advanceUntilIdle()
+        assertEquals(listOf("one", "two"), viewModel.gallery.value.items.map { it.id })
+        assertEquals(null, viewModel.gallery.value.nextCursor)
+        verify(repository, never()).generateImage(any(), any(), any())
+    }
+
+    @Test fun `gallery data cannot survive account switching or a late response`() = runTest {
+        val response = CompletableDeferred<Response<com.itsdhruvbhardwaj.picme.data.model.GenerationGalleryResponse>>()
+        whenever(repository.gallery(null)).doSuspendableAnswer { response.await() }
+        viewModel.refreshGallery(); runCurrent()
+        viewModel.bindAccount("new-owner")
+        response.complete(Response.success(com.itsdhruvbhardwaj.picme.data.model.GenerationGalleryResponse(listOf(RecoverableGeneration("private-photo")))))
+        advanceUntilIdle()
+        assertTrue(viewModel.gallery.value.items.isEmpty())
+        assertTrue(viewModel.savedResults.value.isEmpty())
+        verify(repository).bindGallery("new-owner")
+    }
+
+    @Test fun `saved gallery copy prevents a second download after reopening the result`() = runTest {
+        val photo = RecoverableGeneration("operation", status = "completed", resultAvailable = true, resultExpiresAt = "2030-01-01T00:00:00.000Z")
+        whenever(repository.details("operation")).thenReturn(Response.success(photo))
+        whenever(repository.result("operation")).thenReturn(Response.success(GenerationResponse(true, "photo", resultExpiresAt = photo.resultExpiresAt)))
+        whenever(repository.savedUri("owner", "operation")).thenReturn(mock())
+        viewModel.openOperation("operation"); advanceUntilIdle()
+        var acknowledged = false
+        val started = viewModel.saveImageToGallery(mock()) { acknowledged = it }
+        assertTrue(acknowledged); assertTrue(!started)
+        verify(repository, never()).generateImage(any(), any(), any())
+    }
+
+    @Test fun `expired notification opens an explicit unavailable state without a paid retry`() = runTest {
+        whenever(repository.result("operation")).thenReturn(Response.error(410, okhttp3.ResponseBody.create(null, "expired")))
+        viewModel.openOperation("operation"); advanceUntilIdle()
+        assertTrue((viewModel.uiState.value as GenerationUiState.Error).isExpired)
+        verify(repository, never()).generateImage(any(), any(), any())
+    }
+
+    @Test fun `remaining time advances from server time using the monotonic device clock`() = runTest {
+        var elapsed = 1000L
+        val model = GenerationViewModel(repository) { elapsed }
+        model.bindAccount("owner")
+        whenever(repository.gallery(null)).thenReturn(Response.success(
+            com.itsdhruvbhardwaj.picme.data.model.GenerationGalleryResponse(emptyList(), serverNow = "1970-01-01T00:00:00.000Z")))
+        model.refreshGallery(); advanceUntilIdle()
+        assertEquals(0L, model.galleryNow())
+        elapsed += 60000
+        assertEquals(60000L, model.galleryNow())
+    }
+
+    @Test fun `late saved URI lookup cannot mark a photo saved for a different account`() = runTest {
+        val saved = CompletableDeferred<Uri?>()
+        whenever(repository.result("operation")).thenReturn(Response.success(GenerationResponse(true, "private-photo")))
+        whenever(repository.savedUri("owner", "operation")).doSuspendableAnswer { saved.await() }
+        viewModel.openOperation("operation"); runCurrent()
+        viewModel.bindAccount("new-owner")
+        saved.complete(mock()); advanceUntilIdle()
+        assertTrue(viewModel.savedResults.value.isEmpty())
+        assertTrue(viewModel.uiState.value is GenerationUiState.Idle)
+    }
+
+    @Test fun `completed gallery photos fetch the result directly without metadata or operation checks`() = runTest {
+        val photo = RecoverableGeneration("operation", status = "completed", resultAvailable = true, resultExpiresAt = "2030-01-01T00:00:00.000Z")
+        whenever(repository.result("operation")).thenReturn(Response.success(GenerationResponse(true, "full-photo")))
+        viewModel.openCompletedPhoto(photo); advanceUntilIdle()
+        assertEquals("full-photo", (viewModel.uiState.value as GenerationUiState.Success).imageBase64)
+        assertTrue(viewModel.focusedExpiry.value != null)
+        verify(repository, never()).details(any())
+        verify(repository, never()).operations()
+        verify(repository, never()).generateImage(any(), any(), any())
+        verify(repository, never()).viewed(any())
+    }
+
+    @Test fun `a slow photo download stops with a retryable error after 45 seconds`() = runTest {
+        val download = CompletableDeferred<Response<GenerationResponse>>()
+        whenever(repository.result("operation")).doSuspendableAnswer { download.await() }
+        viewModel.openCompletedPhoto(RecoverableGeneration("operation", status = "completed")); runCurrent()
+        assertTrue(viewModel.uiState.value is GenerationUiState.Processing)
+        advanceTimeBy(45_001); runCurrent()
+        assertTrue((viewModel.uiState.value as GenerationUiState.Error).isAmbiguous)
+        assertTrue((viewModel.uiState.value as GenerationUiState.Error).message.contains("in time"))
+        verify(repository, never()).generateImage(any(), any(), any())
+    }
+
+    @Test fun `closing the photo viewer cancels retrieval and cannot restore it later`() = runTest {
+        val download = CompletableDeferred<Response<GenerationResponse>>()
+        whenever(repository.result("operation")).doSuspendableAnswer { download.await() }
+        viewModel.openCompletedPhoto(RecoverableGeneration("operation", status = "completed")); runCurrent()
+        viewModel.resetState()
+        download.complete(Response.success(GenerationResponse(true, "late-photo"))); advanceUntilIdle()
+        assertTrue(viewModel.uiState.value is GenerationUiState.Idle)
+        assertEquals(null, viewModel.focusedGenerationId.value)
+    }
+
+    @Test fun `quickly reopening the same photo does not leave the viewer checking forever`() = runTest {
+        val download = CompletableDeferred<Response<GenerationResponse>>()
+        var calls = 0
+        whenever(repository.result("operation")).doSuspendableAnswer {
+            if (++calls == 1) kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { download.await() }
+            else Response.success(GenerationResponse(true, "new-photo"))
+        }
+        val photo = RecoverableGeneration("operation", status = "completed")
+        viewModel.openCompletedPhoto(photo); runCurrent()
+        viewModel.openCompletedPhoto(photo); runCurrent()
+        assertEquals("new-photo", (viewModel.uiState.value as GenerationUiState.Success).imageBase64)
+        download.complete(Response.success(GenerationResponse(true, "old-photo"))); advanceUntilIdle()
+        assertEquals("new-photo", (viewModel.uiState.value as GenerationUiState.Success).imageBase64)
+        verify(repository, never()).generateImage(any(), any(), any())
+    }
+
+    @Test fun `retrying a failed photo download fetches only the existing result`() = runTest {
+        whenever(repository.result("operation")).thenReturn(
+            Response.error(503, okhttp3.ResponseBody.create(null, "offline")),
+            Response.success(GenerationResponse(true, "photo")))
+        val photo = RecoverableGeneration("operation", status = "completed")
+        viewModel.openCompletedPhoto(photo); advanceUntilIdle()
+        assertTrue(viewModel.uiState.value is GenerationUiState.Error)
+        viewModel.openCompletedPhoto(photo); advanceUntilIdle()
+        assertTrue(viewModel.uiState.value is GenerationUiState.Success)
+        verify(repository, times(2)).result("operation")
+        verify(repository, never()).generateImage(any(), any(), any())
+        verify(repository, never()).details(any())
+    }
+
+    @Test fun `an expired gallery photo is reported unavailable and does not generate a replacement`() = runTest {
+        whenever(repository.result("operation")).thenReturn(Response.error(410, okhttp3.ResponseBody.create(null, "expired")))
+        viewModel.openCompletedPhoto(RecoverableGeneration("operation", status = "completed")); advanceUntilIdle()
+        assertTrue((viewModel.uiState.value as GenerationUiState.Error).isExpired)
+        verify(repository, never()).generateImage(any(), any(), any())
+    }
+
+    @Test fun `processing entries cannot be opened through the completed photo shortcut`() = runTest {
+        viewModel.openCompletedPhoto(RecoverableGeneration("operation", status = "processing")); advanceUntilIdle()
+        assertTrue(viewModel.uiState.value is GenerationUiState.Idle)
+        verify(repository, never()).result(any())
+        verify(repository, never()).generateImage(any(), any(), any())
+    }
+
+    @Test fun `ready notification uses the saved local photo even after the remote copy expires`() = runTest {
+        val uri: Uri = mock()
+        whenever(repository.savedUri("owner", "operation")).thenReturn(uri)
+        whenever(repository.viewed("operation")).thenReturn(Response.success(Unit))
+        assertEquals(uri, viewModel.savedGalleryPhoto("operation"))
+        viewModel.focusSavedGalleryPhoto("operation")
+        assertEquals(uri, viewModel.gallery.value.savedUris["operation"])
+        assertTrue(viewModel.savedResults.value.contains(viewModel.resultKey("", "operation")))
+        verify(repository, never()).viewed(any())
+        viewModel.markFocusedViewed("operation"); advanceUntilIdle()
+        verify(repository).viewed("operation")
+        verify(repository, never()).result(any())
+        verify(repository, never()).generateImage(any(), any(), any())
+    }
+
+    @Test fun `late saved notification lookup cannot populate the next account gallery`() = runTest {
+        val uri = CompletableDeferred<Uri?>()
+        whenever(repository.savedUri("owner", "operation")).doSuspendableAnswer { uri.await() }
+        val lookup = kotlinx.coroutines.CoroutineScope(coroutineContext).async { viewModel.savedGalleryPhoto("operation") }
+        runCurrent()
+        viewModel.bindAccount("next-owner")
+        uri.complete(mock()); advanceUntilIdle()
+        assertEquals(null, lookup.await())
+        assertTrue(viewModel.gallery.value.savedUris.isEmpty())
+        assertTrue(viewModel.savedResults.value.isEmpty())
+    }
+
+    @Test fun `an older failed notification explains the failure rather than showing endless generation`() = runTest {
+        whenever(repository.result("operation")).thenReturn(Response.error(409, okhttp3.ResponseBody.create(null,
+            """{"id":"operation","status":"failed","failureReason":"The provider rejected this photograph."}""")))
+        viewModel.openCompletedPhoto(RecoverableGeneration("operation", status = "completed")); advanceUntilIdle()
+        val error = viewModel.uiState.value as GenerationUiState.Error
+        assertTrue(error.message.contains("rejected"))
+        verify(repository, never()).generateImage(any(), any(), any())
+    }
+
+    @Test fun `a stale background saved lookup cannot restore a photo deleted from Saved`() = runTest {
+        val uri: Uri = mock()
+        whenever(uri.lastPathSegment).thenReturn("42")
+        whenever(repository.savedUri("owner", "operation")).thenReturn(uri)
+        viewModel.savedGalleryPhoto("operation")
+        val lookup = CompletableDeferred<Uri?>()
+        whenever(repository.savedUri("owner", "operation")).doSuspendableAnswer { lookup.await() }
+        whenever(repository.gallery(null)).thenReturn(Response.success(
+            com.itsdhruvbhardwaj.picme.data.model.GenerationGalleryResponse(listOf(
+                RecoverableGeneration("operation", status = "completed", resultAvailable = true, resultExpiresAt = "2030-01-01T00:00:00.000Z")))))
+        viewModel.refreshGallery(); runCurrent()
+        viewModel.forgetSavedGeneration(uri)
+        lookup.complete(uri); advanceUntilIdle()
+        assertTrue(viewModel.gallery.value.savedUris.isEmpty())
+        assertTrue(viewModel.savedResults.value.isEmpty())
+        verify(repository, never()).generateImage(any(), any(), any())
     }
 
     @Mock

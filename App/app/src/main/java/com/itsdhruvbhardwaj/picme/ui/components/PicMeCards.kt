@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -42,8 +43,11 @@ fun StyleCard(
     height: Dp = 236.dp,
     internalPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
     genderTag: String? = null,
-    aspectRatio: Float? = null
+    aspectRatio: Float? = null,
+    variantCount: Int = 0,
+    galleryStyle: Boolean = false
 ) {
+    val radius = if (galleryStyle) 8.dp else 16.dp
     Surface(
         modifier = modifier
             .then(
@@ -51,15 +55,15 @@ fun StyleCard(
                 else Modifier.width(width).height(height)
             )
             .shadow(
-                elevation = 12.dp,
-                shape = RoundedCornerShape(16.dp),
+                elevation = if (galleryStyle) 0.dp else 12.dp,
+                shape = RoundedCornerShape(radius),
                 ambientColor = Color.Black.copy(alpha = 0.15f),
                 spotColor = Color.Black.copy(alpha = 0.2f)
             )
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(radius),
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)
+        border = if (galleryStyle) null else BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             AsyncImage(
@@ -79,6 +83,8 @@ fun StyleCard(
             )
 
             StyleGenderBadge(genderTag, Modifier.align(Alignment.TopStart).padding(8.dp))
+            if (variantCount > 1) Text("$variantCount looks", color = Color.White, fontSize = 10.sp,
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = .65f)).padding(horizontal = 8.dp, vertical = 5.dp))
 
             // Premium Gradient Overlay
             Box(
@@ -86,25 +92,27 @@ fun StyleCard(
                     .fillMaxWidth()
                     .align(Alignment.BottomStart)
                     // Clip to bottom corners to prevent square edges from leaking outside the parent Surface shape
-                    .clip(RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp))
+                    .clip(RoundedCornerShape(bottomStart = radius, bottomEnd = radius))
                     .background(
                         brush = Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)),
+                            colors = if (galleryStyle) listOf(Color.Black.copy(alpha = 0.65f), Color.Black.copy(alpha = 0.65f))
+                                else listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)),
                             startY = 0f
                         )
                     )
-                    .padding(internalPadding)
+                    .padding(if (galleryStyle) PaddingValues(5.dp) else internalPadding)
             ) {
                 Column {
                     Text(
                         text = name,
-                        style = MaterialTheme.typography.titleMedium.copy(
+                        style = if (galleryStyle) MaterialTheme.typography.labelSmall.copy(color = Color.White) else MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 16.sp,
                             color = Color.White,
                             letterSpacing = 0.5.sp
                         ),
-                        maxLines = 1
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }

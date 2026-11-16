@@ -21,6 +21,21 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.UUID
+import com.itsdhruvbhardwaj.picme.data.model.RecoverableGeneration
+import com.itsdhruvbhardwaj.picme.data.model.generationExpiry
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+
+data class GenerationGalleryState(
+    val items: List<RecoverableGeneration> = emptyList(),
+    val thumbnails: Map<String, java.io.File> = emptyMap(),
+    val savedUris: Map<String, Uri> = emptyMap(),
+    val nextCursor: String? = null,
+    val loading: Boolean = false,
+    val error: String? = null
+)
 
 sealed interface GenerationUiState {
     data object Idle : GenerationUiState
@@ -32,7 +47,8 @@ sealed interface GenerationUiState {
         val canRetryWithNewKey: Boolean = true,
         val isAmbiguous: Boolean = false,
         val requiredCredits: Int? = null,
-        val availableCredits: Int? = null
+        val availableCredits: Int? = null,
+        val isExpired: Boolean = false
     ) : GenerationUiState
 }
 
@@ -41,7 +57,8 @@ sealed interface GenerationEvent {
 }
 
 class GenerationViewModel(
-    private val generationRepository: GenerationRepository
+    private val generationRepository: GenerationRepository,
+    private val elapsedMillis: () -> Long = android.os.SystemClock::elapsedRealtime
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<GenerationUiState>(GenerationUiState.Idle)
@@ -60,7 +77,22 @@ class GenerationViewModel(
     val eventFlow: SharedFlow<GenerationEvent> = _eventFlow.asSharedFlow()
 
     private val _savedResults = MutableStateFlow<Set<String>>(emptySet())
+    private val savedPhotoRevisions = mutableMapOf<String, Long>()
     val savedResults = _savedResults.asStateFlow()
+    private val _gallery = MutableStateFlow(GenerationGalleryState())
+    val gallery = _gallery.asStateFlow()
+    private val _focusedExpiry = MutableStateFlow<Long?>(null)
+    val focusedExpiry = _focusedExpiry.asStateFlow()
+    private var serverClockOffset = 0L
+    private var serverTimeBase: Long? = null
+    private var serverElapsedBase = 0L
+    fun galleryNow() = serverTimeBase?.let { it + elapsedMillis() - serverElapsedBase } ?: System.currentTimeMillis()
+    private fun syncClock(value: String?) { generationExpiry(value)?.let {
+        serverTimeBase = it; serverElapsedBase = elapsedMillis()
+        val candidate = it - System.currentTimeMillis()
+        if (kotlin.math.abs(candidate - serverClockOffset) > 60_000) serverClockOffset = candidate
+    } }
+    private val thumbnailSlots = Semaphore(3)
     private val dismissedResults = mutableSetOf<String>()
     fun resultKey(image: String, id: String? = focusedId): String = "${account}:${id ?: image}"
 
@@ -83,20 +115,128 @@ class GenerationViewModel(
         get() = _focusedGenerationId.value
         set(value) { _focusedGenerationId.value = value }
     private var refreshing = false
-    private val fetching = mutableSetOf<String>()
+    private val fetching = mutableMapOf<String, Any>()
+    private var photoOpenJob: Job? = null
     private val jobs = mutableListOf<Job>()
     private val _operations = MutableStateFlow<List<com.itsdhruvbhardwaj.picme.data.model.RecoverableGeneration>>(emptyList())
     val operations = _operations.asStateFlow()
 
     fun bindAccount(owner: String?) {
+        generationRepository.bindGallery(owner)
         if (account == owner) return
         epoch++; account = owner
-        _savedResults.value = emptySet(); dismissedResults.clear()
+        _gallery.value = GenerationGalleryState(); _focusedExpiry.value = null; serverClockOffset = 0; serverTimeBase = null
+        _savedResults.value = emptySet(); savedPhotoRevisions.clear(); dismissedResults.clear()
         jobs.forEach { it.cancel() }; jobs.clear(); fetching.clear(); refreshing = false
         _operations.value = emptyList(); resetState(); _selectedPhotos.value = emptyList()
     }
 
     fun setSelectedPhotos(uris: List<Uri>) { _selectedPhotos.value = uris }
+
+    suspend fun savedGalleryPhoto(id: String): Uri? {
+        val owner = account ?: return null
+        val ticket = epoch
+        val revision = savedPhotoRevisions[id] ?: 0L
+        val uri = try { generationRepository.savedUri(owner, id) }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { null }
+        if (ticket != epoch) return null
+        if ((savedPhotoRevisions[id] ?: 0L) != revision) return _gallery.value.savedUris[id]
+        if (uri == null) return null
+        _gallery.value = _gallery.value.copy(savedUris = _gallery.value.savedUris + (id to uri))
+        _savedResults.value += resultKey("", id)
+        return uri
+    }
+
+    fun focusSavedGalleryPhoto(id: String) {
+        if (account == null) return
+        photoOpenJob?.cancel(); photoOpenJob = null
+        focusedId = id
+        _focusedExpiry.value = null
+        _uiState.value = GenerationUiState.Idle
+    }
+
+    fun forgetSavedGeneration(uri: Uri) {
+        val owner = account ?: return
+        _gallery.value.savedUris.filterValues { it.lastPathSegment == uri.lastPathSegment }.keys.forEach { id ->
+            savedPhotoRevisions[id] = (savedPhotoRevisions[id] ?: 0L) + 1
+            generationRepository.forgetSaved(owner, id)
+            _savedResults.value -= resultKey("", id)
+            _gallery.value = _gallery.value.copy(savedUris = _gallery.value.savedUris - id)
+        }
+    }
+
+    fun refreshGallery(loadMore: Boolean = false) {
+        val owner = account ?: return
+        if (_gallery.value.loading) return
+        val cursor = if (loadMore) _gallery.value.nextCursor ?: return else null
+        val ticket = epoch
+        _gallery.value = _gallery.value.copy(loading = true, error = null)
+        jobs.removeAll { it.isCompleted }
+        jobs += viewModelScope.launch {
+            try {
+                val response = generationRepository.gallery(cursor)
+                if (ticket != epoch) return@launch
+                val body = response.body()?.takeIf { response.isSuccessful }
+                    ?: throw java.io.IOException("Couldn't load recent photos. Please try again.")
+                syncClock(body.serverNow)
+                val items = ((if (loadMore) _gallery.value.items else emptyList()) + body.items).distinctBy { it.id }
+                _gallery.value = _gallery.value.copy(items = items, nextCursor = body.nextCursor,
+                    savedUris = _gallery.value.savedUris.filterKeys { id -> items.any { it.id == id } },
+                    thumbnails = _gallery.value.thumbnails.filterKeys { id -> items.any { it.id == id } })
+                body.items.map { item -> async {
+                    thumbnailSlots.withPermit {
+                        val revision = savedPhotoRevisions[item.id] ?: 0L
+                        val saved = generationRepository.savedUri(owner, item.id)
+                        if (ticket != epoch || (savedPhotoRevisions[item.id] ?: 0L) != revision) return@withPermit
+                        if (saved != null) {
+                            _gallery.value = _gallery.value.copy(savedUris = _gallery.value.savedUris + (item.id to saved))
+                            _savedResults.value += resultKey("", item.id)
+                        } else {
+                            _gallery.value = _gallery.value.copy(savedUris = _gallery.value.savedUris - item.id)
+                            _savedResults.value -= resultKey("", item.id)
+                            if (item.resultAvailable) {
+                                val expiry = generationExpiry(item.resultExpiresAt) ?: return@withPermit
+                                val thumbnail = try { kotlinx.coroutines.withTimeoutOrNull(10_000) {
+                                    generationRepository.thumbnail(owner, item.id, expiry - serverClockOffset)
+                                } }
+                                    catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                                    catch (_: Exception) { null }
+                                if (ticket == epoch && thumbnail != null) _gallery.value = _gallery.value.copy(thumbnails = _gallery.value.thumbnails + (item.id to thumbnail))
+                            }
+                        }
+                    }
+                } }.awaitAll()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (ticket == epoch) _gallery.value = _gallery.value.copy(error = "Couldn't load recent photos. Check your connection and refresh.")
+            } finally { if (ticket == epoch) _gallery.value = _gallery.value.copy(loading = false) }
+        }
+    }
+
+    fun deleteTemporaryResult(context: Context, onDeleted: () -> Unit) {
+        val id = focusedId ?: return
+        val owner = account ?: return
+        if (_isActionLoading.value) return
+        val ticket = epoch
+        _isActionLoading.value = true
+        jobs += viewModelScope.launch {
+            try {
+                val response = generationRepository.deleteResult(id)
+                if (ticket != epoch) return@launch
+                if (response.isSuccessful || response.code() == 410 || response.code() == 404) {
+                    dismissedResults += id
+                    _operations.value = _operations.value.filterNot { it.id == id }
+                    _gallery.value = _gallery.value.copy(items = _gallery.value.items.filterNot { it.id == id }, thumbnails = _gallery.value.thumbnails - id)
+                    generationRepository.forgetThumbnail(owner, id)
+                    runCatching { com.itsdhruvbhardwaj.picme.notifications.GenerationNotifications.imageDisplayed(context, owner, id) }
+                    if (focusedId == id) { resetState(); onDeleted() }
+                } else _eventFlow.emit(GenerationEvent.ShowSnackbar("Couldn't delete the temporary copy. Please try again."))
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { if (ticket == epoch) _eventFlow.emit(GenerationEvent.ShowSnackbar("Couldn't delete the temporary copy. Check your connection and try again.")) }
+            finally { if (ticket == epoch) _isActionLoading.value = false }
+        }
+    }
 
     fun generateImage(styleId: String, isRetry: Boolean = false) {
         if (isRetry) { viewModelScope.launch { refreshOperations() }; return }
@@ -118,6 +258,7 @@ class GenerationViewModel(
         }
         val ticket = epoch
         currentIdempotencyKey = key; focusedId = key
+        _focusedExpiry.value = null
         _uiState.value = GenerationUiState.Uploading
         _statusMessage.value = "Uploading your photo..."
         upsert(com.itsdhruvbhardwaj.picme.data.model.RecoverableGeneration(key, styleId, status = "submitting"))
@@ -132,6 +273,8 @@ class GenerationViewModel(
                     upsert(com.itsdhruvbhardwaj.picme.data.model.RecoverableGeneration(id, styleId, status = body.status ?: "completed"))
                     if (focusedId == key) {
                         focusedId = id
+                        syncClock(body.serverNow)
+                        _focusedExpiry.value = generationExpiry(body.resultExpiresAt)
                         if (!body.image.isNullOrBlank()) _uiState.value = GenerationUiState.Success(body.image)
                         else { _uiState.value = GenerationUiState.Processing; _statusMessage.value = "Creating your photo..." }
                     }
@@ -187,9 +330,10 @@ class GenerationViewModel(
             if (ticket != epoch) return
             _operations.value = (remote + pending).distinctBy { it.id }.filterNot { it.id in dismissedResults }
             val focused = _operations.value.find { it.id == focusedId }
+            if (focused != null) generationExpiry(focused.resultExpiresAt)?.let { _focusedExpiry.value = it }
             if (focused != null && _uiState.value !is GenerationUiState.Success) {
                 when (focused.status) {
-                    "completed" -> if (focused.resultAvailable) loadResult(focused.id) else _uiState.value = GenerationUiState.Error("This photo's recovery copy is no longer available. Checking it did not charge credits.", false)
+                    "completed" -> if (focused.resultAvailable) loadResult(focused.id) else _uiState.value = GenerationUiState.Error("This photo's temporary copy is no longer available. Photos already saved to your device stay in your gallery.", false, isExpired = true)
                     "failed" -> {
                         val reason = focused.failureReason
                         val message = if (reason?.contains("content policy", ignoreCase = true) == true) {
@@ -214,12 +358,19 @@ class GenerationViewModel(
 
     fun openOperation(id: String) {
         focusedId = id
+        _focusedExpiry.value = generationExpiry(_gallery.value.items.find { it.id == id }?.resultExpiresAt)
         _selectedPhotos.value = emptyList()
         _uiState.value = GenerationUiState.Processing
         _statusMessage.value = "Checking your generation..."
         val ticket = epoch
         viewModelScope.launch {
             try {
+                try {
+                    val metadata = generationRepository.details(id).body()
+                    if (ticket != epoch || focusedId != id) return@launch
+                    if (metadata != null) { syncClock(metadata.serverNow); _focusedExpiry.value = generationExpiry(metadata.resultExpiresAt) }
+                } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (_: Exception) { /* Result retrieval remains authoritative on older servers. */ }
                 refreshOperations()
                 if (ticket == epoch && focusedId == id && _uiState.value !is GenerationUiState.Success && _operations.value.none { it.id == id }) loadResult(id)
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
@@ -229,31 +380,68 @@ class GenerationViewModel(
         }
     }
 
-    private suspend fun loadResult(id: String) {
-        if (!fetching.add(id)) return
+    /** Completed gallery cards retrieve only their existing image, never a provider operation. */
+    fun openCompletedPhoto(operation: RecoverableGeneration) {
+        if (account == null || operation.status != "completed") return
+        photoOpenJob?.cancel()
+        focusedId = operation.id
+        _focusedExpiry.value = generationExpiry(operation.resultExpiresAt)
+        _selectedPhotos.value = emptyList()
+        _uiState.value = GenerationUiState.Processing
+        _statusMessage.value = "Opening your photo..."
+        val ticket = epoch
+        photoOpenJob = viewModelScope.launch {
+            val retrieved = kotlinx.coroutines.withTimeoutOrNull(45_000) {
+                loadResult(operation.id, replace = true)
+                true
+            }
+            if (retrieved == null && ticket == epoch && focusedId == operation.id) {
+                _uiState.value = GenerationUiState.Error("Couldn't open your photo in time. Check your connection and try again.", false, true)
+            }
+        }
+    }
+
+    private suspend fun loadResult(id: String, replace: Boolean = false) {
+        if (!replace && fetching.containsKey(id)) return
+        val request = Any()
+        fetching[id] = request
         val ticket = epoch
         try {
             val response = generationRepository.result(id)
-            if (ticket != epoch || focusedId != id) return
+            if (ticket != epoch || focusedId != id || fetching[id] !== request) return
             val image = response.body()?.image
             if (response.isSuccessful && !image.isNullOrBlank()) {
+                syncClock(response.body()?.serverNow)
+                generationExpiry(response.body()?.resultExpiresAt)?.let { _focusedExpiry.value = it }
+                val saved = account?.let { owner -> generationRepository.savedUri(owner, id) }
+                if (ticket != epoch || focusedId != id || fetching[id] !== request) return
+                if (saved != null) _savedResults.value += resultKey("", id)
                 _uiState.value = GenerationUiState.Success(image)
             }
-            else if (response.code() == 410) _uiState.value = GenerationUiState.Error("This photo's 24-hour recovery period has ended. Checking it did not charge credits.", false)
+            else if (response.code() == 410) _uiState.value = GenerationUiState.Error("This photo's 24-hour availability has ended, or its temporary copy was deleted. Photos saved to your device stay in your gallery.", false, isExpired = true)
             else if (response.code() == 404) _uiState.value = GenerationUiState.Error("This generation is no longer available for this account.", false)
+            else if (response.code() == 409 && replace) {
+                val operation = runCatching { com.google.gson.Gson().fromJson(response.errorBody()?.string(), RecoverableGeneration::class.java) }
+                    .getOrNull()?.takeIf { it.id == id }
+                _uiState.value = when (operation?.status) {
+                    "failed" -> GenerationUiState.Error(operation.failureReason ?: "This photo couldn't be generated. Check your credit history for details.", false)
+                    "outcome_unknown" -> GenerationUiState.Error((operation.failureReason ?: "The generation outcome is unconfirmed.") + " Contact support with request $id.", false, true)
+                    else -> GenerationUiState.Error("This photo is still finishing. Please check again shortly.", false, true)
+                }
+            }
             else if (response.code() != 409) _uiState.value = GenerationUiState.Error("Couldn't retrieve this photo. Check your connection and check status again; this does not start a paid generation.", false, true)
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            if (ticket == epoch && focusedId == id) _uiState.value = GenerationUiState.Error(
+            if (ticket == epoch && focusedId == id && fetching[id] === request) _uiState.value = GenerationUiState.Error(
                 "Couldn't retrieve this photo. Check your connection and check status again; this does not start a paid generation.", false, true)
-        } finally { if (ticket == epoch) fetching.remove(id) }
+        } finally { if (fetching[id] === request) fetching.remove(id) }
     }
 
     fun markFocusedViewed(expectedId: String? = focusedId) {
         val id = focusedId?.takeIf { it == expectedId } ?: return
         // A failed download must not hide a completed photo that is still recoverable.
-        if (_uiState.value is GenerationUiState.Error && _operations.value.any {
+        if ((_uiState.value as? GenerationUiState.Error)?.isExpired != true && _uiState.value is GenerationUiState.Error && _operations.value.any {
             it.id == id && it.status == "completed" && it.resultAvailable
         }) return
         val ticket = epoch
@@ -270,6 +458,8 @@ class GenerationViewModel(
         val state = _uiState.value
         if (state !is GenerationUiState.Success || _isActionLoading.value) return false
         val key = resultKey(state.imageBase64)
+        if (key in _savedResults.value) { onComplete(true); return false }
+        if (_focusedExpiry.value?.let { it <= galleryNow() } == true) return false
         val owner = account
         val id = focusedId
         val ticket = epoch
@@ -280,7 +470,15 @@ class GenerationViewModel(
                 val bitmap = withContext(Dispatchers.IO) { ImageUtils.decodeBase64ToBitmap(state.imageBase64) }
                 if (bitmap != null) {
                     try {
-                        saved = ImageUtils.saveBitmapToGallery(context, bitmap).isSuccess
+                        val uri = ImageUtils.saveBitmapToGallery(context, bitmap).getOrNull()
+                        saved = uri != null
+                        if (uri != null && owner != null && id != null) {
+                            generationRepository.rememberSaved(owner, id, uri)
+                            if (ticket == epoch) {
+                                savedPhotoRevisions[id] = (savedPhotoRevisions[id] ?: 0L) + 1
+                                _gallery.value = _gallery.value.copy(savedUris = _gallery.value.savedUris + (id to uri))
+                            }
+                        }
                     } finally { bitmap.recycle() }
                 }
                 if (saved && ticket == epoch) {
@@ -308,13 +506,16 @@ class GenerationViewModel(
     fun shareImage(context: Context) {
         val state = _uiState.value
         if (state !is GenerationUiState.Success || _isActionLoading.value) return
+        if (_focusedExpiry.value?.let { it <= galleryNow() } == true && resultKey(state.imageBase64) !in _savedResults.value) return
 
+        val ticket = epoch
         _isActionLoading.value = true
         viewModelScope.launch {
           try {
             val bitmap = withContext(Dispatchers.IO) { ImageUtils.decodeBase64ToBitmap(state.imageBase64) }
             if (bitmap != null) {
               try {
+                if (ticket != epoch) return@launch
                 val result = ImageUtils.shareImage(context, bitmap)
                 if (result.isFailure) {
                     _eventFlow.emit(GenerationEvent.ShowSnackbar("Failed to share image: ${result.exceptionOrNull()?.message}"))
@@ -323,17 +524,19 @@ class GenerationViewModel(
             } else {
                 _eventFlow.emit(GenerationEvent.ShowSnackbar("Failed to decode image for sharing."))
             }
-          } finally { _isActionLoading.value = false }
+          } finally { if (ticket == epoch) _isActionLoading.value = false }
         }
     }
     
     fun resetState() {
+        photoOpenJob?.cancel(); photoOpenJob = null
         statusJob?.cancel()
         _uiState.value = GenerationUiState.Idle
         _statusMessage.value = "Preparing your photo..."
         _isActionLoading.value = false
         currentIdempotencyKey = null
         focusedId = null
+        _focusedExpiry.value = null
     }
 
     override fun onCleared() {

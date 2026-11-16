@@ -90,6 +90,10 @@ object ImageUtils {
                     throw Exception("Failed to compress bitmap")
                 }
 
+                // A photo is saved only once its bytes are flushed and closed.
+                outputStream.close()
+                outputStream = null
+
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     contentValues.clear()
                     contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)

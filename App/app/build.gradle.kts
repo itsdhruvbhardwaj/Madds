@@ -12,8 +12,8 @@ android {
         applicationId = "com.itsdhruvbhardwaj.picme"
         minSdk = 24
         targetSdk = 37
-        versionCode = 12
-        versionName = "1.2.4"
+        versionCode = 13
+        versionName = "1.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -67,6 +67,7 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.activity.compose)
     // Activity Result APIs require FragmentActivity-compatible fragment versions.
     implementation(libs.androidx.fragment.ktx)

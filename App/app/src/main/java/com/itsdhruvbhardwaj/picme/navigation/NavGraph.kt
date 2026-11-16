@@ -103,6 +103,7 @@ fun NavGraph(
     pendingNotificationId: String? = null,
     onNotificationHandled: () -> Unit = {},
     pendingGeneration: String? = null,
+    pendingGenerationStage: String? = null,
     onGenerationNotificationHandled: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -120,6 +121,7 @@ fun NavGraph(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val pushLocalState = remember { PushLocalState(context.applicationContext) }
+    var dailyReminderRequest by remember { mutableStateOf<String?>(null) }
     val pushAuth = remember { AuthTokenStorage(context.applicationContext) }
     LaunchedEffect(pendingNotificationId, authState, currentRoute) {
         val id = pendingNotificationId ?: return@LaunchedEffect
@@ -142,6 +144,7 @@ fun NavGraph(
                 else -> Screen.Home.route
             }
             navController.navigate(route) { launchSingleTop = true }
+            if (payload.reminderDayKey != null) dailyReminderRequest = payload.deliveryId
             pushLocalState.markOpened(id)
         }
         onNotificationHandled()
@@ -186,6 +189,18 @@ fun NavGraph(
     }
 
     val generationOwner = (authState as? AuthState.Authenticated)?.user?.id
+    val dailyRewardModel: DailyRewardViewModel = viewModel(key = "daily_rewards", factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST") override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T =
+            DailyRewardViewModel(authViewModel::dailyRewardStatus, authViewModel::claimDailyReward) as T
+    })
+    val dailyRewardState by dailyRewardModel.state.collectAsState()
+    LaunchedEffect(dailyReminderRequest, generationOwner) {
+        if (dailyReminderRequest != null && generationOwner != null) {
+            dailyRewardModel.bindAccount(generationOwner)
+            dailyRewardModel.reminderOpened()
+            dailyReminderRequest = null
+        }
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(generationOwner, lifecycleOwner) {
         generationViewModel.bindAccount(generationOwner)
@@ -199,7 +214,7 @@ fun NavGraph(
         }
     }
     val focusedGenerationId by generationViewModel.focusedGenerationId.collectAsState()
-    val viewingGeneration = currentRoute == Screen.Generation.route || currentRoute == Screen.Result.route
+    val viewingGeneration = currentRoute == Screen.Generation.route || currentRoute == Screen.Result.route || currentRoute == Screen.History.route
     val latestReadyWatch by rememberUpdatedState(generationOwner to focusedGenerationId.takeIf { viewingGeneration })
     // Keep this observer stable across generation -> result navigation and ID resolution.
     // Disposing an ID-keyed effect would release a ready alert before the image renders.
@@ -223,12 +238,30 @@ fun NavGraph(
         } else GenerationNotifications.watchResult(context, null, null)
     }
     val recoverableGenerations by generationViewModel.operations.collectAsState()
-    LaunchedEffect(pendingGeneration, generationOwner, currentRoute) {
+
+    fun openGalleryPhoto(id: String) {
+        val owner = generationOwner ?: return
+        if (requestedGalleryPhoto("$owner:$id", owner) == null) return
+        if (currentRoute != Screen.History.route) {
+            val existing = runCatching { navController.getBackStackEntry(Screen.History.route) }.getOrNull()
+            navController.navigate(Screen.History.route) {
+                if (existing != null) popUpTo(Screen.History.route)
+                launchSingleTop = true
+            }
+        }
+        navController.getBackStackEntry(Screen.History.route).savedStateHandle[GALLERY_PHOTO_REQUEST] = "$owner:$id"
+    }
+
+    LaunchedEffect(pendingGeneration, pendingGenerationStage, generationOwner, currentRoute) {
         val parts = pendingGeneration?.split(":") ?: return@LaunchedEffect
-        if (generationOwner == null || currentRoute == Screen.Splash.route) return@LaunchedEffect
+        if (generationOwner == null || currentRoute == null || currentRoute in listOf(
+                Screen.Splash.route, Screen.Login.route, Screen.Signup.route, Screen.Onboarding.route, Screen.StylePreferenceSetup.route)) return@LaunchedEffect
         if (parts.size == 2 && parts[0] == generationOwner && Regex("[a-fA-F0-9]{24}").matches(parts[1])) {
-            generationViewModel.openOperation(parts[1])
-            navController.navigate(Screen.Generation.createRoute("recovery")) { launchSingleTop = true }
+            if (opensGenerationGallery(pendingGenerationStage)) openGalleryPhoto(parts[1])
+            else {
+                generationViewModel.openOperation(parts[1])
+                navController.navigate(Screen.Generation.createRoute("recovery")) { launchSingleTop = true }
+            }
         }
         onGenerationNotificationHandled()
     }
@@ -306,6 +339,7 @@ fun NavGraph(
                         pauseAdsForTour -> "APP_TOUR"
                         AdManager.isDiagnosticOverlayVisible() -> "DIAGNOSTICS_OPEN"
                         engagementOverlayOpen -> "FEEDBACK_PROMPT"
+                        dailyRewardModel.state.value.blocksOtherPrompts -> "DAILY_REWARD"
                         stylePreferenceSheetOpen -> "PREFERENCE_SHEET"
                         creditsRequest != null || authViewModel.isPurchaseLoading.value || authViewModel.isRewardedAdLoading.value -> "CREDITS_OR_PURCHASE_FLOW"
                         AdManager.isFullScreenAdShowing() -> "FULL_SCREEN_AD"
@@ -343,6 +377,7 @@ fun NavGraph(
             user.profileSetupComplete == false || user.stylePreferenceSetupComplete == false -> "ACCOUNT_SETUP"
             tourShowing || tourPending -> "APP_TOUR"
             engagementOverlayOpen -> "FEEDBACK_PROMPT"
+            dailyRewardModel.state.value.blocksOtherPrompts -> "DAILY_REWARD"
             authViewModel.isPurchaseLoading.value || authViewModel.isRewardedAdLoading.value -> "PURCHASE_OR_REWARD_FLOW"
             !lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) -> "SCREEN_NOT_RESUMED"
             else -> null
@@ -358,11 +393,35 @@ fun NavGraph(
         AdManager.showPlacement(activity, actual) { mainAdTimer.reset(SystemClock.elapsedRealtime()) }
     }
 
+    val onDailyClaimCompleted by rememberUpdatedState<(DailyRewardClaimed) -> Unit>({ event ->
+        val now = SystemClock.elapsedRealtime()
+        val reward = dailyRewardModel.state.value
+        if (generationOwner == event.userId && currentRoute == Screen.Home.route &&
+            now - event.confirmedAt in 0..2_000L && reward.offer?.dayKey == event.dayKey && reward.offer?.claimed == true &&
+            !reward.blocksOtherPrompts && creditsRequest == null && !stylePreferenceSheetOpen && !isAppRefreshing &&
+            generationViewModel.operations.value.none { it.status in listOf("processing", "outcome_unknown") }) {
+            showEventAd(AdPlacement.DAILY_BONUS_CLAIM)
+        }
+    })
+    LaunchedEffect(dailyRewardModel, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            dailyRewardModel.claimCompletions.collect { event ->
+                // Allow the state change to be applied and the claim dialog to close first.
+                repeat(2) { withFrameNanos { } }
+                onDailyClaimCompleted(event)
+            }
+        }
+    }
+
     val headerState = GenerationHeaderState(
         items = if (generationOwner != null && isBottomBarVisible) recoverableGenerations else emptyList(),
         onOpen = { id ->
-            generationViewModel.openOperation(id)
-            navController.navigate(Screen.Generation.createRoute("recovery")) { launchSingleTop = true }
+            val operation = recoverableGenerations.find { it.id == id }
+            if (opensGenerationGallery(operation?.status)) openGalleryPhoto(id)
+            else {
+                generationViewModel.openOperation(id)
+                navController.navigate(Screen.Generation.createRoute("recovery")) { launchSingleTop = true }
+            }
         }
     )
     LaunchedEffect(generationOwner) { creditsRequest = null }
@@ -517,6 +576,8 @@ fun NavGraph(
                     HomeScreen(
                         authViewModel = authViewModel,
                         viewModel = homeViewModel,
+                        dailyRewardState = dailyRewardState,
+                        onClaimDailyReward = dailyRewardModel::claimBonus,
                         isRefreshing = isAppRefreshing,
                         tourActive = tourShowing,
                         onRefresh = refreshApp,
@@ -646,9 +707,31 @@ fun NavGraph(
                     })
                 }
 
-                composable(Screen.History.route) {
+                composable(Screen.History.route) { entry ->
+                    val photoRequest by entry.savedStateHandle.getStateFlow<String?>(GALLERY_PHOTO_REQUEST, null).collectAsState()
+                    val requestValue = photoRequest
+                    LaunchedEffect(requestValue, generationOwner) {
+                        if (generationOwner != null && requestValue != null && requestedGalleryPhoto(requestValue, generationOwner) == null) {
+                            if (entry.savedStateHandle.get<String>(GALLERY_PHOTO_REQUEST) == requestValue)
+                                entry.savedStateHandle.set<String?>(GALLERY_PHOTO_REQUEST, null)
+                        }
+                    }
                     MyGenerationsScreen(
-                        onBackClick = { navController.popBackStack() }
+                        onBackClick = { navController.popBackStack() },
+                        viewModel = generationViewModel,
+                        requestedGenerationId = requestedGalleryPhoto(requestValue, generationOwner),
+                        onRequestedGenerationHandled = {
+                            if (entry.savedStateHandle.get<String>(GALLERY_PHOTO_REQUEST) == requestValue) {
+                                entry.savedStateHandle.set<String?>(GALLERY_PHOTO_REQUEST, null)
+                            }
+                        },
+                        onSavePhoto = {
+                            if (generationViewModel.saveImageToGallery(context)) showEventAd(AdPlacement.IMAGE_DOWNLOAD)
+                        },
+                        onOpenGeneration = { operation ->
+                            generationViewModel.openOperation(operation.id)
+                            navController.navigate(Screen.Generation.createRoute(operation.styleId.ifBlank { "custom-prompt" })) { launchSingleTop = true }
+                        }
                     )
                 }
 
@@ -812,6 +895,13 @@ fun NavGraph(
                     val statusMsg by generationViewModel.statusMessage.collectAsState()
                     val selectedPhotos by generationViewModel.selectedPhotos.collectAsState()
 
+                    LaunchedEffect(genState) {
+                        if ((genState as? GenerationUiState.Error)?.isExpired == true) {
+                            GenerationNotifications.imageDisplayed(context, generationViewModel.notificationOwner(), generationViewModel.focusedGenerationId.value)
+                            generationViewModel.markFocusedViewed()
+                        }
+                    }
+
 
                     BackHandler {
                         if (genState is GenerationUiState.Error) generationViewModel.markFocusedViewed()
@@ -829,6 +919,10 @@ fun NavGraph(
                         },
                         onRetryClick = {
                             generationViewModel.generateImage(styleId, isRetry = true)
+                        },
+                        onMyGenerationsClick = {
+                            generationViewModel.resetState()
+                            navController.navigate(Screen.History.route) { popUpTo(Screen.Generation.route) { inclusive = true }; launchSingleTop = true }
                         },
                         onSuccess = { _ ->
                           if (navController.currentBackStackEntry?.destination?.route == Screen.Generation.route) {
@@ -851,7 +945,8 @@ fun NavGraph(
                         viewModel = generationViewModel,
                         onBackClick = {
                             generationViewModel.resetState()
-                            navController.navigate(Screen.Home.route) { popUpTo(Screen.Home.route) { inclusive = true } }
+                            if (navController.previousBackStackEntry?.destination?.route == Screen.History.route) navController.popBackStack()
+                            else navController.navigate(Screen.Home.route) { popUpTo(Screen.Home.route) { inclusive = true } }
                         },
                         onSaveClick = { onComplete ->
                             if (generationViewModel.saveImageToGallery(context, onComplete)) {
@@ -859,7 +954,11 @@ fun NavGraph(
                                 showEventAd(AdPlacement.IMAGE_DOWNLOAD)
                             }
                         },
-                        onShareClick = { generationViewModel.shareImage(context) }
+                        onShareClick = { generationViewModel.shareImage(context) },
+                        onMyGenerationsClick = {
+                            generationViewModel.resetState()
+                            navController.navigate(Screen.History.route) { popUpTo(Screen.Result.route) { inclusive = true }; launchSingleTop = true }
+                        }
                     )
                 }
 
@@ -1009,6 +1108,18 @@ fun NavGraph(
             BannerAdView(modifier = Modifier.fillMaxWidth())
         }
     }
+    com.itsdhruvbhardwaj.picme.ui.components.DailyRewardHost(
+        ownerId = generationOwner, model = dailyRewardModel, homeActive = currentRoute == Screen.Home.route,
+        safeToPrompt = {
+            val signedIn = (authState as? AuthState.Authenticated)?.user
+            currentRoute == Screen.Home.route && homeViewModel.uiState.value is HomeUiState.Success &&
+                signedIn?.emailVerified == true && signedIn.profileSetupComplete != false && signedIn.stylePreferenceSetupComplete != false &&
+                !tourShowing && !tourPending && !engagementOverlayOpen && creditsRequest == null && !stylePreferenceSheetOpen &&
+                !isAppRefreshing && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
+                !authViewModel.isPurchaseLoading.value && !authViewModel.isRewardedAdLoading.value && !AdManager.isFullScreenAdShowing() &&
+                generationViewModel.operations.value.none { it.status in listOf("processing", "outcome_unknown") }
+        }
+    )
     com.itsdhruvbhardwaj.picme.ui.components.EngagementPromptHost(
         user = (authState as? AuthState.Authenticated)?.user,
         authViewModel = authViewModel,
@@ -1016,7 +1127,7 @@ fun NavGraph(
         safeToPrompt = {
             val signedIn = (authState as? AuthState.Authenticated)?.user
             val home = homeViewModel.uiState.value as? HomeUiState.Success
-            currentRoute == Screen.Home.route && !tourShowing && !tourPending && signedIn?.emailVerified == true &&
+            currentRoute == Screen.Home.route && !dailyRewardModel.state.value.blocksOtherPrompts && !tourShowing && !tourPending && signedIn?.emailVerified == true &&
                 signedIn.profileSetupComplete != false && signedIn.stylePreferenceSetupComplete != false &&
                 home != null && home.refreshError == null && creditsRequest == null && !stylePreferenceSheetOpen &&
                 !authViewModel.isPurchaseLoading.value && !authViewModel.isRewardedAdLoading.value && !AdManager.isFullScreenAdShowing() &&

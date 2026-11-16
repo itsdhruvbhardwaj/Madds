@@ -81,6 +81,14 @@ class AuthViewModel(
     fun refreshCreditProduct() { billingManager?.refreshCreditProduct() }
     suspend fun getPurchases(page: Int = 1) = authRepository.getPurchases(page)
     suspend fun finishAppTour(ownerId: String, request: com.itsdhruvbhardwaj.picme.data.model.AppTourResponse) = authRepository.finishAppTour(ownerId, request)
+    suspend fun dailyRewardStatus(ownerId: String) = authRepository.dailyRewardStatus(ownerId).also { result ->
+        if (result.getOrNull()?.claimed == true && (_authState.value as? AuthState.Authenticated)?.user?.id == ownerId) checkSession(isInitial = true)
+    }
+    suspend fun claimDailyReward(ownerId: String, request: com.itsdhruvbhardwaj.picme.data.model.DailyRewardClaimRequest) =
+        authRepository.claimDailyReward(ownerId, request).also { result ->
+            val current = (_authState.value as? AuthState.Authenticated)?.user
+            if (current?.id == ownerId) result.getOrNull()?.takeIf { it.confirmed }?.let { _authState.value = AuthState.Authenticated(current.copy(credits = it.balance)) }
+        }
     suspend fun claimEngagementPrompt(ownerId: String, request: com.itsdhruvbhardwaj.picme.data.model.EngagementClaimRequest) = authRepository.claimEngagementPrompt(ownerId, request)
     suspend fun respondEngagementPrompt(ownerId: String, request: com.itsdhruvbhardwaj.picme.data.model.EngagementResponseRequest) = authRepository.respondEngagementPrompt(ownerId, request)
     suspend fun sendFeedback(request: com.itsdhruvbhardwaj.picme.data.model.FeedbackRequest) = authRepository.sendFeedback(request)

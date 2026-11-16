@@ -125,9 +125,9 @@ fun FavoritesScreen(
                         } else {
                             LazyVerticalGrid(
                                 columns = gridColumns,
-                                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 120.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 8.dp, bottom = 120.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
                                 modifier = Modifier.fillMaxSize()
                             ) {
                                 items(state.styles, key = { it.id }) { style ->
@@ -138,6 +138,7 @@ fun FavoritesScreen(
                                         onClick = { onStyleClick(style.id) },
                                         modifier = Modifier.fillMaxWidth(),
                                         aspectRatio = 5f / 7f,
+                                        galleryStyle = true,
                                         internalPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp),
                                     )
                                 }

@@ -57,6 +57,9 @@ import retrofit2.converter.gson.GsonConverterFactory
 class MainActivity : ComponentActivity() {
     private var pendingNotificationId by mutableStateOf<String?>(null)
     private var pendingGeneration by mutableStateOf<String?>(null)
+    private var pendingGenerationStage by mutableStateOf<String?>(null)
+    private var pendingGenerationEvent: String? = null
+    private var handledGenerationEvent: String? = null
 
     private var intentState by mutableStateOf<Intent?>(null)
     private lateinit var billingManager: BillingManager
@@ -93,8 +96,18 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) window.isNavigationBarContrastEnforced = false
         com.itsdhruvbhardwaj.picme.notifications.PushNotifications.createChannels(this)
         com.itsdhruvbhardwaj.picme.notifications.GenerationNotifications.createChannels(this)
-        pendingGeneration = savedInstanceState?.getString("pending_generation")
-            ?: com.itsdhruvbhardwaj.picme.notifications.GenerationNotifications.tap(intent)
+        handledGenerationEvent = savedInstanceState?.getString("handled_generation_event")
+        val launchGeneration = com.itsdhruvbhardwaj.picme.notifications.GenerationNotifications.tap(intent)
+        val launchEvent = com.itsdhruvbhardwaj.picme.notifications.GenerationNotifications.tapEvent(intent)
+        pendingGeneration = com.itsdhruvbhardwaj.picme.navigation.restoredGenerationRequest(
+            savedInstanceState?.containsKey("pending_generation") == true,
+            savedInstanceState?.getString("pending_generation"),
+            launchGeneration, launchEvent, handledGenerationEvent)
+        pendingGenerationEvent = if (pendingGeneration != null && pendingGeneration == launchGeneration && launchEvent != handledGenerationEvent)
+            launchEvent else savedInstanceState?.getString("pending_generation_event")
+        pendingGenerationStage = if (pendingGeneration != null && pendingGeneration == launchGeneration && launchEvent != handledGenerationEvent)
+            com.itsdhruvbhardwaj.picme.notifications.GenerationNotifications.tapStage(intent)
+            else savedInstanceState?.getString("pending_generation_stage")
         pendingNotificationId = savedInstanceState?.getString("pending_push_id")
             ?: com.itsdhruvbhardwaj.picme.notifications.PushNotifications.tapId(intent)
 
@@ -136,7 +149,9 @@ class MainActivity : ComponentActivity() {
         val notificationPreferences = com.itsdhruvbhardwaj.picme.notifications.PushPreferencesRepository(applicationContext, retrofit, tokenStorage, authRepository)
         val styleRepository = StyleRepository(styleApiService, tokenStorage, HomeFeedCache(applicationContext),
             exploreFeedCache = com.itsdhruvbhardwaj.picme.data.local.ExploreFeedCache(java.io.File(cacheDir, "explore_catalog")))
-        val generationRepository = GenerationRepository(generationApiService, applicationContext.contentResolver, tokenStorage)
+        val generationRepository = GenerationRepository(generationApiService, applicationContext.contentResolver, tokenStorage,
+            galleryApiService = styleApiService,
+            galleryStore = com.itsdhruvbhardwaj.picme.data.local.GenerationGalleryStore(applicationContext))
 
         val viewModelFactory = object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -207,7 +222,17 @@ class MainActivity : ComponentActivity() {
                         pendingNotificationId = pendingNotificationId,
                         onNotificationHandled = { pendingNotificationId = null },
                         pendingGeneration = pendingGeneration,
-                        onGenerationNotificationHandled = { pendingGeneration = null }
+                        pendingGenerationStage = pendingGenerationStage,
+                        onGenerationNotificationHandled = {
+                            val handled = pendingGeneration
+                            handledGenerationEvent = pendingGenerationEvent
+                            pendingGenerationEvent = null
+                            pendingGenerationStage = null
+                            pendingGeneration = null
+                            if (handled != null && com.itsdhruvbhardwaj.picme.notifications.GenerationNotifications.tap(intent) == handled) {
+                                setIntent(Intent(intent).apply { action = Intent.ACTION_MAIN; data = null })
+                            }
+                        }
                     )
                 }
             }
@@ -302,6 +327,8 @@ class MainActivity : ComponentActivity() {
         if (intent.action == com.itsdhruvbhardwaj.picme.notifications.PushNotifications.OPEN_ACTION) {
             pendingNotificationId = com.itsdhruvbhardwaj.picme.notifications.PushNotifications.tapId(intent)
         } else if (intent.action == com.itsdhruvbhardwaj.picme.notifications.GenerationNotifications.OPEN_ACTION) {
+            pendingGenerationStage = com.itsdhruvbhardwaj.picme.notifications.GenerationNotifications.tapStage(intent)
+            pendingGenerationEvent = com.itsdhruvbhardwaj.picme.notifications.GenerationNotifications.tapEvent(intent)
             pendingGeneration = com.itsdhruvbhardwaj.picme.notifications.GenerationNotifications.tap(intent)
         } else intentState = intent
     }
@@ -309,6 +336,9 @@ class MainActivity : ComponentActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString("pending_push_id", pendingNotificationId)
         outState.putString("pending_generation", pendingGeneration)
+        outState.putString("pending_generation_stage", pendingGenerationStage)
+        outState.putString("pending_generation_event", pendingGenerationEvent)
+        outState.putString("handled_generation_event", handledGenerationEvent)
         super.onSaveInstanceState(outState)
     }
 }

@@ -4,6 +4,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class InterstitialGateTest {
+    @Test fun `daily bonus interstitial is independently controlled and defaults off`() {
+        val initial = AdConfig()
+        assertFalse(initial.allows(AdPlacement.DAILY_BONUS_CLAIM))
+        val enabled = initial.copy(placements = initial.placements + (AdPlacement.DAILY_BONUS_CLAIM.key to true))
+        assertTrue(enabled.allows(AdPlacement.DAILY_BONUS_CLAIM))
+        assertFalse(enabled.copy(enabled = false).allows(AdPlacement.DAILY_BONUS_CLAIM))
+    }
     @Test fun `at least two actions required before first ad`() {
         val gate=InterstitialGate()
         gate.action();assertFalse(gate.allowed(0,90))

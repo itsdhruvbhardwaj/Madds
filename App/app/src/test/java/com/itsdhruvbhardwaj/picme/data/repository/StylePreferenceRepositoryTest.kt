@@ -24,9 +24,9 @@ class StylePreferenceRepositoryTest {
         repository.syncStylePreference("user-a")
         whenever(api.saveStylePreference(any(), any())).thenReturn(Response.success(StylePreferenceResponse("male")))
         assertTrue(repository.saveStylePreference("male").isSuccess)
-        whenever(api.getStyles(anyOrNull(), any(), any(), anyOrNull(), anyOrNull(), any(), any(), anyOrNull())).thenReturn(Response.success(StyleResponse(styles = emptyList())))
-        whenever(api.getHomeConfig(any(), any(), anyOrNull())).thenReturn(Response.success(HomeConfigResponse(emptyList())))
-        whenever(api.getCollections(any())).thenReturn(Response.success(CollectionsResponse(emptyList())))
+        whenever(api.getStyles(anyOrNull(), any(), any(), anyOrNull(), anyOrNull(), any(), any(), anyOrNull(), any())).thenReturn(Response.success(StyleResponse(styles = emptyList())))
+        whenever(api.getHomeConfig(any(), any(), anyOrNull(), any())).thenReturn(Response.success(HomeConfigResponse(emptyList())))
+        whenever(api.getCollections(any(), any())).thenReturn(Response.success(CollectionsResponse(emptyList())))
         repository.getStyles(1, 18)
         repository.getStyles(2, 18, "Fashion", "kurta")
         repository.getHomeConfig()
@@ -73,12 +73,12 @@ class StylePreferenceRepositoryTest {
     }
     @Test fun `collection server outages never trigger a full catalogue scan`() = runBlocking {
         val repository = setup()
-        whenever(api.getCollections(any())).thenReturn(Response.error(503, "unavailable".toResponseBody()))
+        whenever(api.getCollections(any(), any())).thenReturn(Response.error(503, "unavailable".toResponseBody()))
         val result = repository.getCollections()
         assertTrue(result.isFailure)
         assertEquals("server_overloaded", result.exceptionOrNull()?.message)
         verify(api, times(3)).getCollections("all")
-        verify(api, never()).getStyles(anyOrNull(), any(), any(), anyOrNull(), anyOrNull(), any(), any(), anyOrNull())
+        verify(api, never()).getStyles(anyOrNull(), any(), any(), anyOrNull(), anyOrNull(), any(), any(), anyOrNull(), any())
         Unit
     }
 

@@ -2,6 +2,7 @@ package com.itsdhruvbhardwaj.picme.data.local
 
 import com.google.gson.Gson
 import com.itsdhruvbhardwaj.picme.data.model.Style
+import com.itsdhruvbhardwaj.picme.data.model.publicCacheCopy
 import java.io.File
 import java.security.MessageDigest
 
@@ -23,7 +24,7 @@ class ExploreFeedCache(
             file.delete()
             return null
         }
-        snapshot.styles.map { it.copy(isFavorite = false, prompt = "") }
+        snapshot.styles.map { it.publicCacheCopy() }
     }.getOrNull()
 
     @Synchronized
@@ -31,13 +32,17 @@ class ExploreFeedCache(
         runCatching {
             directory.mkdirs()
             val publicStyles = styles.distinctBy { it.id }.take(MAX_STYLES)
-                .map { it.copy(isFavorite = false, prompt = "") }
+                .map { it.publicCacheCopy() }
             val json = gson.toJson(Snapshot(now(), publicStyles))
             if (json.toByteArray(Charsets.UTF_8).size > MAX_BYTES) return
             val target = file(preference, collection, query)
             val temporary = File(directory, target.name + ".tmp")
             temporary.writeText(json)
-            if (!temporary.renameTo(target)) { temporary.delete(); return }
+            if (!temporary.renameTo(target)) {
+                // Some filesystems cannot rename over an existing snapshot.
+                temporary.copyTo(target, overwrite = true)
+                temporary.delete()
+            }
             target.setLastModified(now())
             val entries = directory.listFiles()?.filter { it.extension == "json" }
                 ?.sortedByDescending { it.lastModified() }.orEmpty()

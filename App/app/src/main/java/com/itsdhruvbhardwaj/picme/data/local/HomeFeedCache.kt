@@ -3,6 +3,7 @@ package com.itsdhruvbhardwaj.picme.data.local
 import android.content.Context
 import com.google.gson.Gson
 import com.itsdhruvbhardwaj.picme.data.model.HomeConfigResponse
+import com.itsdhruvbhardwaj.picme.data.model.publicCacheCopy
 
 /** Only public catalogue data is persisted; never tokens or account preferences. */
 class HomeFeedCache(context: Context) {
@@ -17,7 +18,7 @@ class HomeFeedCache(context: Context) {
 
     fun write(feed: HomeConfigResponse, preference: String = "all") {
         val publicFeed = feed.copy(sections = feed.sections.map { section ->
-            section.copy(styles = section.styles?.map { it.copy(isFavorite = false) })
+            section.copy(styles = section.styles?.map { it.publicCacheCopy() })
         })
         preferences.edit().putString(if (preference == "all") "feed_v1" else "feed_v1_$preference", gson.toJson(publicFeed)).apply()
     }

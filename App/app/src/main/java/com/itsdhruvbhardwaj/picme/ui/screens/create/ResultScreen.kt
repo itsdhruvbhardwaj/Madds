@@ -46,7 +46,8 @@ fun ResultScreen(
     viewModel: GenerationViewModel,
     onBackClick: () -> Unit,
     onSaveClick: ((Boolean) -> Unit) -> Unit,
-    onShareClick: () -> Unit
+    onShareClick: () -> Unit,
+    onMyGenerationsClick: () -> Unit
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -57,16 +58,25 @@ fun ResultScreen(
     val savedResults by viewModel.savedResults.collectAsState()
     val resultKey = remember(imageBase64, resultId) { viewModel.resultKey(imageBase64, resultId) }
     val isSaved = resultKey in savedResults
-    var pendingExit by remember(imageBase64, resultId) { mutableStateOf<(() -> Unit)?>(null) }
-    var saveFailed by remember { mutableStateOf(false) }
-    val requestExit: (() -> Unit) -> Unit = { exit ->
-        if (!isActionLoading) {
-            if (imageReady && !isSaved) { saveFailed = false; pendingExit = exit }
-            else exit()
-        }
+    val expiry by viewModel.focusedExpiry.collectAsState()
+    var now by remember { mutableStateOf(viewModel.galleryNow()) }
+    var confirmDelete by remember(resultId) { mutableStateOf(false) }
+    LaunchedEffect(expiry) {
+        while (true) { now = viewModel.galleryNow(); kotlinx.coroutines.delay(1_000) }
     }
-    val savePhoto: () -> Unit = { onSaveClick {} }
-    BackHandler { requestExit(onBackClick) }
+    val expired = !isSaved && expiry?.let { it <= now } == true
+    val savePhoto: () -> Unit = { if (!expired && !isSaved) onSaveClick {} }
+    BackHandler { if (!isActionLoading) onBackClick() }
+    if (expired) {
+        Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center) {
+            Text("This photo's 24-hour availability has ended.", style = MaterialTheme.typography.titleLarge)
+            Text("Photos already saved to your device stay in your gallery.", Modifier.padding(vertical = 16.dp))
+            Button(onClick = onMyGenerationsClick) { Text("My Generations") }
+            TextButton(onClick = onBackClick) { Text("Back") }
+        }
+        return
+    }
 
     // Coil success means decoded; wait for the next frame before announcing readiness.
     LaunchedEffect(imageBase64, imageReady) {
@@ -155,12 +165,12 @@ fun ResultScreen(
             TopAppBar(
                 title = { Text("Your Creation", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
                 navigationIcon = {
-                    IconButton(onClick = { requestExit(onBackClick) }) {
+                    IconButton(onClick = { if (!isActionLoading) onBackClick() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    IconButton(onClick = savePhoto, enabled = !isActionLoading && imageReady) {
+                    IconButton(onClick = savePhoto, enabled = !isActionLoading && imageReady && !isSaved) {
                         Icon(Icons.Default.Download, contentDescription = "Save")
                     }
                     IconButton(onClick = onShareClick, enabled = !isActionLoading && imageReady) {
@@ -195,6 +205,8 @@ fun ResultScreen(
                     AsyncImage(
                         model = ImageRequest.Builder(context)
                             .data(imageBytes)
+                            .diskCachePolicy(coil.request.CachePolicy.DISABLED)
+                            .memoryCachePolicy(coil.request.CachePolicy.DISABLED)
                             .crossfade(false)
                             .build(),
                         contentDescription = "Generated AI Photo",
@@ -232,7 +244,11 @@ fun ResultScreen(
             )
 
             Text(
-                text = if (imageReady) "Save it to your gallery or share it with friends" else "",
+                text = if (isSaved) "Saved to your gallery. Your device copy stays after the temporary copy expires."
+                    else if (imageReady) "Your photo is available in My Generations for 24 hours from generation. " +
+                        (expiry?.let { com.itsdhruvbhardwaj.picme.data.model.generationTimeLeft(it, now) + ". " } ?: "") +
+                        "Save it to your gallery to keep it."
+                    else "",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp)
@@ -252,52 +268,36 @@ fun ResultScreen(
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 PicMeSecondaryButton(
-                    text = "Save",
+                    text = if (isSaved) "Saved" else "Save",
                     onClick = savePhoto,
                     isLoading = isActionLoading,
                     modifier = Modifier.weight(1f),
-                    enabled = imageReady
+                    enabled = imageReady && !isSaved && !isActionLoading
                 )
                 PicMeButton(
                     text = "Share",
                     onClick = onShareClick,
                     isLoading = false, // Shared via intent, loading not needed here usually
                     modifier = Modifier.weight(1f),
-                    enabled = imageReady
+                    enabled = imageReady && !isActionLoading
                 )
             }
             
+            TextButton(onClick = { confirmDelete = true }, enabled = !isActionLoading) { Text("Delete temporary copy") }
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
 
-    if (pendingExit != null) {
+    if (confirmDelete) {
         AlertDialog(
-            onDismissRequest = { if (!isActionLoading) pendingExit = null },
-            title = { Text("Save your photo?") },
-            text = { Text(if (saveFailed) "Couldn't save your photo. Please try again, or discard it to leave."
-                else "This photo hasn't been saved to My Generations or your gallery. Save it before leaving to keep a copy.") },
-            confirmButton = {
-                TextButton(enabled = !isActionLoading, onClick = {
-                    saveFailed = false
-                    onSaveClick { saved ->
-                        if (saved) {
-                            val exit = pendingExit
-                            pendingExit = null
-                            exit?.invoke()
-                        } else saveFailed = true
-                    }
-                }) { Text(if (isActionLoading) "Saving�" else "Save photo") }
-            },
-            dismissButton = {
-                TextButton(enabled = !isActionLoading, onClick = {
-                    viewModel.discardFocusedResult(resultId)
-                    com.itsdhruvbhardwaj.picme.notifications.GenerationNotifications.imageDisplayed(context, resultOwner, resultId)
-                    val exit = pendingExit
-                    pendingExit = null
-                    exit?.invoke()
-                }) { Text("Discard") }
-            }
+            onDismissRequest = { if (!isActionLoading) confirmDelete = false },
+            title = { Text("Delete temporary copy?") },
+            text = { Text("This removes the photo from your recent generations. A copy already saved to your device will stay in your gallery.") },
+            confirmButton = { TextButton(enabled = !isActionLoading, onClick = {
+                confirmDelete = false
+                viewModel.deleteTemporaryResult(context, onBackClick)
+            }) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } }
         )
     }
 
@@ -315,6 +315,8 @@ fun ResultScreen(
                 AsyncImage(
                     model = ImageRequest.Builder(context)
                         .data(imageBytes)
+                            .diskCachePolicy(coil.request.CachePolicy.DISABLED)
+                            .memoryCachePolicy(coil.request.CachePolicy.DISABLED)
                         .crossfade(true)
                         .build(),
                     contentDescription = "Full-screen preview of your generated photo",
@@ -368,7 +370,7 @@ fun ResultScreen(
 
                 Button(
                     onClick = savePhoto,
-                    enabled = !isActionLoading,
+                    enabled = !isActionLoading && !isSaved,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
@@ -380,7 +382,7 @@ fun ResultScreen(
                 ) {
                     Icon(Icons.Default.Download, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (isActionLoading) "Saving…" else "Download")
+                    Text(if (isActionLoading) "Saving…" else if (isSaved) "Saved" else "Download")
                 }
             }
         }

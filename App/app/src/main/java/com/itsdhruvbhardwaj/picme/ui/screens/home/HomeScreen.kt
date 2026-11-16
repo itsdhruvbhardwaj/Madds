@@ -1,4 +1,6 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.home
+import com.itsdhruvbhardwaj.picme.data.model.cardTitle
+import com.itsdhruvbhardwaj.picme.data.model.variantCount
 
 import androidx.compose.material3.MaterialTheme
 
@@ -35,7 +37,9 @@ fun HomeScreen(
     onProfileClick: () -> Unit,
     isRefreshing: Boolean = false,
     onRefresh: () -> Unit = { viewModel.loadHomeData() },
-    tourActive: Boolean = false
+    tourActive: Boolean = false,
+    dailyRewardState: DailyRewardUiState = DailyRewardUiState(),
+    onClaimDailyReward: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val adConfig by com.itsdhruvbhardwaj.picme.utils.AdPolicy.config.collectAsState()
@@ -91,7 +95,11 @@ fun HomeScreen(
                             if (state.sections.isEmpty()) item {
                                 Text("No styles available yet. Pull down to refresh.", modifier = Modifier.padding(24.dp))
                             }
+                            if (state.sections.isEmpty() && !tourActive && dailyRewardState.available) item(key = "daily_bonus") {
+                                DailyBonusStrip(dailyRewardState, onClaimDailyReward)
+                            }
                             itemsIndexed(state.sections, key = { _, section -> section.config.id }) { sectionIndex, sectionData ->
+                                if (sectionIndex == 0 && !tourActive) DailyBonusStrip(dailyRewardState, onClaimDailyReward)
                                 if (sectionData.styles == null) {
                                     SectionSkeleton()
                                 } else if (sectionData.styles.isNotEmpty()) {
@@ -146,10 +154,11 @@ fun HomeSectionRow(
         ) {
             items(sectionData.styles!!, key = { it.id }) { style ->
                 StyleCard(
-                    name = style.name,
+                    name = style.cardTitle,
                     modifier = if (tourSection && style.id == sectionData.styles?.firstOrNull()?.id) Modifier.appTourTarget("style") else Modifier,
                     thumbnailUrl = style.thumbnail,
                     genderTag = style.genderTag,
+                    variantCount = style.variantCount,
                     onClick = { onStyleClick(style.id) },
                     width = 148.dp,
                     height = 208.dp,

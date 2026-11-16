@@ -30,6 +30,8 @@ class GenerationRepository(
     private val apiService: StyleApiService,
     private val contentResolver: ContentResolver,
     private val tokenStorage: AuthTokenStorage,
+    private val galleryApiService: StyleApiService = apiService,
+    private val galleryStore: com.itsdhruvbhardwaj.picme.data.local.GenerationGalleryStore? = null,
     private val preparePhoto: (ContentResolver, Uri, String) -> okhttp3.MultipartBody.Part = GenerationPhotoProcessor::multipart
 ) {
     fun accountId(): String? = tokenStorage.getUser()?.id
@@ -42,6 +44,37 @@ class GenerationRepository(
     suspend fun operationByKey(key: String) = apiService.generationByKey(authorization(), key)
     suspend fun result(id: String) = apiService.generationResult(authorization(), id)
     suspend fun viewed(id: String) = apiService.generationViewed(authorization(), id)
+    fun bindGallery(owner: String?) { galleryStore?.bind(owner) }
+    suspend fun gallery(cursor: String?) = galleryApiService.generationGallery(authorization(), cursor)
+    suspend fun details(id: String) = galleryApiService.generationDetails(authorization(), id)
+    suspend fun deleteResult(id: String) = galleryApiService.deleteGenerationResult(authorization(), id)
+    suspend fun savedUri(owner: String, id: String): Uri? = withContext(Dispatchers.IO) {
+        galleryStore?.savedUri(owner, id)?.takeIf { uri ->
+            runCatching { contentResolver.openInputStream(uri)?.use { true } ?: false }.getOrDefault(false)
+                .also { exists -> if (!exists) galleryStore.forgetSaved(owner, id) }
+        }
+    }
+    fun rememberSaved(owner: String, id: String, uri: Uri) { galleryStore?.rememberSaved(owner, id, uri) }
+    fun forgetSaved(owner: String, id: String) { galleryStore?.forgetSaved(owner, id) }
+    fun forgetThumbnail(owner: String, id: String) { galleryStore?.forgetThumbnail(owner, id) }
+    suspend fun thumbnail(owner: String, id: String, expires: Long): java.io.File? = withContext(Dispatchers.IO) {
+        galleryStore?.thumbnail(owner, id, expires)?.let { return@withContext it }
+        val response = galleryApiService.generationThumbnail(authorization(), id)
+        if (!response.isSuccessful) { response.errorBody()?.close(); return@withContext null }
+        response.body()?.use { body ->
+            val bytes = body.byteStream().use { input ->
+                val output = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(8192)
+                while (output.size() <= 512 * 1024) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    output.write(buffer, 0, count)
+                }
+                output.toByteArray()
+            }
+            galleryStore?.putThumbnail(owner, id, expires, bytes)
+        }
+    }
 
     /**
      * Sends a request to the backend to generate an image using the selected style and photos.

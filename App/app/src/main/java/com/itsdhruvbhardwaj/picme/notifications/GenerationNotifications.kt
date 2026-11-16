@@ -14,6 +14,15 @@ import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.data.local.AuthTokenStorage
 import com.itsdhruvbhardwaj.picme.data.model.RecoverableGeneration
 
+// Progress updates must not overwrite a ready notification's tap destination.
+internal fun generationNotificationRequestCode(stage: String) = when (stage) {
+    "completed" -> 1
+    "processing" -> 2
+    "failed" -> 3
+    "outcome_unknown" -> 4
+    else -> 0
+}
+
 object GenerationNotifications {
     const val OPEN_ACTION = "com.itsdhruvbhardwaj.picme.OPEN_GENERATION"
     const val PROGRESS = "madds_generation_progress"
@@ -128,7 +137,7 @@ object GenerationNotifications {
             "outcome_unknown" -> "The provider outcome is unconfirmed. Open Madds for details."
             else -> "You can keep browsing. Tap to check this generation."
         }
-        val notification = base(context, owner, id, if (terminal) READY else PROGRESS)
+        val notification = base(context, owner, id, if (terminal) READY else PROGRESS, stage)
             .setContentTitle(title).setContentText(body)
             .setPriority(if (terminal) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_LOW)
             .setOngoing(!terminal).setAutoCancel(terminal).setOnlyAlertOnce(!terminal)
@@ -143,20 +152,31 @@ object GenerationNotifications {
         }
     }
 
-    private fun base(context: Context, owner: String, id: String, channel: String): NotificationCompat.Builder {
+    private fun base(context: Context, owner: String, id: String, channel: String, stage: String): NotificationCompat.Builder {
         val intent = Intent(context, MainActivity::class.java).apply {
             action = OPEN_ACTION; data = Uri.parse("madds-generation://open/$owner/$id")
+            putExtra("generation_open_event", java.util.UUID.randomUUID().toString())
+            putExtra("generation_stage", stage)
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         return NotificationCompat.Builder(context, channel).setSmallIcon(NotificationBrandIcon.get(context))
             .setColor(android.graphics.Color.WHITE)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .setContentIntent(PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+            .setContentIntent(PendingIntent.getActivity(context, generationNotificationRequestCode(stage), intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
     }
 
     fun tap(intent: Intent?): String? = intent?.takeIf { it.action == OPEN_ACTION }?.data?.let { uri ->
         if (uri.scheme == "madds-generation" && uri.host == "open" && uri.pathSegments.size == 2 && uri.pathSegments.all(idPattern::matches))
             uri.pathSegments.joinToString(":") else null
+    }
+
+    fun tapEvent(intent: Intent?): String? = tap(intent)?.let { payload ->
+        "$payload:${intent?.getStringExtra("generation_open_event") ?: "legacy"}"
+    }
+
+    fun tapStage(intent: Intent?): String? = tap(intent)?.let {
+        intent?.getStringExtra("generation_stage")?.takeIf { stage -> stage in setOf("completed", "processing", "failed", "outcome_unknown") }
     }
 
     fun clear(context: Context) {

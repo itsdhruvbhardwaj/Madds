@@ -4,9 +4,13 @@ import androidx.compose.material3.MaterialTheme
 
 import android.widget.Toast
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -15,12 +19,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import com.itsdhruvbhardwaj.picme.ui.components.StyleGenderBadge
 import com.itsdhruvbhardwaj.picme.data.model.genderTagLabel
 import com.itsdhruvbhardwaj.picme.data.model.comparisonPreview
+import com.itsdhruvbhardwaj.picme.data.model.adjacentPreviewUrls
+import com.itsdhruvbhardwaj.picme.data.model.cardTitle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
@@ -30,6 +38,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -47,6 +57,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.imageLoader
 import com.itsdhruvbhardwaj.picme.R
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthState
 import com.itsdhruvbhardwaj.picme.ui.auth.AuthViewModel
@@ -73,6 +84,16 @@ fun StyleDetailsScreen(
 
     val openCredits = LocalCreditsLauncher.current
     val currentStyle = (uiState as? StyleDetailsUiState.Success)?.style
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val previewWidth = with(LocalDensity.current) { (screenWidth - 48.dp).roundToPx().coerceAtLeast(1) }
+    val adjacentUrls = currentStyle?.adjacentPreviewUrls().orEmpty()
+    LaunchedEffect(context, adjacentUrls, previewWidth) {
+        // One warm-up at a time leaves network capacity for the visible look.
+        adjacentUrls.forEach { url -> context.imageLoader.execute(
+            ImageRequest.Builder(context).data(url).size(previewWidth, previewWidth * 7 / 5)
+                .scale(coil.size.Scale.FILL).build()
+        ) }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.toastEvent.collect { message ->
@@ -140,6 +161,7 @@ fun StyleDetailsScreen(
                                     beforeUrl = comparison.first,
                                     afterUrl = comparison.second,
                                     styleName = style.name,
+                                    thumbnailUrl = style.thumbnail,
                                     reveal = comparisonReveal,
                                     animationPaused = comparisonPaused,
                                     onInteraction = { comparisonPaused = true },
@@ -167,6 +189,29 @@ fun StyleDetailsScreen(
                             }
 
                             Spacer(modifier = Modifier.height(16.dp))
+                            val variants = style.group?.variants.orEmpty()
+                            if (variants.size > 1) {
+                                val selectedIndex = variants.indexOfFirst { it.id == style.id }.coerceAtLeast(0)
+                                val variantList = rememberLazyListState()
+                                LaunchedEffect(style.id) { variantList.animateScrollToItem(selectedIndex) }
+                                Text(style.group?.name.orEmpty(), style = MaterialTheme.typography.titleMedium)
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(enabled = selectedIndex > 0, onClick = { viewModel.selectVariant(variants[selectedIndex - 1].id) }) { Icon(Icons.Default.ChevronLeft, "Previous look") }
+                                    Text("${style.variantLabel ?: style.name} · ${selectedIndex + 1}/${variants.size}", modifier = Modifier.weight(1f), textAlign = TextAlign.Center, fontSize = 13.sp)
+                                    IconButton(enabled = selectedIndex < variants.lastIndex, onClick = { viewModel.selectVariant(variants[selectedIndex + 1].id) }) { Icon(Icons.Default.ChevronRight, "Next look") }
+                                }
+                                LazyRow(state = variantList, horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                                    items(variants, key = { it.id }) { variant ->
+                                        Column(Modifier.width(78.dp).clip(RoundedCornerShape(12.dp))
+                                            .border(if (variant.id == style.id) 2.dp else 1.dp, if (variant.id == style.id) Primary else MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
+                                            .clickable { viewModel.selectVariant(variant.id) }.padding(5.dp)) {
+                                            AsyncImage(model = variant.thumbnail, contentDescription = "Select ${variant.variantLabel ?: variant.name}", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().aspectRatio(5f / 7f).clip(RoundedCornerShape(8.dp)))
+                                            Text(variant.variantLabel ?: variant.name, fontSize = 10.sp, maxLines = 2, modifier = Modifier.padding(top = 5.dp))
+                                        }
+                                    }
+                                }
+                                Text("Swipe the looks to choose. Drag the comparison handle to compare.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 10.dp))
+                            }
                             if (genderTagLabel(style.genderTag) != null) {
                                 StyleGenderBadge(style.genderTag, details = true)
                                 Spacer(Modifier.height(10.dp))
@@ -185,7 +230,7 @@ fun StyleDetailsScreen(
 
                 // Floating Overlay Header
                 val title = if (uiState is StyleDetailsUiState.Success) {
-                    (uiState as StyleDetailsUiState.Success).style.name
+                    (uiState as StyleDetailsUiState.Success).style.cardTitle
                 } else {
                     ""
                 }
@@ -222,6 +267,7 @@ private fun BeforeAfterComparison(
     beforeUrl: String,
     afterUrl: String,
     styleName: String,
+    thumbnailUrl: String?,
     reveal: Animatable<Float, AnimationVector1D>,
     animationPaused: Boolean,
     onInteraction: () -> Unit,
@@ -253,20 +299,23 @@ private fun BeforeAfterComparison(
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(20.dp))
             .pointerInput(beforeUrl, afterUrl) {
-                detectDragGestures(
+                detectHorizontalDragGestures(
                     onDragStart = { onInteraction() },
-                    onDrag = { change, dragAmount ->
+                    onHorizontalDrag = { change, dragAmount ->
                         change.consume()
-                        val nextReveal = (reveal.value + dragAmount.x / size.width).coerceIn(0f, 1f)
+                        val travelWidth = (size.width - 36.dp.toPx()).coerceAtLeast(1f)
+                        val nextReveal = (reveal.value + dragAmount / travelWidth).coerceIn(0f, 1f)
                         dragScope.launch { reveal.snapTo(nextReveal) }
                     }
                 )
             }
     ) {
+        // Keep this look visible while its comparison images are being decoded.
+        AsyncImage(model = thumbnailUrl, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
                 .data(afterUrl)
-                .crossfade(true)
+                .crossfade(false)
                 .build(),
             contentDescription = "After example for $styleName",
             modifier = Modifier.fillMaxSize(),
@@ -289,7 +338,7 @@ private fun BeforeAfterComparison(
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(beforeUrl)
-                    .crossfade(true)
+                    .crossfade(false)
                     .build(),
                 contentDescription = "Before example for $styleName",
                 modifier = Modifier.fillMaxSize(),

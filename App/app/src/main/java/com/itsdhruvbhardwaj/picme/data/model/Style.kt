@@ -48,8 +48,29 @@ data class Style(
     @SerializedName("isFavorite", alternate = ["is_favorite"])
     val isFavorite: Boolean = false,
     @SerializedName("genderTag")
-    val genderTag: String? = "none"
+    val genderTag: String? = "none",
+    @SerializedName("tags") val tags: List<String>? = emptyList(),
+    @SerializedName("variantLabel") val variantLabel: String? = null,
+    @SerializedName("groupName") val groupName: String? = null,
+    @SerializedName("group") val group: StyleVariantGroup? = null
 )
+
+data class StyleVariantGroup(
+    val id: String = "", val name: String = "", val coverStyleId: String = "",
+    val variants: List<Style>? = emptyList()
+)
+
+val Style.cardTitle: String get() = group?.name?.takeIf { it.isNotBlank() } ?: groupName?.takeIf { it.isNotBlank() } ?: name
+val Style.variantCount: Int get() = group?.variants.orEmpty().size
+fun Style.publicCacheCopy(): Style = copy(isFavorite = false, prompt = "", group = group?.copy(
+    variants = group.variants.orEmpty().map { it.copy(isFavorite = false, prompt = "", group = null) }
+))
+fun styleCacheEntries(styles: List<Style>): Map<String, Style> = buildMap {
+    styles.forEach { style ->
+        style.group?.variants.orEmpty().forEach { variant -> put(variant.id, variant.copy(group = style.group)) }
+        put(style.id, style)
+    }
+}
 
 data class PaginationMetadata(
     @SerializedName("currentPage", alternate = ["current_page"])

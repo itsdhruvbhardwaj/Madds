@@ -48,9 +48,9 @@ fun GenerationScreen(
     selectedPhotos: List<Uri>,
     onCancelClick: () -> Unit,
     onRetryClick: () -> Unit,
-    onSuccess: (String) -> Unit
+    onSuccess: (String) -> Unit,
+    onMyGenerationsClick: () -> Unit = onCancelClick
 ) {
-    val context = LocalContext.current
     val openCredits = LocalCreditsLauncher.current
 
     LaunchedEffect(state) {
@@ -61,154 +61,114 @@ fun GenerationScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        // Softly Blurred Glassmorphism Background
-
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-        )
-
-        Scaffold(
-            containerColor = Color.Transparent,
-            topBar = {
-                TopAppBar(
-                    title = {},
-                    navigationIcon = {
-                        IconButton(onClick = onCancelClick) {
-                            Icon(Icons.Default.Close, contentDescription = "Continue browsing", tint = MaterialTheme.colorScheme.onSurface)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-                )
+    val errorAction: () -> Unit = {
+        if (state is GenerationUiState.Error) {
+            when {
+                state.requiredCredits != null -> openCredits(CreditsRequest(state.requiredCredits, state.availableCredits))
+                state.isExpired -> onMyGenerationsClick()
+                state.isAmbiguous -> onRetryClick()
+                else -> onCancelClick()
             }
-        ) { innerPadding ->
+        }
+    }
+    val errorActionLabel = when {
+        state !is GenerationUiState.Error -> "Back"
+        state.requiredCredits != null -> "Get credits"
+        state.isExpired -> "My Generations"
+        state.isAmbiguous -> "Check status"
+        else -> "Back"
+    }
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = {
+                    Text(if (state is GenerationUiState.Error) "Your Photo" else "Creating Your AI Photo",
+                        style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
+                        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                },
+                navigationIcon = {
+                    IconButton(onClick = onCancelClick) {
+                        Icon(Icons.Default.Close, contentDescription = "Continue browsing")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+            )
+        }
+    ) { innerPadding ->
+        BoxWithConstraints(Modifier.fillMaxSize().padding(innerPadding)) {
+            // Fit the portrait preview into the space left by the actual footer.
+            // Short landscape windows and large accessibility fonts can still scroll.
+            val scroll = maxHeight < 360.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.5f
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                Modifier.fillMaxSize()
+                    .then(if (scroll) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text(
-                    text = "Creating Your AI Photo",
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 28.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    ),
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(modifier = Modifier.height(32.dp))
-
-                // Main Preview Area - Visual Focus
-                Box(
-                    modifier = Modifier
-                        .widthIn(max = 520.dp)
-                        .fillMaxWidth()
-                        .aspectRatio(5f / 7f)
-                        .shadow(
-                            elevation = 20.dp,
-                            shape = RoundedCornerShape(32.dp),
-                            ambientColor = Primary.copy(alpha = 0.2f),
-                            spotColor = Primary.copy(alpha = 0.3f)
-                        )
-                        .clip(RoundedCornerShape(32.dp))
-                        .background(MaterialTheme.colorScheme.surface)
-                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(32.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (state is GenerationUiState.Error) {
-                        GenerationErrorView(state.message,
-                            if (state.requiredCredits != null) ({ openCredits(CreditsRequest(state.requiredCredits, state.availableCredits)) })
-                            else if (state.isAmbiguous) onRetryClick else onCancelClick,
-                            if (state.requiredCredits != null) "Get credits" else if (state.isAmbiguous) "Check status" else "Back")
-                    } else {
-                        // 1. Display selected photos
-                        PhotoComposition(selectedPhotos = selectedPhotos)
-
-                        // 2. Premium Processing layer (Shimmer + Laser Scan)
-                        PremiumProcessingOverlay()
-
-                        // 3. Central pulsing AI centerpiece
-                        GenerationDots()
+                if (scroll) {
+                    GenerationPreview(state, selectedPhotos, errorAction, errorActionLabel,
+                        Modifier.widthIn(max = 360.dp).fillMaxWidth().aspectRatio(5f / 7f))
+                } else {
+                    BoxWithConstraints(Modifier.fillMaxWidth().weight(1f, fill = false), contentAlignment = Alignment.TopCenter) {
+                        val previewWidth = minOf(maxWidth, maxHeight * (5f / 7f), 520.dp)
+                        GenerationPreview(state, selectedPhotos, errorAction, errorActionLabel,
+                            Modifier.width(previewWidth).aspectRatio(5f / 7f))
                     }
                 }
 
-                Spacer(modifier = Modifier.height(48.dp))
-
-                // Smoothly transitioning status messages
                 AnimatedContent(
                     targetState = statusMessage,
-                    transitionSpec = {
-                        fadeIn(animationSpec = tween(600)) + slideInVertically { it / 2 } togetherWith
-                        fadeOut(animationSpec = tween(600)) + slideOutVertically { -it / 2 }
-                    },
+                    transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(200)) },
                     label = "statusMessage"
-                ) { targetMessage ->
-                    Text(
-                        text = targetMessage,
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 18.sp
-                        ),
-                        textAlign = TextAlign.Center
-                    )
+                ) { message ->
+                    Text(message, style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
-
-                LinearProgressIndicator(
-                    modifier = Modifier
-                        .fillMaxWidth(0.6f)
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                    color = Primary,
-                    trackColor = Primary.copy(alpha = 0.1f)
+                if (state !is GenerationUiState.Error) LinearProgressIndicator(
+                    Modifier.fillMaxWidth(0.6f).height(4.dp).clip(RoundedCornerShape(4.dp)),
+                    color = Primary, trackColor = Primary.copy(alpha = 0.1f)
                 )
 
-                Spacer(modifier = Modifier.height(48.dp))
-
-                // Tip Card - Premium Glass Styling
                 Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 32.dp)
-                        .shadow(8.dp, RoundedCornerShape(24.dp)),
-                    shape = RoundedCornerShape(24.dp),
-                    color = MaterialTheme.colorScheme.surface,
+                    Modifier.widthIn(max = 520.dp).fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(20.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            modifier = Modifier.size(10.dp),
-                            shape = RoundedCornerShape(5.dp),
-                            color = Secondary
-                        ) {}
-                        Spacer(modifier = Modifier.width(16.dp))
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(6.dp).background(Secondary, CircleShape))
+                        Spacer(Modifier.width(10.dp))
                         Text(
-                            text = "Your photo is being created. You can keep browsing and return using the generation shortcut.",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.Medium,
-                                color = Color(0xFF4B5563)
-                            )
+                            if (state is GenerationUiState.Error) "Checking a previous generation does not start a new one."
+                            else "Your photo will be available in My Generations for 24 hours. You can keep browsing.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
-
-                // Bottom spacing for global banner ad
-                Spacer(modifier = Modifier.height(100.dp))
             }
+        }
+    }
+}
+
+@Composable
+private fun GenerationPreview(
+    state: GenerationUiState, selectedPhotos: List<Uri>, errorAction: () -> Unit,
+    errorActionLabel: String, modifier: Modifier
+) {
+    val shape = RoundedCornerShape(24.dp)
+    Box(modifier.shadow(8.dp, shape).clip(shape)
+        .background(MaterialTheme.colorScheme.surface)
+        .border(1.dp, MaterialTheme.colorScheme.outline, shape), contentAlignment = Alignment.Center) {
+        if (state is GenerationUiState.Error) {
+            GenerationErrorView(state.message, errorAction, errorActionLabel)
+        } else {
+            PhotoComposition(selectedPhotos)
+            PremiumProcessingOverlay()
+            GenerationDots()
         }
     }
 }

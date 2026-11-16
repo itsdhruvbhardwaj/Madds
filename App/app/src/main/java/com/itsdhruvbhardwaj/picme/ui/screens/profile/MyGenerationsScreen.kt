@@ -9,6 +9,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -41,14 +42,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,6 +63,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -81,27 +88,111 @@ private sealed interface GenerationsState {
 }
 
 @Composable
-fun MyGenerationsScreen(onBackClick: () -> Unit) {
+fun MyGenerationsScreen(
+    onBackClick: () -> Unit,
+    viewModel: com.itsdhruvbhardwaj.picme.ui.screens.create.GenerationViewModel,
+    onSavePhoto: () -> Unit,
+    onOpenGeneration: (com.itsdhruvbhardwaj.picme.data.model.RecoverableGeneration) -> Unit,
+    requestedGenerationId: String? = null,
+    onRequestedGenerationHandled: () -> Unit = {}
+) {
+    val gallery by viewModel.gallery.collectAsState()
+    var now by remember { mutableStateOf(viewModel.galleryNow()) }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner, viewModel) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            viewModel.refreshGallery()
+            var ticks = 0
+            while (true) {
+                kotlinx.coroutines.delay(1_000)
+                now = viewModel.galleryNow()
+                if (++ticks % 30 == 0 && viewModel.gallery.value.items.any { it.status == "processing" }) viewModel.refreshGallery()
+            }
+        }
+    }
     val context = LocalContext.current
     var state by remember { mutableStateOf<GenerationsState>(GenerationsState.Loading) }
+    var localLoading by remember { mutableStateOf(true) }
+    var localRefresh by remember { mutableIntStateOf(0) }
+    var selectedTemporary by remember { mutableStateOf<com.itsdhruvbhardwaj.picme.data.model.RecoverableGeneration?>(null) }
     var selectedImage by remember { mutableStateOf<Uri?>(null) }
+    var selectedImageGenerationId by remember { mutableStateOf<String?>(null) }
+    var selectedImageOwner by remember { mutableStateOf<String?>(null) }
+    var savedImageAcknowledged by remember { mutableStateOf(false) }
     var imagePendingDelete by remember { mutableStateOf<Uri?>(null) }
     var deleteError by remember { mutableStateOf<String?>(null) }
-    val listState = rememberLazyListState()
+    var selectedTab by rememberSaveable(viewModel.notificationOwner()) { mutableStateOf(GenerationGalleryTab.Unsaved) }
+    val unsavedListState = rememberLazyListState()
+    val savedListState = rememberLazyListState()
+    val listState = if (selectedTab == GenerationGalleryTab.Unsaved) unsavedListState else savedListState
 
-    fun loadImages() {
-        state = GenerationsState.Loading
+    fun openSavedPhoto(uri: Uri, id: String? = null) {
+        selectedTab = GenerationGalleryTab.Saved
+        selectedTemporary = null
+        selectedImage = uri
+        selectedImageGenerationId = id
+        selectedImageOwner = viewModel.notificationOwner()
+        savedImageAcknowledged = false
+        if (id != null) viewModel.focusSavedGalleryPhoto(id) else viewModel.resetState()
     }
 
-    LaunchedEffect(state) {
-        if (state == GenerationsState.Loading) {
+    fun closeSavedPhoto() {
+        if (selectedImageOwner == viewModel.notificationOwner()) viewModel.resetState()
+        selectedImage = null
+        selectedImageGenerationId = null
+        localRefresh++
+    }
+
+    LaunchedEffect(requestedGenerationId) {
+        val id = requestedGenerationId ?: return@LaunchedEffect
+        val owner = viewModel.notificationOwner() ?: return@LaunchedEffect
+        val saved = viewModel.savedGalleryPhoto(id)
+        if (owner != viewModel.notificationOwner()) return@LaunchedEffect
+        if (saved != null) openSavedPhoto(saved, id)
+        else {
+            selectedImage = null
+            selectedImageGenerationId = null
+            val operation = (viewModel.gallery.value.items.find { it.id == id }
+                ?: viewModel.operations.value.find { it.id == id }
+                ?: com.itsdhruvbhardwaj.picme.data.model.RecoverableGeneration(id)).copy(status = "completed")
+            selectedTab = GenerationGalleryTab.Unsaved
+            selectedTemporary = operation
+            viewModel.openCompletedPhoto(operation)
+        }
+        onRequestedGenerationHandled()
+    }
+
+    fun loadImages() {
+        localRefresh++
+        viewModel.refreshGallery()
+    }
+
+    LaunchedEffect(localRefresh) {
+        localLoading = true
+        try {
             state = try {
                 GenerationsState.Loaded(withContext(Dispatchers.IO) { querySavedGenerations(context) })
-            } catch (error: SecurityException) {
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: SecurityException) {
                 GenerationsState.Failed("Madds couldn't access saved images on this device.")
             } catch (_: Exception) {
                 GenerationsState.Failed("Couldn't load saved images. Please try again.")
             }
+        } finally { localLoading = false }
+    }
+
+    val refreshing = gallery.loading || localLoading
+    val localImages = (state as? GenerationsState.Loaded)?.images.orEmpty()
+    val unsavedEntries = generationGalleryEntries(gallery.items, gallery.savedUris, localImages, now, GenerationGalleryTab.Unsaved)
+    val savedEntries = generationGalleryEntries(gallery.items, gallery.savedUris, localImages, now, GenerationGalleryTab.Saved)
+    val entries = if (selectedTab == GenerationGalleryTab.Unsaved) unsavedEntries else savedEntries
+
+    // A page can contain only photos already saved on this device. Look ahead
+    // before claiming that there are no unsaved photos left.
+    LaunchedEffect(selectedTab, unsavedEntries.isEmpty(), gallery.nextCursor, gallery.loading, gallery.error) {
+        if (selectedTab == GenerationGalleryTab.Unsaved && unsavedEntries.isEmpty() &&
+            gallery.nextCursor != null && !gallery.loading && gallery.error == null) {
+            viewModel.refreshGallery(loadMore = true)
         }
     }
 
@@ -112,8 +203,9 @@ fun MyGenerationsScreen(onBackClick: () -> Unit) {
                 title = "My Generations",
                 onBackClick = onBackClick,
                 actions = {
-                    IconButton(onClick = { loadImages() }) {
-                        Icon(
+                    IconButton(onClick = { loadImages() }, enabled = !refreshing) {
+                        if (refreshing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        else Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "Refresh saved images",
                             tint = MaterialTheme.colorScheme.onSurface
@@ -128,57 +220,95 @@ fun MyGenerationsScreen(onBackClick: () -> Unit) {
                 .fillMaxSize()
                 .padding(top = innerPadding.calculateTopPadding())
         ) {
-            when (val current = state) {
-                GenerationsState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                is GenerationsState.Failed -> Column(
-                    modifier = Modifier.align(Alignment.Center).padding(horizontal = 28.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(current.message, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-                    Spacer(Modifier.height(12.dp))
-                    androidx.compose.material3.TextButton(onClick = { loadImages() }) { Text("Try again") }
-                }
-                is GenerationsState.Loaded -> if (current.images.isEmpty()) {
-                    Column(
-                        modifier = Modifier.align(Alignment.Center).padding(horizontal = 32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("No saved generations yet", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Save a generated image to your device and it will appear here.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
+            LazyColumn(
+                state = listState,
+                contentPadding = PaddingValues(top = 8.dp, bottom = 112.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                if (selectedTab == GenerationGalleryTab.Unsaved) gallery.error?.let { message -> item {
+                    Column(Modifier.padding(horizontal = 16.dp)) {
+                        Text(message, color = MaterialTheme.colorScheme.error)
+                        TextButton(onClick = { viewModel.refreshGallery() }) { Text("Retry recent photos") }
                     }
-                } else {
-                    LazyColumn(
-                        state = listState,
-                        contentPadding = PaddingValues(bottom = 112.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        itemsIndexed(current.images.chunked(6), key = { _, group -> group.first().toString() }) { index, group ->
-                            GenerationsMosaic(group, index) { selectedImage = it }
+                } }
+                if (selectedTab == GenerationGalleryTab.Saved) (state as? GenerationsState.Failed)?.let { failure -> item {
+                    Text(failure.message, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error)
+                    TextButton(onClick = { loadImages() }) { Text("Retry saved photos") }
+                } }
+                itemsIndexed(entries.chunked(3), key = { _, group -> selectedTab.name + ":" + group.first().key }) { _, group ->
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        group.forEach { entry ->
+                            val operation = entry.operation
+                            if (operation != null) {
+                                TemporaryGenerationTile(operation, entry.savedUri ?: gallery.thumbnails[operation.id],
+                                    entry.savedUri != null, now, Modifier.weight(1f)) {
+                                    when {
+                                        entry.savedUri != null -> openSavedPhoto(entry.savedUri, entry.generationId)
+                                        operation.status == "completed" -> {
+                                            selectedTemporary = operation
+                                            viewModel.openCompletedPhoto(operation)
+                                        }
+                                        else -> onOpenGeneration(operation)
+                                    }
+                                }
+                            } else entry.savedUri?.let { uri ->
+                                GenerationTile(uri, Modifier.weight(1f).aspectRatio(5f / 7f)) { openSavedPhoto(it, entry.generationId) }
+                            }
                         }
+                        repeat(3 - group.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+                if (selectedTab == GenerationGalleryTab.Unsaved && gallery.nextCursor != null) item {
+                    TextButton(onClick = { viewModel.refreshGallery(loadMore = true) }, enabled = !gallery.loading) { Text("Load more recent photos") }
+                }
+                val hasError = if (selectedTab == GenerationGalleryTab.Unsaved) gallery.error != null else state is GenerationsState.Failed
+                val canShowEmpty = selectedTab == GenerationGalleryTab.Saved || gallery.nextCursor == null
+                if (entries.isEmpty() && !refreshing && !hasError && canShowEmpty) item {
+                    Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(if (selectedTab == GenerationGalleryTab.Unsaved) "No unsaved photos" else "No saved photos yet",
+                            style = MaterialTheme.typography.titleMedium)
+                        Text(if (selectedTab == GenerationGalleryTab.Unsaved) "New creations stay here for 24 hours."
+                            else "Save a photo to your gallery to see it here.",
+                            Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                     }
                 }
             }
+            GenerationGalleryFilters(selectedTab, onSelect = { selectedTab = it },
+                Modifier.align(Alignment.BottomCenter).padding(horizontal = 24.dp, vertical = 16.dp))
         }
     }
 
-    val loadedImages = (state as? GenerationsState.Loaded)?.images.orEmpty()
+    selectedTemporary?.let { operation ->
+        TemporaryGenerationViewer(
+            operation = operation,
+            preview = gallery.thumbnails[operation.id],
+            viewModel = viewModel,
+            onSavePhoto = onSavePhoto,
+            onClose = {
+                if (operation.id in viewModel.gallery.value.savedUris ||
+                    viewModel.resultKey("", operation.id) in viewModel.savedResults.value) selectedTab = GenerationGalleryTab.Saved
+                selectedTemporary = null
+                viewModel.resetState()
+                localRefresh++
+            }
+        )
+    }
+
+    val deviceImages = (gallery.savedUris.values.toList() + (state as? GenerationsState.Loaded)?.images.orEmpty()).distinctBy { it.lastPathSegment }
+    val loadedImages = if (selectedImage != null && deviceImages.none { it.lastPathSegment == selectedImage?.lastPathSegment })
+        listOfNotNull(selectedImage) + deviceImages else deviceImages
     val scope = rememberCoroutineScope()
     val pagerState = rememberPagerState { loadedImages.size }
     LaunchedEffect(selectedImage, loadedImages) {
         selectedImage?.let { uri ->
-            val index = loadedImages.indexOf(uri)
+            val index = loadedImages.indexOfFirst { it.lastPathSegment == uri.lastPathSegment }
             if (index >= 0 && pagerState.currentPage != index) pagerState.scrollToPage(index)
         }
     }
     selectedImage?.let { imageUri ->
         Dialog(
-            onDismissRequest = { selectedImage = null },
+            onDismissRequest = { closeSavedPhoto() },
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
             Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
@@ -189,7 +319,21 @@ fun MyGenerationsScreen(onBackClick: () -> Unit) {
                     key = { page -> loadedImages.getOrNull(page)?.toString() ?: page }
                 ) { page ->
                     loadedImages.getOrNull(page)?.let { uri ->
-                        ZoomableGenerationImage(uri, Modifier.fillMaxSize())
+                        ZoomableGenerationImage(uri, Modifier.fillMaxSize(), onSuccess = {
+                            val id = selectedImageGenerationId
+                            val owner = selectedImageOwner
+                            if (!savedImageAcknowledged && id != null && owner == viewModel.notificationOwner() &&
+                                uri.lastPathSegment == selectedImage?.lastPathSegment) {
+                                savedImageAcknowledged = true
+                                scope.launch {
+                                    withFrameNanos { }
+                                    if (owner == viewModel.notificationOwner() && id == selectedImageGenerationId) {
+                                        com.itsdhruvbhardwaj.picme.notifications.GenerationNotifications.imageDisplayed(context, owner, id)
+                                        viewModel.markFocusedViewed(id)
+                                    }
+                                }
+                            }
+                        })
                     }
                 }
                 Row(
@@ -198,7 +342,7 @@ fun MyGenerationsScreen(onBackClick: () -> Unit) {
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { selectedImage = null }) {
+                    IconButton(onClick = { closeSavedPhoto() }) {
                         Icon(Icons.Default.Close, contentDescription = "Close image", tint = Color.White)
                     }
                 }
@@ -235,11 +379,15 @@ fun MyGenerationsScreen(onBackClick: () -> Unit) {
                             runCatching { context.contentResolver.delete(uri, null, null) > 0 }.getOrDefault(false)
                         }
                         if (deleted) {
-                            val remaining = loadedImages.filterNot { it == uri }
+                            viewModel.forgetSavedGeneration(uri)
+                            val remaining = loadedImages.filterNot { it.lastPathSegment == uri.lastPathSegment }
                             state = GenerationsState.Loaded(remaining)
-                            if (remaining.isEmpty()) selectedImage = null
+                            if (remaining.isEmpty()) closeSavedPhoto()
                             else {
                                 val next = pagerState.currentPage.coerceAtMost(remaining.lastIndex)
+                                selectedImage = remaining[next]
+                                selectedImageGenerationId = null
+                                viewModel.resetState()
                                 scope.launch { pagerState.scrollToPage(next) }
                             }
                         } else {
@@ -272,19 +420,30 @@ private fun shareImage(context: Context, uri: Uri) {
 }
 
 @Composable
-private fun ZoomableGenerationImage(uri: Uri, modifier: Modifier = Modifier) {
-    var scale by remember(uri) { mutableStateOf(1f) }
-    var offsetX by remember(uri) { mutableStateOf(0f) }
-    var offsetY by remember(uri) { mutableStateOf(0f) }
+internal fun ZoomableGenerationImage(
+    image: Any, modifier: Modifier = Modifier, privateImage: Boolean = false,
+    onSuccess: () -> Unit = {}, onError: () -> Unit = {}
+) {
+    var scale by remember(image) { mutableStateOf(1f) }
+    var offsetX by remember(image) { mutableStateOf(0f) }
+    var offsetY by remember(image) { mutableStateOf(0f) }
     val scope = rememberCoroutineScope()
-    var zoomAnimation by remember(uri) { mutableStateOf<Job?>(null) }
+    var zoomAnimation by remember(image) { mutableStateOf<Job?>(null) }
+    val context = LocalContext.current
+    val request = remember(image, privateImage, context) {
+        if (privateImage) coil.request.ImageRequest.Builder(context).data(image)
+            .memoryCachePolicy(coil.request.CachePolicy.DISABLED)
+            .diskCachePolicy(coil.request.CachePolicy.DISABLED).build() else image
+    }
     val latestScale by rememberUpdatedState(scale)
     BoxWithConstraints(modifier = modifier) {
         val density = androidx.compose.ui.platform.LocalDensity.current
         val widthPx = with(density) { maxWidth.toPx() }
         val heightPx = with(density) { maxHeight.toPx() }
         AsyncImage(
-            model = uri,
+            model = request,
+            onSuccess = { onSuccess() },
+            onError = { onError() },
             contentDescription = "Generated image preview",
             contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize()
@@ -294,7 +453,7 @@ private fun ZoomableGenerationImage(uri: Uri, modifier: Modifier = Modifier) {
                     translationX = offsetX
                     translationY = offsetY
                 }
-                .pointerInput(uri) {
+                .pointerInput(image) {
                     detectTapGestures(onDoubleTap = {
                         val targetScale = if (latestScale > 1.01f) 1f else 2.5f
                         zoomAnimation?.cancel()
@@ -311,7 +470,7 @@ private fun ZoomableGenerationImage(uri: Uri, modifier: Modifier = Modifier) {
                         }
                     })
                 }
-                .pointerInput(uri, widthPx, heightPx) {
+                .pointerInput(image, widthPx, heightPx) {
                     awaitEachGesture {
                         var previousCentroid: androidx.compose.ui.geometry.Offset? = null
                         var previousDistance = 0f
@@ -414,52 +573,10 @@ private fun querySavedGenerations(context: Context): List<Uri> {
 }
 
 @Composable
-private fun GenerationsMosaic(images: List<Uri>, blockIndex: Int, onImageClick: (Uri) -> Unit) {
-    val gap = 2.dp
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        val cellSize = (maxWidth - gap * 2) / 3
-        val featureSize = cellSize * 2 + gap
-
-        if (images.size < 3) {
-            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-                images.forEach { image ->
-                    GenerationTile(image, Modifier.size(cellSize), onImageClick)
-                }
-            }
-        } else {
-            Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    if (blockIndex % 2 == 0) {
-                        GenerationTile(images[0], Modifier.size(featureSize), onImageClick)
-                        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-                            GenerationTile(images[1], Modifier.size(cellSize), onImageClick)
-                            GenerationTile(images[2], Modifier.size(cellSize), onImageClick)
-                        }
-                    } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
-                            GenerationTile(images[1], Modifier.size(cellSize), onImageClick)
-                            GenerationTile(images[2], Modifier.size(cellSize), onImageClick)
-                        }
-                        GenerationTile(images[0], Modifier.size(featureSize), onImageClick)
-                    }
-                }
-                if (images.size > 3) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        (3 until images.size).forEach { index ->
-                            GenerationTile(images[index], Modifier.size(cellSize), onImageClick)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun GenerationTile(image: Uri, modifier: Modifier, onImageClick: (Uri) -> Unit) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(2.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable { onImageClick(image) }
     ) {
@@ -469,5 +586,32 @@ private fun GenerationTile(image: Uri, modifier: Modifier, onImageClick: (Uri) -
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
         )
+    }
+}
+
+@Composable
+private fun TemporaryGenerationTile(
+    item: com.itsdhruvbhardwaj.picme.data.model.RecoverableGeneration,
+    image: Any?, saved: Boolean, now: Long, modifier: Modifier, onClick: () -> Unit
+) {
+    Box(modifier.aspectRatio(5f / 7f).clip(RoundedCornerShape(8.dp))
+        .background(MaterialTheme.colorScheme.surfaceVariant).clickable(onClick = onClick)) {
+        if (image != null) AsyncImage(
+            model = coil.request.ImageRequest.Builder(LocalContext.current).data(image)
+                .diskCachePolicy(coil.request.CachePolicy.DISABLED).memoryCachePolicy(coil.request.CachePolicy.DISABLED).build(),
+            contentDescription = item.styleName, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        else Text(if (item.status == "processing") "Generating…" else "Tap to open photo",
+            Modifier.align(Alignment.Center).padding(16.dp), textAlign = TextAlign.Center)
+        val label = if (saved) null else if (item.status == "processing") "Generating…" else {
+            val expiry = com.itsdhruvbhardwaj.picme.data.model.generationExpiry(item.resultExpiresAt) ?: now
+            "◷ " + com.itsdhruvbhardwaj.picme.data.model.generationTimeLeft(expiry, now)
+        }
+        if (label != null) Text(label, Modifier.align(Alignment.TopStart).padding(4.dp)
+            .background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(6.dp)).padding(4.dp),
+            color = Color.White, style = MaterialTheme.typography.labelSmall,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(item.styleName, Modifier.align(Alignment.BottomStart).fillMaxWidth()
+            .background(Color.Black.copy(alpha = 0.65f)).padding(5.dp), color = Color.White,
+            style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

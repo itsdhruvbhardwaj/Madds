@@ -1,4 +1,6 @@
 package com.itsdhruvbhardwaj.picme.ui.screens.home
+import com.itsdhruvbhardwaj.picme.data.model.cardTitle
+import com.itsdhruvbhardwaj.picme.data.model.variantCount
 
 import androidx.compose.material3.MaterialTheme
 
@@ -38,9 +40,10 @@ fun StylesGridScreen(
 
 
         Scaffold(
-            containerColor = Color.Transparent
-        ) { _ -> // Ignore innerPadding for floating overlay
-            Box(modifier = Modifier.fillMaxSize()) {
+            containerColor = Color.Transparent,
+            topBar = { PicMeCompactHeader(title = "All Styles", onBackClick = onBackClick) }
+        ) { innerPadding ->
+            Box(modifier = Modifier.fillMaxSize().padding(top = innerPadding.calculateTopPadding())) {
                 when (val state = uiState) {
                     is StylesGridUiState.Loading -> {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -73,13 +76,13 @@ fun StylesGridScreen(
                                 columns = gridColumns,
                                 // Content padding to start below floating pill and leave room at bottom
                                 contentPadding = PaddingValues(
-                                    start = 12.dp,
-                                    end = 12.dp,
-                                    top = 116.dp, // Increased space to clear floating pill
+                                    start = 6.dp,
+                                    end = 6.dp,
+                                    top = 8.dp,
                                     bottom = 100.dp
                                 ),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
                                 modifier = Modifier.fillMaxSize()
                             ) {
                                 itemsIndexed(
@@ -94,12 +97,14 @@ fun StylesGridScreen(
                                     }
 
                                     StyleCard(
-                                        name = style.name,
+                                        name = style.cardTitle,
                                         thumbnailUrl = style.thumbnail,
                                         genderTag = style.genderTag,
+                                        variantCount = style.variantCount,
                                         onClick = { onStyleClick(style.id) },
                                         modifier = Modifier.fillMaxWidth(),
                                         aspectRatio = 5f / 7f,
+                                        galleryStyle = true,
                                         internalPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp),
                                     )
                                 }
@@ -121,11 +126,6 @@ fun StylesGridScreen(
                     }
                 }
 
-                // Floating Header Overlay
-                PicMeCompactHeader(
-                    title = "All Styles",
-                    onBackClick = onBackClick
-                )
             }
         }
     }

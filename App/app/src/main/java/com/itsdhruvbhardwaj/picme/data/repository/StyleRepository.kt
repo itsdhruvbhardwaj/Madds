@@ -6,6 +6,8 @@ import com.itsdhruvbhardwaj.picme.data.model.HomeConfigResponse
 import com.itsdhruvbhardwaj.picme.data.model.StyleCollection
 import com.itsdhruvbhardwaj.picme.data.model.Style
 import com.itsdhruvbhardwaj.picme.data.model.StyleResponse
+import com.itsdhruvbhardwaj.picme.data.model.styleCacheEntries
+import com.itsdhruvbhardwaj.picme.data.model.publicCacheCopy
 import com.itsdhruvbhardwaj.picme.data.remote.StyleApiService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
@@ -75,7 +77,7 @@ class StyleRepository(
         withContext(Dispatchers.IO) {
             exploreFeedCache?.read(preference, collection, query)?.also { styles ->
                 _cachedStyles.update { existing ->
-                    existing + styles.associate { it.id to it.copy(isFavorite = existing[it.id]?.isFavorite ?: false) }
+                    existing + styleCacheEntries(styles).mapValues { (_, style) -> style.copy(isFavorite = existing[style.id]?.isFavorite ?: false) }
                 }
             }
         }
@@ -93,9 +95,7 @@ class StyleRepository(
 
     private fun cacheHomeStyles(feed: HomeConfigResponse) {
         _cachedStyles.update { existing ->
-            existing + feed.sections.flatMap { it.styles.orEmpty() }.associate { style ->
-                style.id to style.copy(isFavorite = existing[style.id]?.isFavorite ?: false)
-            }
+            existing + styleCacheEntries(feed.sections.flatMap { it.styles.orEmpty() }).mapValues { (_, style) -> style.copy(isFavorite = existing[style.id]?.isFavorite ?: false) }
         }
     }
 
@@ -115,7 +115,7 @@ class StyleRepository(
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
                     _cachedStyles.update { currentCache ->
-                        currentCache + body.styles.associateBy { it.id }
+                        currentCache + styleCacheEntries(body.styles)
                     }
                     Result.success(body)
                 } else {
@@ -310,14 +310,14 @@ class StyleRepository(
         retryIO {
             try {
                 val originalToken = tokenStorage.getAccessToken()
-                val response = apiService.getStyle(originalToken?.let { "Bearer $it" }, styleId)
+                val response = apiService.getStyle(originalToken?.let { "Bearer $it" }, styleId, gender = _stylePreference.value)
                 val style = response.body()?.style
                 if (response.isSuccessful && style != null && style.id == styleId) {
                     val currentToken = tokenStorage.getAccessToken()
                     val sameSession = com.itsdhruvbhardwaj.picme.notifications.PushSession.fromToken(originalToken) ==
                         com.itsdhruvbhardwaj.picme.notifications.PushSession.fromToken(currentToken) && (originalToken == null) == (currentToken == null)
-                    val safeStyle = if (sameSession) style else style.copy(isFavorite = false)
-                    _cachedStyles.update { it + (safeStyle.id to safeStyle) }; Result.success(safeStyle)
+                    val safeStyle = if (sameSession) style else style.publicCacheCopy()
+                    _cachedStyles.update { it + styleCacheEntries(listOf(safeStyle)) }; Result.success(safeStyle)
                 } else {
                     if (response.code() == 404) _cachedStyles.update { it - styleId }
                     Result.failure(Exception(when (response.code()) {

@@ -473,6 +473,21 @@ class AuthRepository(
     suspend fun finishAppTour(ownerId: String, request: com.itsdhruvbhardwaj.picme.data.model.AppTourResponse): Result<Boolean> = authenticatedHistoryCall(
         call = { check(tokenStorage.getUser()?.id == ownerId) { "Account changed." }; apiService.finishAppTour(it, request) }, extract = { it.ok })
 
+    suspend fun dailyRewardStatus(ownerId: String): Result<DailyRewardStatus> = authenticatedHistoryCall(
+        call = { check(tokenStorage.getUser()?.id == ownerId) { "Account changed." }; apiService.dailyRewardStatus(it) },
+        extract = { check(it.validStatus) { "Daily bonus unavailable." }
+            if (it.claimed && tokenStorage.getUser()?.id == ownerId) tokenStorage.recordDailyRewardClaim(ownerId, it.dayKey)
+            it })
+
+    suspend fun claimDailyReward(ownerId: String, request: DailyRewardClaimRequest): Result<DailyRewardClaimResponse> = authenticatedHistoryCall(
+        call = { check(tokenStorage.getUser()?.id == ownerId) { "Account changed." }; apiService.claimDailyReward(it, request) },
+        extract = { response ->
+            check(response.confirmed && response.dayKey == request.dayKey) { "Couldn't confirm your daily bonus." }
+            tokenStorage.getUser()?.takeIf { it.id == ownerId }?.let { tokenStorage.saveUser(it.copy(credits = response.balance)) }
+            if (tokenStorage.getUser()?.id == ownerId) tokenStorage.recordDailyRewardClaim(ownerId, response.dayKey)
+            response
+        })
+
     suspend fun claimEngagementPrompt(ownerId: String, request: EngagementClaimRequest): Result<EngagementClaimResponse> = authenticatedHistoryCall(
         call = { check(tokenStorage.getUser()?.id == ownerId) { "Account changed." }; apiService.claimEngagementPrompt(it, request) }, extract = { it })
     suspend fun respondEngagementPrompt(ownerId: String, request: EngagementResponseRequest): Result<Boolean> = authenticatedHistoryCall(

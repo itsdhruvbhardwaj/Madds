@@ -35,7 +35,8 @@ data class PushDeviceRequest(
     @field:SerializedName("fcmToken") val fcmToken: String? = null,
     @field:SerializedName("permissionGranted") val permissionGranted: Boolean = false,
     @field:SerializedName("appVersionCode") val appVersionCode: Int = com.itsdhruvbhardwaj.picme.BuildConfig.VERSION_CODE,
-    @field:SerializedName("appVersionName") val appVersionName: String = com.itsdhruvbhardwaj.picme.BuildConfig.VERSION_NAME
+    @field:SerializedName("appVersionName") val appVersionName: String = com.itsdhruvbhardwaj.picme.BuildConfig.VERSION_NAME,
+    @field:SerializedName("dailyRewardReminders") val dailyRewardReminders: Boolean = true
 )
 
 interface PushDeviceApi {

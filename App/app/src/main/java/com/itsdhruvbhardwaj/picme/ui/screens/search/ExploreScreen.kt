@@ -14,6 +14,9 @@ import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import com.itsdhruvbhardwaj.picme.data.model.cardTitle
+import com.itsdhruvbhardwaj.picme.data.model.variantCount
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import com.itsdhruvbhardwaj.picme.ui.components.StyleGenderBadge
@@ -405,10 +408,12 @@ private fun ExploreTile(
                 .data(style.thumbnail)
                 .crossfade(true)
                 .build(),
-            contentDescription = style.name,
+            contentDescription = style.cardTitle,
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop
         )
         StyleGenderBadge(style.genderTag, Modifier.align(Alignment.TopStart).padding(6.dp))
+        if (style.variantCount > 1) Text("${style.variantCount} looks", color = Color.White, fontSize = 10.sp,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp).clip(RoundedCornerShape(9.dp)).background(Color.Black.copy(alpha = .7f)).padding(horizontal = 7.dp, vertical = 4.dp))
     }
 }

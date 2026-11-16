@@ -30,6 +30,7 @@ class AuthTokenStorage(context: Context) {
 
     fun getStylePreference(userId: String): String = sharedPreferences.getString("style_preference_$userId", "all") ?: "all"
     fun saveStylePreference(userId: String, value: String) { sharedPreferences.edit().putString("style_preference_$userId", value).apply() }
+    fun recordDailyRewardClaim(userId: String, dayKey: String) { runCatching { pushState.recordDailyClaim(userId, dayKey) } }
 
     fun pendingGenerationKeys(userId: String): Set<String> =
         sharedPreferences.getStringSet("generation_pending_$userId", emptySet())?.toSet() ?: emptySet()
@@ -162,6 +163,7 @@ class AuthTokenStorage(context: Context) {
     fun sessionRevision(): Long = sharedPreferences.getLong("session_revision", 0)
 
     fun clearTokens() {
+      GenerationGalleryStore(appContext).bind(null)
       synchronized(com.itsdhruvbhardwaj.picme.notifications.PushLocalState.lock) {
         pushState.invalidateAccount()
         sharedPreferences.edit()

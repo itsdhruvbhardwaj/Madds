@@ -120,7 +120,7 @@ class PushLocalState(private val context: Context, private val notificationPermi
 
     fun eligible(payload: PushPayload, auth: AuthTokenStorage, checkSeen: Boolean = true): Boolean = synchronized(lock) {
         val user = auth.getUser()
-        user?.isActive == true && user.emailVerified && canReceivePush(payload,
+        user?.isActive == true && user.emailVerified && dailyReminderUsable(payload, System.currentTimeMillis(), prefs.getString("daily_claim_${payload.userId}", null)) && canReceivePush(payload,
             PushSession.fromToken(auth.getAccessToken()), user.id, boundSession(),
             prefs.getLong("first_version", 0), prefs.getLong("last_version", 0),
             preferences(user.id)[payload.category.key] == true, auth.hasRefreshToken(),
@@ -153,6 +153,7 @@ class PushLocalState(private val context: Context, private val notificationPermi
         val cutoff = System.currentTimeMillis() - 7 * 86_400_000L
         seen.entries.removeAll { it.value.time < cutoff }
         if (seen.containsKey(payload.deliveryId)) return@synchronized false
+        if (payload.reminderDayKey != null && seen.values.any { it.data["reminderDayKey"] == payload.reminderDayKey && it.data["recipientUserId"] == payload.userId }) return@synchronized false
         seen[payload.deliveryId] = Seen(data, System.currentTimeMillis(), session.sessionId)
         while (seen.size > 1000) seen.remove(seen.keys.first())
         prefs.edit().putString("deliveries", gson.toJson(seen)).commit()
@@ -170,6 +171,17 @@ class PushLocalState(private val context: Context, private val notificationPermi
     fun markOpened(id: String) = synchronized(lock) {
         val seen = deliveries(); val item = seen[id] ?: return@synchronized
         seen[id] = item.copy(opened = true); prefs.edit().putString("deliveries", gson.toJson(seen)).commit()
+    }
+
+    fun recordDailyClaim(userId: String, dayKey: String) = synchronized(lock) {
+        if ((prefs.getString("daily_claim_$userId", null) ?: "") < dayKey)
+            check(prefs.edit().putString("daily_claim_$userId", dayKey).commit())
+        runCatching {
+            val manager = context.getSystemService(NotificationManager::class.java)
+            manager.activeNotifications.filter { it.tag?.startsWith(TAG_PREFIX) == true &&
+                it.notification.extras.getString("madds_daily_day") == dayKey &&
+                it.notification.extras.getString("madds_daily_user") == userId }.forEach { manager.cancel(it.tag, it.id) }
+        }
     }
 
     fun cancelNotifications(predicate: (String?) -> Boolean) {

@@ -13,6 +13,10 @@ import retrofit2.http.Part
 import okhttp3.MultipartBody
 
 interface AuthApiService {
+    @GET("api/daily-rewards")
+    suspend fun dailyRewardStatus(@Header("Authorization") authorization: String): Response<DailyRewardStatus>
+    @POST("api/daily-rewards/claim")
+    suspend fun claimDailyReward(@Header("Authorization") authorization: String, @Body request: DailyRewardClaimRequest): Response<DailyRewardClaimResponse>
     @POST("api/engagement/claim")
     suspend fun claimEngagementPrompt(@Header("Authorization") authorization: String, @Body request: EngagementClaimRequest): Response<EngagementClaimResponse>
     @POST("api/engagement/respond")

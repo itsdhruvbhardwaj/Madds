@@ -20,6 +20,15 @@ interface StyleApiService {
 
     @GET("api/generations")
     suspend fun generationOperations(@Header("Authorization") auth: String): Response<com.itsdhruvbhardwaj.picme.data.model.GenerationOperationsResponse>
+    @GET("api/generations/gallery")
+    suspend fun generationGallery(@Header("Authorization") auth: String, @Query("cursor") cursor: String? = null): Response<com.itsdhruvbhardwaj.picme.data.model.GenerationGalleryResponse>
+    @GET("api/generations/{id}")
+    suspend fun generationDetails(@Header("Authorization") auth: String, @Path("id") id: String): Response<com.itsdhruvbhardwaj.picme.data.model.RecoverableGeneration>
+    @Streaming
+    @GET("api/generations/{id}/thumbnail")
+    suspend fun generationThumbnail(@Header("Authorization") auth: String, @Path("id") id: String): Response<okhttp3.ResponseBody>
+    @DELETE("api/generations/{id}/result")
+    suspend fun deleteGenerationResult(@Header("Authorization") auth: String, @Path("id") id: String): Response<Unit>
     @GET("api/generations/by-key/{key}")
     suspend fun generationByKey(@Header("Authorization") auth: String, @Path("key") key: String): Response<com.itsdhruvbhardwaj.picme.data.model.RecoverableGeneration>
     @GET("api/generations/{id}/result")
@@ -27,7 +36,7 @@ interface StyleApiService {
     @POST("api/generations/{id}/viewed")
     suspend fun generationViewed(@Header("Authorization") auth: String, @Path("id") id: String): Response<Unit>
     @GET("api/styles/{styleId}")
-    suspend fun getStyle(@Header("Authorization") authorization: String? = null, @Path("styleId") styleId: String): Response<StyleDetailsResponse>
+    suspend fun getStyle(@Header("Authorization") authorization: String? = null, @Path("styleId") styleId: String, @Query("grouped") grouped: Boolean = true, @Query("gender") gender: String = "all"): Response<StyleDetailsResponse>
     @GET("api/styles")
     suspend fun getStyles(
         @Header("Authorization") authorization: String? = null,
@@ -37,14 +46,15 @@ interface StyleApiService {
         @Query("search") search: String? = null,
         @Query("trendingFirst") trendingFirst: Boolean = false,
         @Query("gender") gender: String = "all",
-        @Query("shuffleSeed") shuffleSeed: String? = null
+        @Query("shuffleSeed") shuffleSeed: String? = null,
+        @Query("grouped") grouped: Boolean = true
     ): Response<StyleResponse>
 
     @GET("api/home/config")
-    suspend fun getHomeConfig(@Query("includeStyles") includeStyles: Boolean = true, @Query("gender") gender: String = "all", @Query("shuffleSeed") shuffleSeed: String? = null): Response<HomeConfigResponse>
+    suspend fun getHomeConfig(@Query("includeStyles") includeStyles: Boolean = true, @Query("gender") gender: String = "all", @Query("shuffleSeed") shuffleSeed: String? = null, @Query("grouped") grouped: Boolean = true): Response<HomeConfigResponse>
 
     @GET("api/collections")
-    suspend fun getCollections(@Query("gender") gender: String = "all"): Response<CollectionsResponse>
+    suspend fun getCollections(@Query("gender") gender: String = "all", @Query("grouped") grouped: Boolean = true): Response<CollectionsResponse>
 
     @Multipart
     @Headers("X-Generation-Recovery: 1")

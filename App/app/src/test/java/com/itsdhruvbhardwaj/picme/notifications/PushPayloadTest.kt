@@ -15,6 +15,20 @@ internal fun message(version: Long = 1) = mapOf("title" to "New in Madds", "body
     "deliveryId" to "dddddddddddddddddddddddd", "bindingVersion" to version.toString(), "deepLink" to "picme://home")
 
 class PushPayloadTest {
+    @Test fun `daily reminder requires a home reward message and exact India midnight expiry`() {
+        val expiry = java.time.Instant.parse("2026-11-16T18:30:00Z").toEpochMilli()
+        val data = message() + mapOf("type" to "OFFER", "category" to "offers", "reminderDayKey" to "2026-11-16", "expiresAt" to expiry.toString())
+        val payload = PushPayload.parse(data)!!
+        assertTrue(dailyReminderUsable(payload, expiry - 1, null))
+        assertFalse(dailyReminderUsable(payload, expiry, null))
+        assertFalse(dailyReminderUsable(payload, expiry - 1000, "2026-11-16"))
+        assertTrue(dailyReminderUsable(payload, expiry - 1000, "2026-11-15"))
+        assertNull(PushPayload.parse(data + ("expiresAt" to (expiry + 1).toString())))
+        assertNull(PushPayload.parse(data + ("reminderDayKey" to "2026-02-30")))
+        assertNull(PushPayload.parse(data - "expiresAt"))
+        assertNull(PushPayload.parse(data + ("type" to "PRODUCT_UPDATE")))
+        assertNull(PushPayload.parse(data + mapOf("collectionId" to "portraits", "deepLink" to "picme://collections/portraits")))
+    }
     @Test fun `app updates open only the fixed Google Play listing`() {
         val update = message() + mapOf("type" to "APP_UPDATE", "deepLink" to APP_UPDATE_LINK)
         assertEquals(APP_UPDATE_LINK, PushPayload.parse(update)?.deepLink)
@@ -25,6 +39,7 @@ class PushPayloadTest {
         val body = com.google.gson.Gson().toJsonTree(PushDeviceRequest("device", 1)).asJsonObject
         assertEquals(com.itsdhruvbhardwaj.picme.BuildConfig.VERSION_CODE, body["appVersionCode"].asInt)
         assertEquals(com.itsdhruvbhardwaj.picme.BuildConfig.VERSION_NAME, body["appVersionName"].asString)
+        assertTrue(body["dailyRewardReminders"].asBoolean)
     }
 
     @Test fun `valid message uses only validated internal destinations`() {
