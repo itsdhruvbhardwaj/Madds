@@ -6,6 +6,8 @@ const root = path.resolve(__dirname, "..");
 let serial = 10;
 let styleGroups = [];
 let rewardedCredits = { credits: 2, revision: 0, source: 'environment' };
+let imageGeneration = { activeModel:'sunburst25', profiles:{sunburst25:{quality:'medium'},sunburst26:{quality:'medium',complexity:'high'}},
+  revision:0,source:'environment',canTest:true,effective:{model:'openai/gpt-image-2.5-sunburst',quality:'medium'},history:[] };
 let dailyRewards = { enabled: false, credits: 2, revision: 0, maximum: 10, history: [] };
 let adSettings = { enabled: true, bannersEnabled: true, rewardedEnabled: true, nativeHomeEnabled: true, nativeExploreEnabled: true,
   minGapSeconds: 90, timedIntervalSeconds: 120, homeNativeEverySections: 3, exploreNativeEveryStyles: 12, revision: 0,
@@ -51,9 +53,24 @@ http.createServer(async (req, res) => {
     return json(res,{logoUrl:process.env.WORKSPACE_PREVIEW_LOGO?"/fixture-watermark.png":"/assets/madds-title.png",logoPublicId:"fixture-watermark"});
   }
   let body = ""; for await (const chunk of req) body += chunk;
+  if (url.pathname === '/api/admin/settings/image-generation/test') {
+    // Local-only fixture: no model calls or live settings writes.
+    return json(res,{ image:'data:image/png;base64,'+fs.readFileSync(path.join(root,'assets/workspace-192.png')).toString('base64'),testToken:'local-preview-only' });
+  }
   let input = {}; try { input = body ? JSON.parse(body) : {}; } catch { return json(res, { error: "Invalid JSON" }, 400); }
   if (url.pathname === "/api/auth/login") return json(res, { accessToken: "fixture-access", refreshToken: "fixture-refresh", user: { email: "preview@example.com" } });
   if (url.pathname === "/api/auth/logout") return json(res, { ok: true });
+  if (url.pathname === '/api/admin/settings/image-generation') {
+    if (req.method === 'PATCH') {
+      if (input.expectedRevision !== imageGeneration.revision) return json(res,{error:'Settings changed. Refresh before applying.'},409);
+      if (input.testToken !== 'local-preview-only') return json(res,{error:'Generate a preview first.'},400);
+      const profile=input.profiles[input.activeModel],at=new Date().toISOString();
+      imageGeneration={...imageGeneration,activeModel:input.activeModel,profiles:input.profiles,revision:imageGeneration.revision+1,source:'workspace',updatedAt:at,updatedByName:'Preview Owner',
+        effective:{model:`openai/gpt-image-${input.activeModel==='sunburst25'?'2.5':'2.6'}-sunburst`,...profile},
+        history:[...imageGeneration.history,{activeModel:input.activeModel,...profile,byName:'Preview Owner',at}]};
+    }
+    return json(res,imageGeneration);
+  }
   if (url.pathname === '/api/admin/settings/ads') {
     if (req.method === 'PATCH') {
       if (input.expectedRevision !== adSettings.revision) return json(res, { error: 'Ad settings changed. Refresh before saving.' }, 409);

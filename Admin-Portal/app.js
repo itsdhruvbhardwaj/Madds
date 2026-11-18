@@ -35,8 +35,9 @@
   const dailyRewards = window.MaddsDailyRewards.create({ api, notify });
   const dailyReminder = window.MaddsDailyReminder.create({ api, notify });
   const watermark = window.MaddsWatermark.create({ api, notify });
+  const imageGeneration = window.MaddsImageGeneration.create({ api, notify });
   const settingsNavigation = window.MaddsSettingsNavigation.create({
-    controllers: { welcome: settings, daily: dailyRewards, rewarded: rewardedCredits, ads: adSettings, watermark },
+    controllers: { generation: imageGeneration, welcome: settings, daily: dailyRewards, rewarded: rewardedCredits, ads: adSettings, watermark },
     onReminders: () => {
       document.querySelector('.side-link[data-panel="notifications-panel"]').click();
       if (state.activePanel !== 'notifications-panel') return;
@@ -49,7 +50,8 @@
   const feedback = window.MaddsFeedback.create({ api, notify });
   const bulkStyles = window.MaddsStyleBulk.create({ api, notify, getCatalog: () => state, reload: loadCatalog, groupSelected: ids => styleGroups.openNew(ids) });
   const styleTags = window.MaddsStyleTags.create({ getCatalog: () => state });
-  const styleGroups = window.MaddsStyleGroups.create({ api, notify, getCatalog: () => state, onChange: renderStyles });
+  const styleGroups = window.MaddsStyleGroups.create({ api, notify, getCatalog: () => state, onChange: renderStyles,
+    selectStyles: () => bulkStyles.startGrouping(), onSaved: () => bulkStyles.finishGrouping() });
 
   const sessionApi = window.MaddsSessionApi.create({ base: apiBase, storage: sessionStorage,
     onExpired: () => { clearSession(); showLogin("Your session has ended. Please sign in again."); }
@@ -59,7 +61,7 @@
   function canUpdateWorkspace() {
     if (styleSaving || state.promptTestGenerating || document.querySelector('dialog[open]')) return false;
     if (state.styleEditorBaseline !== null && styleEditorSnapshot() !== state.styleEditorBaseline) return false;
-    if ([settings, dailyRewards, rewardedCredits, adSettings, watermark, notifications, dailyReminder, homeOrder].some(tool => tool.hasPendingChanges())) return false;
+    if ([settings, dailyRewards, rewardedCredits, adSettings, watermark, imageGeneration, notifications, dailyReminder, homeOrder].some(tool => tool.hasPendingChanges())) return false;
     if (!byId('user-details').hidden) return false;
     if (document.querySelector('[aria-busy="true"], #upload-cover-image:disabled, #upload-before-image:disabled, #upload-after-image:disabled')) return false;
     return !byId('collection-form').elements.name.value.trim();
@@ -84,6 +86,7 @@
     dailyReminder.reset();
     adSettings.reset();
     watermark.reset();
+    imageGeneration.reset();
     settingsNavigation.reset();
     homeOrder.reset();
     bulkStyles.reset();
@@ -254,6 +257,7 @@
     }).join("");
     grid.querySelectorAll("[data-style-open]").forEach((card) => card.addEventListener("click", (event) => {
       if (event.target.closest("button, a, input, label")) return;
+      if (bulkStyles.handleCardClick(card.dataset.styleOpen)) return;
       openStyleEditor(card.dataset.styleOpen);
     }));
     grid.querySelectorAll("[data-edit]").forEach((button) => button.addEventListener("click", () => openStyleEditor(button.dataset.edit)));

@@ -1,12 +1,12 @@
 const { test } = require('node:test'), assert = require('node:assert/strict');
 const vm = require('node:vm'), fs = require('node:fs'), path = require('node:path');
 function fixture() {
-  const topics = ['welcome','daily','rewarded','ads','watermark'], nodes = new Map(), calls = [], drafts = {};
+  const topics = ['welcome','daily','rewarded','ads','watermark','generation'], nodes = new Map(), calls = [], drafts = {};
   const node = id => { if (!nodes.has(id)) nodes.set(id, { value: '', textContent: '', hidden: false, tabIndex: -1, dataset: {}, attrs: {}, events: {},
     addEventListener(event, fn) { this.events[event] = fn; }, setAttribute(key, value) { this.attrs[key] = value; }, focus() { this.focused = true; }, querySelectorAll() { return []; }, contains() { return true; } }); return nodes.get(id); };
-  const keywords = { welcome:'welcome new account credits', daily:'daily bonus claim credits notifications', rewarded:'rewarded ads credits', ads:'ads banner native interstitial timing', watermark:'watermark logo exports' };
+  const keywords = { generation:'image generation sunburst model quality complexity', welcome:'welcome new account credits', daily:'daily bonus claim credits notifications', rewarded:'rewarded ads credits', ads:'ads banner native interstitial timing', watermark:'watermark logo exports' };
   const buttons = topics.map(id => { const button = node(`settings-tab-${id}`); button.dataset = { settingsTopic:id, settingsKeywords: keywords[id] }; button.textContent = id; return button; });
-  const groups = [[buttons[0],buttons[1],buttons[2]], [buttons[3]], [buttons[4]]].map(items => ({ hidden: false, querySelectorAll: () => items }));
+  const groups = [[buttons[0],buttons[1],buttons[2]], [buttons[3]], [buttons[4]], [buttons[5]]].map(items => ({ hidden: false, querySelectorAll: () => items }));
   node('settings-topic-list').querySelectorAll = () => groups;
   const detail = node('ad-native'); detail.dataset.settingsKeywords = 'native feed home explore';
   node('settings-section-ads').querySelectorAll = () => [detail];

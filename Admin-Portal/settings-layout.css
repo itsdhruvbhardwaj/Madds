@@ -1,4 +1,16 @@
 /* App settings: focused categories, stable forms and progressive disclosure. */
+.generation-model-controls { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+.generation-model-controls label { min-width:0; }
+.generation-model-controls small { display:block; margin-top:8px; }
+.generation-current { padding:13px 16px; border:1px solid var(--line); border-radius:12px; overflow-wrap:anywhere; }
+.generation-test-area { border:1px solid var(--line); border-radius:16px; padding:18px; margin-top:24px; }
+.generation-test-area h3 { margin:0 0 8px; font-size:14px; }
+.generation-test-result { display:block; width:100%; max-width:360px; max-height:520px; object-fit:contain; border-radius:14px; margin-top:18px; }
+#image-generation-form textarea { width:100%; min-width:0; resize:vertical; background:var(--bg); color:var(--text); padding:12px; border:1px solid var(--line); border-radius:12px; font:inherit; }
+#image-generation-form select { display:block; width:100%; min-width:0; min-height:44px; margin-top:8px; padding:11px 13px; color:var(--text); background:var(--bg); border:1px solid var(--line); border-radius:12px; font:inherit; font-size:13px; }
+#image-generation-form select:focus-visible,#image-generation-form textarea:focus-visible { outline:2px solid var(--purple); outline-offset:2px; }
+@media(max-width:850px) { #image-generation-form select,#image-generation-form textarea { font-size:16px; } }
+@media(max-width:600px) { .generation-model-controls { grid-template-columns:1fr; gap:0; }.generation-test-area { padding:13px; } }
 #app-settings-panel [hidden] { display:none!important; }
 .settings-layout { display:grid; grid-template-columns:242px minmax(0,1fr); gap:26px; align-items:start; margin-top:24px; max-width:1240px; }
 .settings-sidebar { position:sticky; top:22px; min-width:0; }

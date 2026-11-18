@@ -4,7 +4,7 @@
     if (from < 0 || to < 0 || from >= members.length || to >= members.length) return members;
     const result = members.slice(); result.splice(to, 0, result.splice(from, 1)[0]); return result;
   }
-  function create({ api, notify, getCatalog, onChange = () => {} }) {
+  function create({ api, notify, getCatalog, onChange = () => {}, selectStyles, onSaved = () => {} }) {
     const $ = id => document.getElementById(id);
     let groups = [], available = false, editing = null, members = [], cover = '', busy = false, baseline = '', revision = 0, dragged = -1;
     const dialog = $('style-group-dialog'), form = $('style-group-form');
@@ -15,6 +15,7 @@
       $('style-list-view').hidden = show; $('style-groups-view').hidden = !show;
       $('styles-tab').setAttribute('aria-pressed', String(!show)); $('groups-tab').setAttribute('aria-pressed', String(show));
       $('add-style').hidden = show;
+      $('create-style-group').hidden = show;
     }
     function render() {
       $('new-style-group').disabled = !available || busy;
@@ -49,7 +50,7 @@
       const query = $('group-member-search').value.trim().toLowerCase();
       const found = getCatalog().styles.filter(entry => !members.some(member => member.styleId === entry.id) && (!query || `${entry.name} ${(entry.tags || []).join(' ')}`.toLowerCase().includes(query))).slice(0, 20);
       $('group-member-candidates').innerHTML = found.map(entry => { const assigned = owner(entry.id); const blocked = assigned && assigned.id !== editing?.id;
-        return `<button type="button" class="group-candidate" data-add-member="${esc(entry.id)}" ${blocked || members.length >= 8 ? 'disabled' : ''}>${esc(entry.name)}<small>${blocked ? `Already in ${esc(assigned.name)}` : entry.verified ? 'Verified · Add' : 'Unverified · Add'}</small></button>`;
+        return `<button type="button" class="group-candidate" data-add-member="${esc(entry.id)}" ${blocked || members.length >= 8 ? 'disabled' : ''}><img src="${esc(entry.thumbnail || '')}" alt="" loading="lazy"><span>${esc(entry.name)}<small>${blocked ? `Already in ${esc(assigned.name)}` : entry.verified ? 'Verified · Add' : 'Unverified · Add'}</small></span></button>`;
       }).join('');
       $('group-member-candidates').querySelectorAll('[data-add-member]').forEach(button => button.onclick = () => { members.push({ styleId: button.dataset.addMember, label: '' }); cover ||= button.dataset.addMember; renderEditor(); });
     }
@@ -69,7 +70,7 @@
     function close() { if (busy) return; if (baseline !== snapshot() && !window.confirm('Discard the unsaved group changes?')) return; dialog.close(); }
     function setBusy(value) { busy = value; form.querySelectorAll('input,button').forEach(input => input.disabled = value); render(); if (!value) renderEditor(); }
     $('styles-tab').onclick = () => tab(false); $('groups-tab').onclick = () => { tab(true); void refresh(); };
-    $('new-style-group').onclick = () => open(); $('close-style-group').onclick = close; $('cancel-style-group').onclick = close;
+    $('new-style-group').onclick = () => { if (selectStyles) { tab(false); selectStyles(); } else open(); }; $('close-style-group').onclick = close; $('cancel-style-group').onclick = close;
     dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
     $('style-group-name').oninput = preview; $('group-member-search').oninput = candidates;
     form.onsubmit = async event => {
@@ -77,7 +78,7 @@
       if (members.length < 2 || members.length > 8 || !members.some(member => member.styleId === cover)) { $('style-group-error').textContent = 'Choose 2–8 variants and a cover from those variants.'; return; }
       const body = { name: $('style-group-name').value, published: $('style-group-published').checked, members, coverStyleId: cover, ...(editing ? { expectedUpdatedAt: editing.updatedAt } : {}) };
       setBusy(true); $('style-group-error').textContent = '';
-      try { await api(`/api/admin/catalog/groups${editing ? `/${encodeURIComponent(editing.id)}` : ''}`, { method: editing ? 'PUT' : 'POST', body: JSON.stringify(body) }); dialog.close(); await refresh(); notify('Group saved. Each variant keeps its original prompt and style ID.'); }
+      try { await api(`/api/admin/catalog/groups${editing ? `/${encodeURIComponent(editing.id)}` : ''}`, { method: editing ? 'PUT' : 'POST', body: JSON.stringify(body) }); dialog.close(); onSaved(); await refresh(); notify('Group saved. Each variant keeps its original prompt and style ID.'); }
       catch (error) { $('style-group-error').textContent = error.message; }
       finally { setBusy(false); }
     };

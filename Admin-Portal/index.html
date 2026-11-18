@@ -19,8 +19,9 @@
   <link rel="stylesheet" href="themes.css?v=20261105-themes">
   <link rel="stylesheet" href="performance.css?v=20261108-performance">
   <link rel="stylesheet" href="ad-settings.css?v=20261109-master-ads">
-  <link rel="stylesheet" href="settings-layout.css?v=20261116-settings-navigation">
+  <link rel="stylesheet" href="settings-layout.css?v=20261117-model-controls-1">
   <link rel="stylesheet" href="workspace-app.css?v=20261116-installable-1">
+  <link rel="stylesheet" href="group-selection.css?v=20261117-visual-groups-1">
 </head>
 <body>
   <div id="workspace-connection" class="workspace-status" role="status" tabindex="-1" hidden><div><strong>You're offline</strong><p id="workspace-connection-copy">Reconnect to continue. Your edits stay in this window; nothing is queued.</p></div><button id="workspace-reconnect" class="button secondary" type="button">Try again</button></div>
@@ -71,9 +72,10 @@
       <div id="notice" class="notice" role="status" hidden></div>
 
       <section id="styles-panel" class="panel-view">
-        <div class="page-heading"><div><p class="eyebrow">YOUR CREATIVE LIBRARY</p><h1>Styles</h1><p class="muted">Edit prompts and collections used by Madds.</p></div><button id="add-style" class="button primary">＋ Add style</button></div>
+        <div class="page-heading"><div><p class="eyebrow">YOUR CREATIVE LIBRARY</p><h1>Styles</h1><p class="muted">Edit prompts and collections used by Madds.</p></div><div class="style-heading-actions"><button id="create-style-group" class="button secondary" type="button" aria-pressed="false" disabled>Create group</button><button id="add-style" class="button primary">＋ Add style</button></div></div>
         <div class="workspace-tabs"><button id="styles-tab" type="button" aria-pressed="true">Styles</button><button id="groups-tab" type="button" aria-pressed="false">Groups</button></div><div id="style-list-view"><div class="toolbar"><label class="search-box"><span>⌕</span><input id="style-search" type="search" placeholder="Search styles, tags or prompts"></label><select id="collection-filter" aria-label="Filter by collection"><option value="">All collections</option></select><select id="verification-filter" aria-label="Filter by verification"><option value="all">All verification states</option><option value="verified">Verified</option><option value="unverified">Unverified</option></select><select id="tag-filter" aria-label="Filter by tags"><option value="">All tag states</option><option value="missing">Missing tags</option><option value="tagged">Has tags</option></select><select id="style-sort" aria-label="Sort styles"><option value="name-asc">Name: A to Z</option><option value="name-desc">Name: Z to A</option><option value="created-desc">Newest added</option><option value="created-asc">Oldest added</option><option value="updated-desc">Recently modified</option><option value="updated-asc">Least recently modified</option></select><span id="result-count" class="muted"></span></div>
         <div id="style-bulk-controls" class="style-bulk-controls"><button id="style-bulk-toggle" class="style-bulk-toggle" type="button" aria-expanded="false" aria-controls="style-bulk-panel"><strong>Bulk style actions</strong><span id="style-bulk-toggle-hint">Expand to select styles <span aria-hidden="true">⌄</span></span></button><div id="style-bulk-panel" hidden><p id="style-selection-count" class="muted">0 selected</p><div class="style-bulk-actions"><button id="style-select-all" type="button" class="button secondary">Select all filtered styles</button><button id="style-select-clear" type="button" class="button secondary">Clear selection</button><button id="style-bulk-group" type="button" class="button secondary" disabled>Group selected styles</button><button id="style-bulk-verify" type="button" class="button primary" disabled>Mark verified</button><button id="style-bulk-unverify" type="button" class="button secondary" disabled>Mark unverified</button></div><div class="style-bulk-tag-entry"><label for="bulk-style-tags">Tags to add<input id="bulk-style-tags" type="text" list="style-tag-suggestions" placeholder="e.g. saree, wedding" autocomplete="off"></label><button id="style-bulk-tags" type="button" class="button secondary" disabled>Add tags to selected</button></div><p class="field-hint">Existing tags are kept. If a style would exceed 10 tags, nothing in the selection is changed.</p><p class="field-hint">Selection follows the main search, collection, and verification filters. Changing filters removes styles that no longer match. Verify only after reviewing images and testing prompts.</p></div></div>
+        <div id="style-group-selection" class="style-group-selection" hidden aria-label="Selected styles for a new group"><div><strong id="style-group-selection-count" role="status">0 / 8 styles selected</strong><p id="style-group-selection-hint">Select at least 2 similar styles by clicking their cards.</p><div id="style-group-selection-preview" class="style-group-selection-preview"></div></div><div class="style-group-selection-actions"><button id="style-group-selection-cancel" type="button" class="button secondary">Cancel</button><button id="style-group-selection-create" type="button" class="button primary" disabled>Continue to group</button></div></div>
         <div id="styles-grid" class="styles-grid"></div></div><div id="style-groups-view" hidden><button id="new-style-group" type="button" class="button primary">New group</button><p id="style-groups-status" class="field-hint"></p><div id="style-groups-list"></div></div>
       </section>
 
@@ -169,11 +171,14 @@
         <section id="user-details" class="push-editor" hidden></section>
       </section>
       <section id="app-settings-panel" class="panel-view" hidden>
-        <div class="page-heading"><div><p class="eyebrow">APP CONTROLS</p><h1>App settings</h1><p class="muted">Select a category to manage rewards, advertising or branding.</p></div></div>
+        <div class="page-heading"><div><p class="eyebrow">APP CONTROLS</p><h1>App settings</h1><p class="muted">Manage generation, rewards, advertising and branding.</p></div></div>
         <div class="settings-layout">
           <aside class="settings-sidebar" aria-label="Settings navigation">
             <label class="settings-search"><span>Find a setting</span><input id="settings-search" type="search" placeholder="Try daily bonus or banner…" autocomplete="off"></label>
             <div id="settings-topic-list" role="tablist" aria-label="Settings categories" aria-orientation="vertical">
+            <div class="settings-topic-group"><p class="settings-group-label">Creation</p>
+              <button id="settings-tab-generation" class="settings-topic" type="button" role="tab" aria-controls="settings-section-generation" aria-selected="false" tabindex="-1" data-settings-topic="generation" data-settings-keywords="image generation model sunburst 2.5 2.6 quality complexity openrouter ai photo preview test"><span class="settings-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m3 16 5-5 5 5 3-3 5 5M16 6v4M14 8h4"/></svg></span><span><strong>Image generation</strong><small>Models, quality &amp; previews</small></span><span class="settings-topic-chevron" aria-hidden="true">›</span></button>
+            </div>
             <div class="settings-topic-group"><p class="settings-group-label">Credits & rewards</p>
               <button id="settings-tab-welcome" class="settings-topic" type="button" role="tab" aria-controls="settings-section-welcome" aria-selected="true" tabindex="0" data-settings-topic="welcome" data-settings-keywords="welcome signup registration new users user account onboarding gift credits amount balance"><span class="settings-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v13H4zM3 7h18v4H3zM12 7v13M12 7H8a3 3 0 1 1 3-3zM12 7h4a3 3 0 1 0-3-3z"/></svg></span><span><strong>Welcome credits</strong><small>A gift for new accounts</small></span><span class="settings-topic-chevron" aria-hidden="true">›</span></button>
               <button id="settings-tab-daily" class="settings-topic" type="button" role="tab" aria-controls="settings-section-daily" aria-selected="false" tabindex="-1" data-settings-topic="daily" data-settings-keywords="daily bonus login reward claim credits reminders notifications popup amount limit reset"><span class="settings-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><span><strong>Daily bonus</strong><small>Daily claims & credit amounts</small></span><span class="settings-topic-chevron" aria-hidden="true">›</span></button>
@@ -190,6 +195,31 @@
             <p class="settings-nav-note">Changes apply only after you save.</p>
           </aside>
           <div class="settings-content">
+            <section id="settings-section-generation" class="settings-section" role="tabpanel" aria-labelledby="settings-tab-generation" data-settings-section="generation" hidden>
+              <form id="image-generation-form" class="app-settings-form">
+                <div class="push-section-heading"><h2>Image generation</h2><button id="image-generation-refresh" class="button secondary" type="button">Refresh</button></div>
+                <p class="muted">Choose how Madds creates photos. Test your settings, review the result, then apply them to new app and Studio generations.</p>
+                <p id="image-generation-current" class="generation-current field-hint" role="status"></p>
+                <label>Model<select name="activeModel"><option value="sunburst25">Sunburst 2.5</option><option value="sunburst26">Sunburst 2.6</option></select></label>
+                <div class="generation-model-controls">
+                  <label>Quality<select name="quality"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">Extra high</option><option value="max">Maximum</option><option value="auto">Automatic</option></select><small class="field-hint">Rendering quality. Higher settings can cost more.</small></label>
+                  <label id="image-generation-complexity">Complexity <span class="field-hint">2.6 only</span><select name="complexity"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select><small class="field-hint">Planning effort before rendering. More planning can take longer; it is separate from quality.</small></label>
+                </div>
+                <p class="field-hint">Each model remembers its own settings. Switching the dropdown does not change the live app.</p>
+                <div class="generation-test-area">
+                  <h3>Preview before applying</h3><p class="field-hint">This generates one image through OpenRouter and uses your provider balance. It does not charge a user's Madds credits or change live settings.</p>
+                  <label for="image-generation-photo">Reference photo<input id="image-generation-photo" type="file" accept="image/jpeg,image/png,image/webp"></label>
+                  <label for="image-generation-prompt">Test prompt<textarea id="image-generation-prompt" rows="4" maxlength="10000" placeholder="Describe a familiar style so you can compare the result."></textarea></label>
+                  <button id="image-generation-test" class="button secondary" type="button">Generate test preview</button>
+                  <p id="image-generation-test-status" class="field-hint" role="status"></p>
+                  <img id="image-generation-result" class="generation-test-result" alt="Generated preview using the selected model settings" hidden>
+                </div>
+                <p id="image-generation-availability" class="field-hint" role="status"></p><p id="image-generation-error" class="form-error" role="alert"></p>
+                <button id="image-generation-save" class="button primary" type="submit" disabled>Apply to new generations</button>
+                <p id="image-generation-editor" class="field-hint"></p>
+                <details id="image-generation-history-section" class="settings-help" hidden><summary>Recent model changes</summary><div id="image-generation-history"></div></details>
+              </form>
+            </section>
             <section id="settings-section-welcome" class="settings-section" role="tabpanel" aria-labelledby="settings-tab-welcome" data-settings-section="welcome">
               <form id="app-settings-form" class="app-settings-form">
           <div class="push-section-heading"><h2>Welcome credits</h2><button id="app-settings-refresh" class="button secondary" type="button">Refresh</button></div><p class="muted">A one-time gift for people creating a new Madds account.</p>
@@ -363,11 +393,12 @@
   <script src="storage.js?v=20261114-refresh" defer></script>
   <script src="users.js?v=20261108-date-format" defer></script>
   <script src="feedback.js?v=20261114-sender" defer></script>
-  <script src="style-groups.js?v=20261116-group-cards" defer></script><script src="style-tags.js?v=20261116-tags" defer></script>
-  <script src="style-bulk.js?v=20261116-group-cards" defer></script>
+  <script src="style-groups.js?v=20261117-visual-groups-1" defer></script><script src="style-tags.js?v=20261116-tags" defer></script>
+  <script src="style-bulk.js?v=20261117-visual-groups-1" defer></script>
   <script src="style-uploads.js?v=20261107-preview-reset" defer></script>
   <script src="performance.js?v=20261108-date-format" defer></script>
-  <script src="settings-navigation.js?v=20261116-settings-navigation" defer></script>
-  <script src="app.js?v=20261116-installable-1" defer></script>
+  <script src="image-generation.js?v=20261117-model-controls-1" defer></script>
+  <script src="settings-navigation.js?v=20261117-model-controls-1" defer></script>
+  <script src="app.js?v=20261117-visual-groups-1" defer></script>
 </body>
 </html>

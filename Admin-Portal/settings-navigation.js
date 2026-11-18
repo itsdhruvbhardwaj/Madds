@@ -1,5 +1,5 @@
 (() => {
-  const topics = ['welcome', 'daily', 'rewarded', 'ads', 'watermark'];
+  const topics = ['generation', 'welcome', 'daily', 'rewarded', 'ads', 'watermark'];
   function create({ controllers, onReminders }) {
     const $ = id => document.getElementById(id), search = $('settings-search');
     const buttons = topics.map(id => $(`settings-tab-${id}`));
