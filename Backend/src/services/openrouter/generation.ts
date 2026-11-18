@@ -2,6 +2,7 @@ import { env } from "../../config/env.js";
 import { diagnosticToken } from "../generationDiagnostics.js";
 import { extractProviderError, readProviderError, sanitizeProviderText } from "../providerErrorDiagnostics.js";
 import type { GeneratedImage, GenerationProvider, UploadedImage } from "../../types/generation.js";
+import type { ImageGenerationConfig } from '../imageGenerationSettings.js';
 
 type OpenRouterImageResponse = {
   data?: Array<{
@@ -40,6 +41,7 @@ function toImageReference(image: UploadedImage) {
 }
 
 export class OpenRouterImageGenerator implements GenerationProvider {
+  constructor(private readonly config?: ImageGenerationConfig) {}
   async generate(input: {
     prompt: string;
     images: UploadedImage[];
@@ -50,6 +52,12 @@ export class OpenRouterImageGenerator implements GenerationProvider {
       throw new Error("OPENROUTER_API_KEY is required for OpenRouter image generation.");
     }
 
+    const model = this.config?.model ?? env.openRouterImageModel;
+    const usesQuality = ["openai/gpt-image-2.5-sunburst", "openai/gpt-image-2.6-sunburst"].includes(model);
+    const imageSettings = usesQuality
+      ? { quality: this.config?.quality ?? env.openRouterImageQuality }
+      : { resolution: input.resolution ?? env.openRouterImageResolution };
+    const complexity = model === 'openai/gpt-image-2.6-sunburst' ? this.config?.complexity : undefined;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), env.openAiTimeoutMs);
 
@@ -61,11 +69,10 @@ export class OpenRouterImageGenerator implements GenerationProvider {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: env.openRouterImageModel,
+          model,
           prompt: input.prompt,
-          ...(env.openRouterImageModel === "openai/gpt-image-2.5-sunburst"
-            ? { quality: env.openRouterImageQuality }
-            : { resolution: input.resolution ?? env.openRouterImageResolution }),
+          ...imageSettings,
+          ...(complexity ? { provider: { options: { openai: { complexity } } } } : {}),
           aspect_ratio: input.aspectRatio ?? env.openRouterImageAspectRatio,
           ...(input.images.length > 0
             ? { input_references: input.images.map(toImageReference) }
@@ -82,8 +89,8 @@ export class OpenRouterImageGenerator implements GenerationProvider {
         Object.assign(error, details, {
           providerRequestId: extractProviderError({ request_id: headerReference }, privateTexts).providerRequestId || details.providerRequestId,
           providerRequestSummary: sanitizeProviderText(JSON.stringify({
-            quality: env.openRouterImageModel === "openai/gpt-image-2.5-sunburst" ? env.openRouterImageQuality : undefined,
-            resolution: env.openRouterImageModel !== "openai/gpt-image-2.5-sunburst" ? input.resolution ?? env.openRouterImageResolution : undefined,
+            ...imageSettings,
+            ...(complexity ? { complexity } : {}),
             aspectRatio: input.aspectRatio ?? env.openRouterImageAspectRatio,
             images: input.images.map(image => ({ mimeType: image.mimetype, bytes: image.buffer?.length || 0 }))
           }), privateTexts, 1000)

@@ -87,7 +87,7 @@ export const env = {
     return process.env.OPENROUTER_API_KEY ?? "";
   },
   get openRouterImageModel() {
-    return process.env.OPENROUTER_IMAGE_MODEL ?? "openai/gpt-image-2.5-sunburst";
+    return process.env.OPENROUTER_IMAGE_MODEL ?? "openai/gpt-image-2.6-sunburst";
   },
   get openRouterImageQuality() {
     return process.env.OPENROUTER_IMAGE_QUALITY ?? "medium";

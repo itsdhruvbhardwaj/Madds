@@ -8,6 +8,7 @@ import { adminWatermarkRouter } from "./watermarkSettings.js";
 import { adminAdSettingsRouter } from "./adSettings.js";
 import { adminRewardedCreditsRouter } from './rewardedCreditSettings.js';
 import { adminDailyRewardsRouter } from './dailyRewardSettings.js';
+import { adminImageGenerationRouter } from './imageGenerationSettings.js';
 const router = Router();
 router.use(requireAuth, (req: AuthenticatedRequest, res, next) => {
   if (!req.user?.emailVerified || !env.adminEmails.includes(req.user.email?.toLowerCase() || "")) return res.status(403).json({error:"Administrator access required."});
@@ -18,6 +19,7 @@ router.use("/watermark", adminWatermarkRouter);
 router.use("/ads", adminAdSettingsRouter);
 router.use('/rewarded-credits', adminRewardedCreditsRouter);
 router.use('/daily-rewards', adminDailyRewardsRouter);
+router.use('/image-generation', adminImageGenerationRouter);
 router.get("/credits", async (_req,res) => res.json({ok:true,...await getWelcomeCreditSetting()}));
 router.patch("/credits", async (req: AuthenticatedRequest,res) => {
   const {welcomeCredits,expectedRevision}=req.body || {};

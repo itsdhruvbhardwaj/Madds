@@ -19,6 +19,7 @@ import { ensureHomeSection, renameHomeSectionCollection } from "../services/home
 import { cloudinaryIsConfigured, createStyleImageUploadSignature } from "../services/cloudinaryAssets.js";
 import { getStyleImageIds, queueStyleImages, activateStyleImageCleanup, retryPendingCloudinaryCleanup } from "../services/styleImageCleanup.js";
 import { OpenRouterImageGenerator } from "../services/openrouter/generation.js";
+import { resolveImageGenerationConfig } from '../services/imageGenerationSettings.js';
 
 import { stylePerformanceRouter } from "./stylePerformance.js";
 import { styleGroupsRouter } from './styleGroups.js';
@@ -56,7 +57,8 @@ router.post("/catalog/test-generation", promptTestUpload.single("image"), async 
   if (!file) {
     return res.status(400).json({ ok: false, error: "Upload an original image to test this prompt." });
   }
-  if (env.imageGenerationProvider !== "openrouter" || !env.openRouterApiKey) {
+  const generationConfig = await resolveImageGenerationConfig();
+  if (generationConfig.provider !== "openrouter" || !env.openRouterApiKey) {
     return res.status(503).json({ ok: false, error: "Prompt testing requires OpenRouter to be enabled on the backend." });
   }
 
@@ -66,7 +68,7 @@ router.post("/catalog/test-generation", promptTestUpload.single("image"), async 
   }
 
   try {
-    const result = await new OpenRouterImageGenerator().generate({
+    const result = await new OpenRouterImageGenerator(generationConfig).generate({
       prompt,
       // Keep the portrait preview close to Studio's default 5:7 export.
       aspectRatio: "3:4",

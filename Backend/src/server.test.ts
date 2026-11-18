@@ -6,6 +6,9 @@ import request from "supertest";
 vi.mock("./services/generationRecovery.js", () => ({ saveGenerationResult: vi.fn().mockResolvedValue(undefined), readGenerationResult: vi.fn() }));
 vi.mock("./models/Generation.js", () => ({ Generation: { updateOne: vi.fn().mockResolvedValue({ modifiedCount: 1 }), exists: vi.fn().mockResolvedValue(true) } }));
 vi.mock('./models/RewardedCreditSettings.js', () => ({ RewardedCreditSettings: { findById: () => ({ lean: async () => null }) } }));
+const imageSettingsMocks = vi.hoisted(() => ({ read: vi.fn() }));
+vi.mock('./models/ImageGenerationSettings.js', () => ({ ImageGenerationSettings: { findById: () => ({ lean: imageSettingsMocks.read }) } }));
+beforeEach(() => { imageSettingsMocks.read.mockResolvedValue(null); });
 
 process.env.OPENAI_API_KEY = "test-api-key";
 
@@ -523,6 +526,34 @@ describe("generation endpoint", () => {
     expect(response.status).toBe(401);
     expect(generationMocks.reserveGenerationCredits).not.toHaveBeenCalled();
     expect(generationMocks.edit).not.toHaveBeenCalled();
+  });
+
+  it('holds the Workspace model snapshot across a settings change during credit reservation', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'test-openrouter-key');
+    const profiles = { sunburst25: { quality: 'medium' }, sunburst26: { quality: 'high', complexity: 'low' } };
+    imageSettingsMocks.read.mockResolvedValue({ activeModel: 'sunburst26', profiles, revision: 3 });
+    generationMocks.reserveGenerationCredits.mockImplementationOnce(async () => {
+      imageSettingsMocks.read.mockResolvedValue({ activeModel: 'sunburst25', profiles, revision: 4 });
+      return { generationId: 'generation-snapshot', balanceAfter: 90 };
+    });
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: [{ b64_json: 'image' }] }) }); vi.stubGlobal('fetch', fetcher);
+    try {
+      const response = await request(app).post('/api/generate').set('Authorization', 'Bearer test-token')
+        .set('Idempotency-Key', 'workspace-model-snapshot').field('customPrompt', 'A painted landscape');
+      expect(response.status).toBe(200);
+      expect(JSON.parse(fetcher.mock.calls[0][1].body)).toMatchObject({ model: 'openai/gpt-image-2.6-sunburst', quality: 'high', provider: { options: { openai: { complexity: 'low' } } } });
+      const { Generation } = await import('./models/Generation.js');
+      expect(Generation.updateOne).toHaveBeenCalledWith(expect.anything(), { $set: expect.objectContaining({ providerModel: 'openai/gpt-image-2.6-sunburst', providerSettingsRevision: 3, providerQuality: 'high', providerComplexity: 'low' }) });
+    } finally { vi.unstubAllEnvs(); vi.unstubAllGlobals(); }
+  });
+
+  it('does not reserve credits or call a provider when saved model settings cannot be read', async () => {
+    imageSettingsMocks.read.mockRejectedValueOnce(Error('database unavailable'));
+    const response = await request(app).post('/api/generate').set('Authorization', 'Bearer test-token')
+      .set('Idempotency-Key', 'workspace-settings-unavailable').field('customPrompt', 'A painted landscape');
+    expect(response.status).toBe(503); expect(response.body.code).toBe('GENERATION_UNAVAILABLE');
+    expect(generationMocks.reserveGenerationCredits).not.toHaveBeenCalled();
+    expect(generationMocks.generate).not.toHaveBeenCalled();
   });
 
   it("requires an idempotency key before accepting generation", async () => {

@@ -62,6 +62,7 @@ import {
   UserNotFoundError,
 } from "./services/credits/creditService.js";
 import { createImageGenerator } from "./services/generationProvider.js";
+import { resolveImageGenerationConfig, type ImageGenerationConfig } from './services/imageGenerationSettings.js';
 import { buildCustomPrompt, buildPrompt } from "./services/styles/styles.js";
 import { searchStyles } from './services/styles/styleSearch.js';
 import { tagAliases } from './services/styles/styleTags.js';
@@ -399,9 +400,14 @@ app.post(
     }
     const validatedImages = inspectedImages.filter((image) => image !== null);
 
-    const providerKeyMissing = env.imageGenerationProvider === "openrouter"
+    let generationConfig: ImageGenerationConfig;
+    try { generationConfig = await resolveImageGenerationConfig(); }
+    catch {
+      return res.status(503).json({ ok: false, code: 'GENERATION_UNAVAILABLE', error: 'Image generation settings are temporarily unavailable. Please retry.' });
+    }
+    const providerKeyMissing = generationConfig.provider === "openrouter"
       ? !env.openRouterApiKey
-      : env.imageGenerationProvider === "openai"
+      : generationConfig.provider === "openai"
         ? !env.openAiApiKey
         : true;
     if (providerKeyMissing) {
@@ -482,14 +488,16 @@ app.post(
       : res;
     const providerStartedAt = new Date();
     const recordDiagnostics = async (details: Record<string, unknown>) => {
-      try { await Generation.updateOne({ _id: reservation.generationId, userId }, { $set: details }); }
+      try { await Generation.updateOne({ _id: reservation.generationId, userId }, { $set: {
+        ...details, providerName: generationConfig.provider, providerModel: generationConfig.model,
+      } }); }
       catch { console.error("Generation diagnostics could not be saved.", reservation.generationId); }
     };
-    await recordDiagnostics({ providerStartedAt, providerName: env.imageGenerationProvider,
-      providerModel: env.imageGenerationProvider === "openrouter" ? env.openRouterImageModel : env.imageModel });
+    await recordDiagnostics({ providerStartedAt, providerSettingsRevision: generationConfig.revision,
+      providerQuality: generationConfig.quality, providerComplexity: generationConfig.complexity });
     let result;
     try {
-      const generator = createImageGenerator();
+      const generator = createImageGenerator(generationConfig);
       result = await generator.generate({
         prompt: style
           ? buildPrompt(style, validatedImages.length)
