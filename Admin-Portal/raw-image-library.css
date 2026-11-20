@@ -9,6 +9,5 @@
 #upload-after-image[hidden] { display: none; }
 .raw-image-folders { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px 0; }
 .raw-image-folders button { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px solid var(--line); background: transparent; color: inherit; border-radius: 8px; cursor: pointer; }
-.raw-image-folders button::before { content: ""; width: 15px; height: 12px; border: 1.5px solid currentColor; border-radius: 2px; align-self: center; }
 .raw-image-folders button[aria-pressed="true"] { border-color: #cca967; color: #cca967; background: #cca96718; }
 .raw-image-card select { margin: 0 6px 8px; width: calc(100% - 12px); font-size: 11px; }
