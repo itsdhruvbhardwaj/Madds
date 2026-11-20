@@ -11,6 +11,7 @@ export interface Style {
   group?: { id: string; name: string; coverStyleId: string; variants: Style[] };
   thumbnail: string | null;
   thumbnailPublicId?: string | null;
+  coverAfterLinked?: boolean;
   exampleBeforeUrl?: string | null;
   exampleBeforePublicId?: string | null;
   exampleAfterUrl?: string | null;

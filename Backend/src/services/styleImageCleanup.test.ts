@@ -4,6 +4,7 @@ import { NotificationCampaign } from "../modules/notifications/notification.mode
 import { CatalogStyle } from "../models/CatalogStyle.js";
 import { CloudinaryCleanup } from "../models/CloudinaryCleanup.js";
 import { WatermarkSettings } from "../models/WatermarkSettings.js";
+import { RawStyleImage } from "../models/RawStyleImage.js";
 const cloud = vi.hoisted(() => ({ destroy: vi.fn(), watermark: vi.fn(), resolve: vi.fn() }));
 vi.mock("./cloudinaryAssets.js", async original => ({ ...await original<any>(), destroyManagedStyleImage: cloud.destroy, destroyManagedWatermarkImage: cloud.watermark, resolveLegacyStyleImagePublicIds: cloud.resolve }));
 import { getStyleImageIds, queueStyleImages, retryPendingCloudinaryCleanup, styleImageReferenceFilter, startStyleImageCleanup } from "./styleImageCleanup.js";
@@ -16,6 +17,7 @@ describe("style image cleanup", () => {
   beforeEach(() => {
     vi.stubEnv("CLOUDINARY_CLOUD_NAME", "test");
     vi.spyOn(CatalogStyle, "exists").mockResolvedValue(null);
+    vi.spyOn(RawStyleImage, "exists").mockResolvedValue(null);
     vi.spyOn(User, "exists").mockResolvedValue(null);
     vi.spyOn(NotificationCampaign, "exists").mockResolvedValue(null);
     vi.spyOn(CloudinaryCleanup, "findOneAndUpdate").mockReturnValue({ lean: async () => ({ ...item, attempts: 1 }) } as any);
@@ -64,6 +66,13 @@ describe("style image cleanup", () => {
     expect(cloud.destroy).not.toHaveBeenCalled();
     expect(CloudinaryCleanup.deleteOne).not.toHaveBeenCalled();
     expect(CloudinaryCleanup.updateOne).toHaveBeenCalled();
+  });
+  it("keeps an original image after its last style is removed", async () => {
+    pending([item]);
+    vi.mocked(RawStyleImage.exists).mockResolvedValue({ _id: "original" } as any);
+    await retryPendingCloudinaryCleanup();
+    expect(cloud.destroy).not.toHaveBeenCalled();
+    expect(CloudinaryCleanup.deleteOne).toHaveBeenCalledWith({ _id: "job" });
   });
   it("protects style assets used in a notification or profile", async () => {
     pending([item]); vi.mocked(NotificationCampaign.exists).mockResolvedValue({ _id: "notification" } as any);

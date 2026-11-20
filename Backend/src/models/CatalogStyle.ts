@@ -12,6 +12,7 @@ const CatalogStyleSchema = new Schema(
     tags: { type: [String], default: [], validate: { validator: (tags: string[]) => tags.length <= 10 && tags.every(tag => tag.length <= 40), message: 'Use at most 10 tags, each up to 40 characters.' } },
     thumbnail: { type: String, required: true, trim: true },
     thumbnailPublicId: { type: String, default: null, trim: true },
+    coverAfterLinked: { type: Boolean },
     previewImagePublicIds: { type: [String], default: [] },
     exampleBeforeUrl: { type: String, default: null, trim: true },
     exampleBeforePublicId: { type: String, default: null, trim: true },

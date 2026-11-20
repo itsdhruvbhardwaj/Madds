@@ -4,6 +4,7 @@ import { CatalogStyle } from "../models/CatalogStyle.js";
 import { CloudinaryCleanup } from "../models/CloudinaryCleanup.js";
 import { env } from "../config/env.js";
 import { WatermarkSettings } from "../models/WatermarkSettings.js";
+import { RawStyleImage } from "../models/RawStyleImage.js";
 import { isManagedWatermarkImageId, destroyManagedWatermarkImage } from "./cloudinaryAssets.js";
 import { destroyManagedNotificationImage, isManagedNotificationImageId, destroyManagedStyleImage, resolveLegacyStyleImagePublicIds, legacyStyleImagePublicId, isManagedStyleImageId } from "./cloudinaryAssets.js";
 
@@ -84,6 +85,10 @@ export async function retryPendingCloudinaryCleanup(limit = 25, onlyIds?: string
           publicId = resolved;
         }
         const references = styleImageReferenceFilter(publicId);
+        if (publicId.startsWith("picmee/styles/raw-library/") || await RawStyleImage.exists({ publicId })) {
+          await CloudinaryCleanup.deleteOne({ _id: item._id });
+          continue;
+        }
         const url = (references.$or[4] as any).thumbnail;
         if (await CatalogStyle.exists(references) || await User.exists({ $or: [{ profileImagePublicId: publicId }, { profileImage: url }] }) ||
             await NotificationCampaign.exists({ imageUrl: url })) {

@@ -4,6 +4,16 @@
     if (!previewsOnly) fields.push("thumbnail", "thumbnailPublicId");
     fields.forEach(name => { form.elements[name].value = ""; });
   }
+  function synchronizeFields(fields, linked) {
+    if (linked) {
+      fields.exampleAfterUrl.value = fields.exampleBeforeUrl.value ? fields.thumbnail.value : "";
+      fields.exampleAfterPublicId.value = fields.exampleBeforeUrl.value ? fields.thumbnailPublicId.value : "";
+    }
+    const urls = [fields.exampleBeforeUrl.value, fields.exampleAfterUrl.value];
+    const ids = [fields.exampleBeforePublicId.value, fields.exampleAfterPublicId.value];
+    fields.previewImages.value = urls.every(Boolean) ? urls.join("\n") : "";
+    fields.previewImagePublicIds.value = ids.every(Boolean) ? ids.join("\n") : "";
+  }
   function create({ discard }) {
     const uploads = new Set();
     const pending = new Map();
@@ -22,5 +32,5 @@
       saved(ids) { ids.forEach(id => uploads.delete(id)); },
     };
   }
-  window.MaddsStyleUploads = { create, clearImageFields };
+  window.MaddsStyleUploads = { create, clearImageFields, synchronizeFields };
 })();

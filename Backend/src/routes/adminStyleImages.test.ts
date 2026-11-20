@@ -6,6 +6,7 @@ import { StyleCollection } from "../models/StyleCollection.js";
 import { CloudinaryCleanup } from "../models/CloudinaryCleanup.js";
 import { CatalogAuditLog } from "../models/CatalogAuditLog.js";
 import { FavoriteStyle } from "../models/FavoriteStyle.js";
+import { RawStyleImage } from "../models/RawStyleImage.js";
 const cleanup = vi.hoisted(() => ({ queue: vi.fn(), activate: vi.fn() }));
 vi.mock("../services/styleImageCleanup.js", async original => ({ ...await original<any>(), queueStyleImages: cleanup.queue, activateStyleImageCleanup: cleanup.activate }));
 vi.mock("../middleware/auth.js", () => ({ requireAuth: (req: any, res: any, next: any) => {
@@ -23,6 +24,8 @@ const previous = { ...style, thumbnailPublicId: oldId, thumbnail: `https://res.c
 describe("admin style image lifecycle and attribution", () => {
   beforeEach(() => {
     vi.stubEnv("ADMIN_EMAILS", "admin@example.com");
+    vi.stubEnv("CLOUDINARY_CLOUD_NAME", "test");
+    vi.spyOn(RawStyleImage, "updateOne").mockResolvedValue({} as any);
     cleanup.queue.mockReset(); cleanup.queue.mockResolvedValue(undefined);
     cleanup.activate.mockReset(); cleanup.activate.mockResolvedValue(false);
     vi.spyOn(CatalogStyle, "exists").mockResolvedValue(null);
@@ -54,6 +57,23 @@ describe("admin style image lifecycle and attribution", () => {
     expect(response.status).toBe(200);
     const update = vi.mocked(CatalogStyle.findOneAndUpdate).mock.calls[0][1] as any;
     expect(update).toMatchObject({exampleBeforeUrl:null,exampleAfterUrl:null,exampleBeforePublicId:null,exampleAfterPublicId:null,previewImages:[],previewImagePublicIds:[]});
+  });
+  it("allows one shared asset for cover and after, and preserves the original when the style is deleted", async () => {
+    const original = "picmee/styles/portraits/raw-example";
+    const beforeUrl = `https://res.cloudinary.com/test/image/upload/${original}.jpg`;
+    const linked = { ...style, coverAfterLinked: true, exampleBeforeUrl: beforeUrl, exampleBeforePublicId: original,
+      exampleAfterUrl: style.thumbnail, exampleAfterPublicId: newId };
+    const saved = await request(app).post("/admin/catalog/styles").set("Authorization", "Bearer admin").send(linked);
+    expect(saved.status).toBe(201);
+    expect(saved.body.style.previewImagePublicIds).toEqual([original, newId]);
+    const wrong = await request(app).post("/admin/catalog/styles").set("Authorization", "Bearer admin").send({ ...linked, exampleAfterPublicId: oldId, exampleAfterUrl: previous.thumbnail });
+    expect(wrong.status).toBe(400);
+    vi.mocked(CatalogStyle.findOne).mockReturnValue({ lean: async () => linked } as any);
+    const deleted = await request(app).delete("/admin/catalog/styles/portrait").set("Authorization", "Bearer admin");
+    expect(deleted.status).toBe(200);
+    expect(RawStyleImage.updateOne).toHaveBeenCalledWith({ publicId: original }, expect.anything(), { upsert: true });
+    expect(vi.mocked(RawStyleImage.updateOne).mock.invocationCallOrder.at(-1)).toBeLessThan(vi.mocked(CatalogStyle.deleteOne).mock.invocationCallOrder[0]);
+    expect(cleanup.queue).toHaveBeenCalledWith([newId, original], "portrait", "Portrait");
   });
   it("retains a queued fallback when the catalogue update fails", async () => {
     vi.mocked(CatalogStyle.findOneAndUpdate).mockReturnValue({ lean: async () => { throw Error("database failure"); } } as any);

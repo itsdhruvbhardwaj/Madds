@@ -32,6 +32,25 @@ test("only unused uploads from this editor are discarded", async () => {
   await uploads.releaseUnused(["new-upload", "existing-saved-image"]);
   assert.deepEqual(calls, ["old-upload"]);
 });
+test("a linked preview follows cover replacements and an unlinked preview stays independent", () => {
+  const context = { window: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "../style-uploads.js"), "utf8"), context);
+  const names = ["thumbnail", "thumbnailPublicId", "exampleBeforeUrl", "exampleBeforePublicId", "exampleAfterUrl", "exampleAfterPublicId", "previewImages", "previewImagePublicIds"];
+  const fields = Object.fromEntries(names.map(name => [name, { value: "" }]));
+  const sync = linked => context.window.MaddsStyleUploads.synchronizeFields(fields, linked);
+  fields.thumbnail.value = "cover-url"; fields.thumbnailPublicId.value = "cover";
+  sync(true);
+  assert.equal(fields.exampleAfterUrl.value, "");
+  fields.exampleBeforeUrl.value = "raw-url"; fields.exampleBeforePublicId.value = "raw";
+  sync(true);
+  assert.equal(fields.previewImagePublicIds.value, "raw\ncover");
+  fields.thumbnail.value = "new-url"; fields.thumbnailPublicId.value = "new";
+  sync(true);
+  assert.equal(fields.previewImagePublicIds.value, "raw\nnew");
+  fields.thumbnailPublicId.value = "different"; fields.thumbnail.value = "different-url";
+  sync(false);
+  assert.equal(fields.exampleAfterPublicId.value, "new");
+});
 test("closing discards unsaved uploads while saved ones stay protected", async () => {
   const calls = [], uploads = create(async id => calls.push(id));
   uploads.track("saved-upload"); uploads.track("abandoned-upload"); uploads.saved(["saved-upload"]);

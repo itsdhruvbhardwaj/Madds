@@ -25,6 +25,121 @@
   function releaseEditorUploads(keep = []) {
     void styleUploads.releaseUnused(keep).catch(() => notify("Unused upload cleanup is saved for a later automatic retry.", true));
   }
+  function synchronizeImageFields() {
+    const form = byId("style-form");
+    const fields = form.elements;
+    const linked = byId("link-cover-after").checked;
+    window.MaddsStyleUploads.synchronizeFields(fields, linked);
+    if (linked) {
+      const after = byId("after-image-preview");
+      after.hidden = !fields.exampleAfterUrl.value;
+      if (fields.exampleAfterUrl.value) after.src = fields.exampleAfterUrl.value;
+      else after.removeAttribute("src");
+      byId("after-image-status").textContent = "Linked to cover image";
+    }
+    byId("upload-after-image").hidden = linked;
+  }
+  function selectOriginalImage(image) {
+    const fields = byId("style-form").elements;
+    fields.exampleBeforeUrl.value = image.url;
+    fields.exampleBeforePublicId.value = image.publicId;
+    byId("before-image-preview").src = image.url;
+    byId("before-image-preview").hidden = false;
+    byId("before-image-status").textContent = "Selected from original image library";
+    synchronizeImageFields();
+    releaseEditorUploads(editorImageIds());
+  }
+  let rawImages = [];
+  const rawFolders = { men: "Men", women: "Women", couples: "Couples", groups: "Groups", others: "Others" };
+  let rawFolder = null;
+  let selectFromLibrary = false;
+  let libraryBusy = false;
+  function imageFolders(image) {
+    return image.folders?.length ? image.folders : ["others"];
+  }
+  function renderRawImages() {
+    const query = byId("raw-image-search").value.trim().toLowerCase();
+    const grid = byId("raw-image-grid");
+    grid.replaceChildren();
+    for (const button of byId("raw-image-folders").querySelectorAll("[data-raw-folder]")) {
+      const folder = button.dataset.rawFolder;
+      button.textContent = `${rawFolders[folder]} (${rawImages.filter(image => imageFolders(image).includes(folder)).length})`;
+      button.setAttribute("aria-pressed", String(folder === rawFolder));
+      button.disabled = libraryBusy;
+    }
+    byId("raw-image-folder-title").textContent = rawFolder ? rawFolders[rawFolder] : "Choose a folder";
+    byId("raw-image-search").disabled = !rawFolder;
+    byId("raw-image-add").disabled = !rawFolder || libraryBusy;
+    byId("raw-image-add").textContent = rawFolder ? `Add to ${rawFolders[rawFolder]}` : "Add images";
+    if (!rawFolder) { grid.textContent = "Select a folder to browse or upload original images."; return; }
+    for (const image of rawImages.filter(image => imageFolders(image).includes(rawFolder) && image.name.toLowerCase().includes(query))) {
+      const button = document.createElement(selectFromLibrary ? "button" : "article");
+      if (selectFromLibrary) button.type = "button";
+      button.className = "raw-image-card";
+      const photo = document.createElement("img");
+      photo.src = image.url;
+      photo.alt = image.name;
+      photo.loading = "lazy";
+      const label = document.createElement("span");
+      label.textContent = image.name;
+      button.append(photo, label);
+      if (selectFromLibrary) button.addEventListener("click", () => {
+        if (libraryBusy || styleSaving) return;
+        selectOriginalImage(image);
+        byId("raw-image-dialog").close();
+      });
+      else {
+        const move = document.createElement("select");
+        move.setAttribute("aria-label", `Move ${image.name} to folder`);
+        const placeholder = new Option("Move to folder…", "");
+        move.append(placeholder);
+        for (const [folder, title] of Object.entries(rawFolders)) move.append(new Option(title, folder));
+        move.disabled = libraryBusy;
+        move.addEventListener("change", async () => {
+          if (!move.value || libraryBusy) return;
+          libraryBusy = true;
+          const folder = move.value;
+          renderRawImages();
+          try {
+            await api("/api/admin/catalog/raw-images/folder", { method: "PATCH", body: JSON.stringify({ publicId: image.publicId, folder }) });
+            image.folders = [folder];
+            byId("raw-image-status").textContent = `Moved to ${rawFolders[folder]}`;
+          } catch (error) { byId("raw-image-status").textContent = error.message; }
+          finally { libraryBusy = false; renderRawImages(); }
+        });
+        button.append(move);
+      }
+      grid.append(button);
+    }
+    if (!grid.children.length) grid.textContent = query ? "No matching original images." : "This folder is empty. Add original images here.";
+  }
+  async function loadRawImages() {
+    byId("raw-image-status").textContent = "Loading original images…";
+    try {
+      const data = await api("/api/admin/catalog/raw-images");
+      rawImages = data.images;
+      renderRawImages();
+      byId("raw-image-status").textContent = `${rawImages.length} reusable originals`;
+    } catch (error) {
+      byId("raw-image-status").textContent = error.message;
+    }
+  }
+  function openRawLibrary(selectImage) {
+    selectFromLibrary = selectImage;
+    rawFolder = null;
+    byId("raw-image-search").value = "";
+    rawImages = [];
+    renderRawImages();
+    byId("raw-image-dialog").showModal();
+    void loadRawImages();
+  }
+  async function uploadRawImage(file, folder) {
+    const compressed = await compressStyleImage(file);
+    const body = new FormData();
+    body.append("image", compressed.file);
+    body.append("folder", folder);
+    return (await api("/api/admin/catalog/raw-images", { method: "POST", body })).image;
+  }
   const notifications = window.MaddsNotifications.create({ api, notify, getCatalog: () => state });
   const welcomeBack = window.MaddsWelcomeBack.create({ api, notify, openNotification: id => { void notifications.open(id); } });
   const users = window.MaddsUsers.create({ api, notify });
@@ -370,8 +485,7 @@
     const file = fileInput.files?.[0];
     if (!file) return;
     const cover = kind === "cover";
-    const before = kind === "before";
-    const prefix = cover ? "cover" : (before ? "before" : "after");
+    const prefix = cover ? "cover" : "after";
     const button = byId(`upload-${prefix}-image`);
     const status = byId(`${prefix}-image-status`);
     const preview = byId(`${prefix}-image-preview`);
@@ -407,19 +521,12 @@
 
       styleUploads.track(uploaded.public_id);
       const form = byId("style-form");
-      const urlField = cover ? "thumbnail" : (before ? "exampleBeforeUrl" : "exampleAfterUrl");
-      const idField = cover ? "thumbnailPublicId" : (before ? "exampleBeforePublicId" : "exampleAfterPublicId");
+      const urlField = cover ? "thumbnail" : "exampleAfterUrl";
+      const idField = cover ? "thumbnailPublicId" : "exampleAfterPublicId";
       form.elements[urlField].value = uploaded.secure_url;
       form.elements[idField].value = uploaded.public_id;
       if (cover) form.elements.thumbnail.value = uploaded.secure_url;
-      if (!cover) {
-        const previewUrls = [form.elements.exampleBeforeUrl.value, form.elements.exampleAfterUrl.value];
-        const previewIds = [form.elements.exampleBeforePublicId.value, form.elements.exampleAfterPublicId.value];
-        if (previewUrls.every(Boolean) && previewIds.every(Boolean)) {
-          form.elements.previewImages.value = previewUrls.join("\n");
-          form.elements.previewImagePublicIds.value = previewIds.join("\n");
-        }
-      }
+      synchronizeImageFields();
       releaseEditorUploads(editorImageIds());
       preview.src = uploaded.secure_url;
       preview.hidden = false;
@@ -428,7 +535,7 @@
       status.textContent = error.message || "Cloudinary upload failed.";
     } finally {
       button.disabled = false;
-      button.textContent = cover ? "Upload cover image" : (before ? "Upload before preview" : "Upload after preview");
+      button.textContent = cover ? "Upload cover image" : "Upload generated image";
       fileInput.value = "";
     }
   }
@@ -693,6 +800,8 @@
     state.editingId = id;
     const form = byId("style-form");
     form.reset();
+    byId("link-cover-after").checked = false;
+    byId("upload-after-image").hidden = false;
     // Hidden input values become their reset defaults; form.reset() cannot clear
     // images assigned while editing the previous style.
     window.MaddsStyleUploads.clearImageFields(form);
@@ -732,6 +841,7 @@
       form.elements.exampleBeforePublicId.value = style.previewImagePublicIds?.[0] || style.exampleBeforePublicId || "";
       form.elements.exampleAfterUrl.value = afterUrl;
       form.elements.exampleAfterPublicId.value = style.previewImagePublicIds?.[1] || style.exampleAfterPublicId || "";
+      byId("link-cover-after").checked = style.coverAfterLinked ?? Boolean(form.elements.thumbnailPublicId.value && form.elements.thumbnailPublicId.value === form.elements.exampleAfterPublicId.value);
       form.elements.previewImages.value = (style.previewImages || []).join("\n");
       form.elements.previewImagePublicIds.value = (style.previewImagePublicIds || []).join("\n");
       const coverUrl = style.thumbnail || style.exampleBeforeUrl || "";
@@ -753,6 +863,7 @@
       form.elements.imageCount.value = String(style.imageCount);
       form.elements.tokensRequired.value = String(style.tokensRequired);
     }
+    synchronizeImageFields();
     updateIdPreview(form.elements.name.value, style?.id);
     renderCollectionOptions();
     if (style) for (const input of form.querySelectorAll('input[name="collections"]')) input.checked = style.collections.includes(input.value);
@@ -766,7 +877,7 @@
   function styleEditorSnapshot() {
     const form = byId("style-form");
     const entries = [...new FormData(form).entries()];
-    const selectedFiles = ["cover-image-file", "before-image-file", "after-image-file"].map((id) => {
+    const selectedFiles = ["cover-image-file", "after-image-file"].map((id) => {
       const file = byId(id).files?.[0];
       return file ? [file.name, file.size, file.lastModified] : null;
     });
@@ -913,19 +1024,70 @@
   byId("logs-previous").addEventListener("click", () => loadLogs(Math.max(1, state.logPage - 1)));
   byId("logs-next").addEventListener("click", () => loadLogs(state.logPage + 1));
   byId("cover-image-file").addEventListener("change", (event) => uploadStyleExampleImage("cover", event.currentTarget));
-  byId("before-image-file").addEventListener("change", (event) => uploadStyleExampleImage("before", event.currentTarget));
   byId("after-image-file").addEventListener("change", (event) => uploadStyleExampleImage("after", event.currentTarget));
   byId("upload-cover-image").addEventListener("click", () => byId("cover-image-file").click());
-  byId("upload-before-image").addEventListener("click", () => byId("before-image-file").click());
   byId("upload-after-image").addEventListener("click", () => byId("after-image-file").click());
+  byId("link-cover-after").addEventListener("change", (event) => {
+    if (styleSaving || ["cover", "before", "after"].some(kind => byId(`upload-${kind}-image`).disabled)) {
+      event.currentTarget.checked = !event.currentTarget.checked;
+      notify("Please wait for the upload or save to finish.");
+      return;
+    }
+    synchronizeImageFields();
+    if (!event.currentTarget.checked) byId("after-image-status").textContent = "Upload a separate after image if needed.";
+    releaseEditorUploads(editorImageIds());
+  });
+  byId("upload-before-image").addEventListener("click", () => {
+    if (styleSaving || ["cover", "before", "after"].some(kind => byId(`upload-${kind}-image`).disabled)) return;
+    openRawLibrary(true);
+  });
+  byId("open-raw-library").addEventListener("click", () => openRawLibrary(false));
+  byId("raw-image-folders").addEventListener("click", event => {
+    const button = event.target.closest("[data-raw-folder]");
+    if (!button || libraryBusy) return;
+    rawFolder = button.dataset.rawFolder;
+    byId("raw-image-search").value = "";
+    byId("raw-image-status").textContent = "";
+    renderRawImages();
+  });
+  byId("raw-image-search").addEventListener("input", renderRawImages);
+  byId("raw-image-add").addEventListener("click", () => byId("raw-image-files").click());
+  byId("raw-image-files").addEventListener("change", async event => {
+    const input = event.currentTarget;
+    const files = [...input.files];
+    if (!files.length || libraryBusy || !rawFolder) return;
+    const folder = rawFolder;
+    libraryBusy = true;
+    renderRawImages();
+    const failures = [];
+    try {
+      for (const [index, file] of files.entries()) {
+        byId("raw-image-status").textContent = `Saving ${index + 1} of ${files.length}…`;
+        try {
+          if (!["image/jpeg", "image/png", "image/webp", "image/avif"].includes(file.type) || file.size > 10 * 1024 * 1024) throw new Error("Invalid image");
+          await uploadRawImage(file, folder);
+        } catch { failures.push(file.name); }
+      }
+      await loadRawImages();
+      if (failures.length) byId("raw-image-status").textContent = `Could not save: ${failures.join(", ")}. Retry these images.`;
+    } finally {
+      libraryBusy = false;
+      renderRawImages();
+      input.value = "";
+    }
+  });
+  byId("raw-image-dialog").addEventListener("cancel", event => { if (libraryBusy) event.preventDefault(); });
+  byId("raw-image-dialog").querySelector("form").addEventListener("submit", event => { if (libraryBusy) event.preventDefault(); });
   byId("clear-style-previews").addEventListener("click", () => {
     if (styleSaving || ["upload-cover-image", "upload-before-image", "upload-after-image"].some(id => byId(id).disabled)) {
       notify("Please wait for the upload or save to finish."); return;
     }
     const form = byId("style-form");
+    byId("link-cover-after").checked = false;
+    byId("upload-after-image").hidden = false;
     window.MaddsStyleUploads.clearImageFields(form, true);
     for (const kind of ["before", "after"]) {
-      byId(`${kind}-image-file`).value = "";
+      if (kind === "after") byId("after-image-file").value = "";
       byId(`${kind}-image-preview`).removeAttribute("src");
       byId(`${kind}-image-preview`).hidden = true;
       byId(`${kind}-image-status`).textContent = "Optional · cover photo will be shown";
@@ -1009,6 +1171,7 @@
       ...(state.tagging?.version === 1 ? { tags: styleTags.getValue() } : {}),
       thumbnail: fields.get("thumbnail"),
       thumbnailPublicId: fields.get("thumbnailPublicId"),
+      coverAfterLinked: fields.get("linkCoverAfter") === "on",
       exampleBeforeUrl: beforeUrl || null,
       exampleBeforePublicId: beforeId || null,
       exampleAfterUrl: afterUrl || null,

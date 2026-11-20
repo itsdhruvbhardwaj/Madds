@@ -22,6 +22,7 @@
   <link rel="stylesheet" href="settings-layout.css?v=20261117-model-controls-1">
   <link rel="stylesheet" href="workspace-app.css?v=20261116-installable-1">
   <link rel="stylesheet" href="group-selection.css?v=20261117-visual-groups-1">
+  <link rel="stylesheet" href="raw-image-library.css?v=20261120-raw-folders-2">
 </head>
 <body>
   <div id="workspace-connection" class="workspace-status" role="status" tabindex="-1" hidden><div><strong>You're offline</strong><p id="workspace-connection-copy">Reconnect to continue. Your edits stay in this window; nothing is queued.</p></div><button id="workspace-reconnect" class="button secondary" type="button">Try again</button></div>
@@ -72,7 +73,7 @@
       <div id="notice" class="notice" role="status" hidden></div>
 
       <section id="styles-panel" class="panel-view">
-        <div class="page-heading"><div><p class="eyebrow">YOUR CREATIVE LIBRARY</p><h1>Styles</h1><p class="muted">Edit prompts and collections used by Madds.</p></div><div class="style-heading-actions"><button id="create-style-group" class="button secondary" type="button" aria-pressed="false" disabled>Create group</button><button id="add-style" class="button primary">＋ Add style</button></div></div>
+        <div class="page-heading"><div><p class="eyebrow">YOUR CREATIVE LIBRARY</p><h1>Styles</h1><p class="muted">Edit prompts and collections used by Madds.</p></div><div class="style-heading-actions"><button id="open-raw-library" class="button secondary" type="button">Original images</button><button id="create-style-group" class="button secondary" type="button" aria-pressed="false" disabled>Create group</button><button id="add-style" class="button primary">＋ Add style</button></div></div>
         <div class="workspace-tabs"><button id="styles-tab" type="button" aria-pressed="true">Styles</button><button id="groups-tab" type="button" aria-pressed="false">Groups</button></div><div id="style-list-view"><div class="toolbar"><label class="search-box"><span>⌕</span><input id="style-search" type="search" placeholder="Search styles, tags or prompts"></label><select id="collection-filter" aria-label="Filter by collection"><option value="">All collections</option></select><select id="verification-filter" aria-label="Filter by verification"><option value="all">All verification states</option><option value="verified">Verified</option><option value="unverified">Unverified</option></select><select id="tag-filter" aria-label="Filter by tags"><option value="">All tag states</option><option value="missing">Missing tags</option><option value="tagged">Has tags</option></select><select id="style-sort" aria-label="Sort styles"><option value="name-asc">Name: A to Z</option><option value="name-desc">Name: Z to A</option><option value="created-desc">Newest added</option><option value="created-asc">Oldest added</option><option value="updated-desc">Recently modified</option><option value="updated-asc">Least recently modified</option></select><span id="result-count" class="muted"></span></div>
         <div id="style-bulk-controls" class="style-bulk-controls"><button id="style-bulk-toggle" class="style-bulk-toggle" type="button" aria-expanded="false" aria-controls="style-bulk-panel"><strong>Bulk style actions</strong><span id="style-bulk-toggle-hint">Expand to select styles <span aria-hidden="true">⌄</span></span></button><div id="style-bulk-panel" hidden><p id="style-selection-count" class="muted">0 selected</p><div class="style-bulk-actions"><button id="style-select-all" type="button" class="button secondary">Select all filtered styles</button><button id="style-select-clear" type="button" class="button secondary">Clear selection</button><button id="style-bulk-group" type="button" class="button secondary" disabled>Group selected styles</button><button id="style-bulk-verify" type="button" class="button primary" disabled>Mark verified</button><button id="style-bulk-unverify" type="button" class="button secondary" disabled>Mark unverified</button></div><div class="style-bulk-tag-entry"><label for="bulk-style-tags">Tags to add<input id="bulk-style-tags" type="text" list="style-tag-suggestions" placeholder="e.g. saree, wedding" autocomplete="off"></label><button id="style-bulk-tags" type="button" class="button secondary" disabled>Add tags to selected</button></div><p class="field-hint">Existing tags are kept. If a style would exceed 10 tags, nothing in the selection is changed.</p><p class="field-hint">Selection follows the main search, collection, and verification filters. Changing filters removes styles that no longer match. Verify only after reviewing images and testing prompts.</p></div></div>
         <div id="style-group-selection" class="style-group-selection" hidden aria-label="Selected styles for a new group"><div><strong id="style-group-selection-count" role="status">0 / 8 styles selected</strong><p id="style-group-selection-hint">Select at least 2 similar styles by clicking their cards.</p><div id="style-group-selection-preview" class="style-group-selection-preview"></div></div><div class="style-group-selection-actions"><button id="style-group-selection-cancel" type="button" class="button secondary">Cancel</button><button id="style-group-selection-create" type="button" class="button primary" disabled>Continue to group</button></div></div>
@@ -336,9 +337,8 @@
         <div class="wide style-example-pair">
           <div class="wide"><button id="clear-style-previews" class="button secondary" type="button">Remove before / after previews</button><p class="field-hint">Show only the cover photo in the app preview. Save the style to apply.</p></div>
           <section class="style-example-upload">
-            <h3>Before preview</h3><p class="field-hint">Optional. Upload it together with the after preview.</p>
-            <input id="before-image-file" type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden>
-            <button id="upload-before-image" class="button secondary" type="button">Upload original image</button>
+            <h3>Before preview</h3><p class="field-hint">Choose a reusable original or add a new one to the library.</p>
+            <button id="upload-before-image" class="button secondary" type="button">Choose or upload original</button>
             <span id="before-image-status" class="field-hint" role="status">Optional</span>
             <img id="before-image-preview" class="style-example-preview" alt="Before example preview" hidden>
           </section>
@@ -346,6 +346,7 @@
             <h3>After preview</h3><p class="field-hint">Optional. Upload it together with the before preview.</p>
             <input id="after-image-file" type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden>
             <button id="upload-after-image" class="button secondary" type="button">Upload generated image</button>
+            <label class="collection-check"><input id="link-cover-after" type="checkbox" name="linkCoverAfter"> Use cover as after image</label>
             <span id="after-image-status" class="field-hint" role="status">Optional</span>
             <img id="after-image-preview" class="style-example-preview" alt="After example preview" hidden>
           </section>
@@ -356,6 +357,28 @@
         <label class="wide verification-control"><span class="verification-check"><input name="verified" type="checkbox"><b>Verified</b></span><small>Mark verified only after reviewing the cover image, any before/after previews, and testing the prompt in Prompt testing. Verified styles are the only styles shown in the app and on the website.</small></label>
       </div>
       <footer class="dialog-footer style-editor-footer"><span id="style-last-editor" class="style-last-editor" hidden></span><span id="form-error" class="form-error"></span><button type="button" class="button secondary" data-close="style-dialog">Cancel</button><button class="button primary" type="submit">Save style</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="raw-image-dialog" class="editor-dialog">
+    <form method="dialog">
+      <header class="dialog-header"><h2>Original image library</h2><button class="icon-button" value="cancel" aria-label="Close library">×</button></header>
+      <p class="field-hint">Original images are kept for future styles, even when a style is deleted.</p>
+      <nav id="raw-image-folders" class="raw-image-folders" aria-label="Original image folders">
+        <button type="button" data-raw-folder="men" aria-pressed="false">Men</button>
+        <button type="button" data-raw-folder="women" aria-pressed="false">Women</button>
+        <button type="button" data-raw-folder="couples" aria-pressed="false">Couples</button>
+        <button type="button" data-raw-folder="groups" aria-pressed="false">Groups</button>
+        <button type="button" data-raw-folder="others" aria-pressed="false">Others</button>
+      </nav>
+      <h3 id="raw-image-folder-title">Choose a folder</h3>
+      <div class="raw-image-toolbar">
+        <input id="raw-image-search" type="search" placeholder="Search this folder" aria-label="Search this folder" disabled>
+        <input id="raw-image-files" type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple hidden>
+        <button type="button" id="raw-image-add" class="button secondary" disabled>Add images</button>
+      </div>
+      <p id="raw-image-status" class="field-hint" role="status"></p>
+      <div id="raw-image-grid" class="raw-image-grid"></div>
     </form>
   </dialog>
 
@@ -395,10 +418,10 @@
   <script src="feedback.js?v=20261114-sender" defer></script>
   <script src="style-groups.js?v=20261117-visual-groups-1" defer></script><script src="style-tags.js?v=20261116-tags" defer></script>
   <script src="style-bulk.js?v=20261117-visual-groups-1" defer></script>
-  <script src="style-uploads.js?v=20261107-preview-reset" defer></script>
+  <script src="style-uploads.js?v=20261120-raw-library-1" defer></script>
   <script src="performance.js?v=20261108-date-format" defer></script>
   <script src="image-generation.js?v=20261117-model-controls-1" defer></script>
   <script src="settings-navigation.js?v=20261117-model-controls-1" defer></script>
-  <script src="app.js?v=20261117-visual-groups-1" defer></script>
+  <script src="app.js?v=20261120-raw-folders-2" defer></script>
 </body>
 </html>

@@ -16,7 +16,9 @@ import type { Style } from "../services/styles/styleTypes.js";
 import { MAX_STYLE_TAGS, MAX_STYLE_TAG_LENGTH, suggestedStyleTags, tagAliases, validateStyleTags } from '../services/styles/styleTags.js';
 import { HomeOrderError, saveHomeOrder } from "../services/home/homeOrder.js";
 import { ensureHomeSection, renameHomeSectionCollection } from "../services/home/homeCatalog.js";
-import { cloudinaryIsConfigured, createStyleImageUploadSignature } from "../services/cloudinaryAssets.js";
+import { cloudinaryIsConfigured, createStyleImageUploadSignature, isManagedStyleImageId } from "../services/cloudinaryAssets.js";
+import { RawStyleImage } from "../models/RawStyleImage.js";
+import { beforeImage, rememberBeforeImage, saveRawStyleImage, RAW_IMAGE_FOLDERS, type RawImage, type RawImageFolder } from "../services/rawStyleImages.js";
 import { getStyleImageIds, queueStyleImages, activateStyleImageCleanup, retryPendingCloudinaryCleanup } from "../services/styleImageCleanup.js";
 import { OpenRouterImageGenerator } from "../services/openrouter/generation.js";
 import { resolveImageGenerationConfig } from '../services/imageGenerationSettings.js';
@@ -47,6 +49,51 @@ router.use(requireAuth, (req: AuthenticatedRequest, res: Response, next: NextFun
 
 router.use("/catalog/performance", stylePerformanceRouter);
 router.use('/catalog/groups', styleGroupsRouter);
+
+router.get("/catalog/raw-images", async (_req, res) => {
+  const [saved, styles] = await Promise.all([
+    RawStyleImage.find().sort({ createdAt: -1 }).lean(),
+    CatalogStyle.find().select("name exampleBeforeUrl previewImages").lean(),
+  ]);
+  const images = new Map<string, RawImage>();
+  for (const image of saved) images.set(image.publicId, { publicId: image.publicId, url: image.url, name: image.name, folders: image.folders?.length ? image.folders : ["others"] });
+  for (const style of styles) {
+    const image = beforeImage(style);
+    if (image && !images.has(image.publicId)) images.set(image.publicId, image);
+  }
+  res.set("Cache-Control", "no-store");
+  return res.json({ ok: true, images: [...images.values()] });
+});
+
+router.post("/catalog/raw-images", promptTestUpload.single("image"), async (req, res) => {
+  const file = req.file;
+  const folder = req.body?.folder ?? "others";
+  if (!RAW_IMAGE_FOLDERS.includes(folder)) return res.status(400).json({ ok: false, error: "Choose a valid original image folder." });
+  if (!file || file.size > 300 * 1024) return res.status(400).json({ ok: false, error: "Choose a compressed original image up to 300 KB." });
+  const type = await fileTypeFromBuffer(file.buffer);
+  if (!type || !["image/jpeg", "image/png", "image/webp", "image/avif"].includes(type.mime)) return res.status(400).json({ ok: false, error: "Choose a valid image." });
+  try {
+    const image = await saveRawStyleImage(file.buffer, file.originalname, type.mime, folder as RawImageFolder);
+    return res.status(201).json({ ok: true, image });
+  } catch {
+    return res.status(502).json({ ok: false, error: "Could not save the original image. Please retry." });
+  }
+});
+
+router.patch("/catalog/raw-images/folder", async (req, res) => {
+  const { publicId, folder } = req.body || {};
+  if (typeof publicId !== "string" || !RAW_IMAGE_FOLDERS.includes(folder)) return res.status(400).json({ ok: false, error: "Choose an image and a valid folder." });
+  const existing = await RawStyleImage.findOne({ publicId }).lean();
+  if (!existing) {
+    const styles = await CatalogStyle.find().select("name exampleBeforeUrl previewImages").lean();
+    const original = styles.map(beforeImage).find(image => image?.publicId === publicId);
+    if (!original) return res.status(404).json({ ok: false, error: "Original image not found." });
+    await RawStyleImage.updateOne({ publicId }, { $setOnInsert: { publicId, url: original.url, name: original.name }, $set: { folders: [folder] } }, { upsert: true });
+  } else {
+    await RawStyleImage.updateOne({ publicId }, { $set: { folders: [folder] } });
+  }
+  return res.json({ ok: true });
+});
 
 router.post("/catalog/test-generation", promptTestUpload.single("image"), async (req: Request, res: Response) => {
   const prompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
@@ -272,6 +319,7 @@ router.post("/catalog/styles", async (req: AuthenticatedRequest, res: Response) 
   if (exists) return res.status(409).json({ ok: false, error: "That style ID is already in use." });
 
   await ensureCollections(style.collections);
+  await rememberBeforeImage(style);
   await CatalogStyle.create({ ...style, lastEditedByName: req.user?.name?.trim().slice(0, 160) || null });
   await removeCloudinaryCleanupForStyleImages(style);
   await logChange(req, "STYLE_CREATED", style.id, style.name);
@@ -303,6 +351,8 @@ router.put("/catalog/styles/:id", async (req: AuthenticatedRequest, res: Respons
     return res.status(409).json({ ok: false, error: "Another team member changed this style. Reopen it before saving." });
   }
   await ensureCollections(style.collections);
+  await rememberBeforeImage(previous);
+  await rememberBeforeImage(style);
   const nextImageIds = new Set(getStyleImageIds(style));
   const replacedImageIds = getStyleImageIds(previous).filter(publicId => !nextImageIds.has(publicId));
   await queueStyleImages(replacedImageIds, id, previous.name);
@@ -319,6 +369,7 @@ router.delete("/catalog/styles/:id", async (req: AuthenticatedRequest, res: Resp
   if (typeof id !== "string") return res.status(400).json({ ok: false, error: "Invalid style ID." });
   const style = await CatalogStyle.findOne({ id }).lean();
   if (!style) return res.status(404).json({ ok: false, error: "Style not found." });
+  await rememberBeforeImage(style);
   const imageIds = getStyleImageIds(style);
   await queueStyleImages(imageIds, id, String(style.name));
   const deleted = await CatalogStyle.deleteOne({ id, ...(style.updatedAt ? { updatedAt: style.updatedAt } : {}) });
@@ -470,6 +521,9 @@ function validateStyle(body: unknown, fixedId?: string): { value?: Style; error?
   const exampleAfterUrl = previewImages[1] ? optimizeCloudinaryThumbnailUrl(previewImages[1]) : null;
   const exampleBeforePublicId = previewImagePublicIds[0] ?? (legacyBefore && legacyAfter ? String(source.exampleBeforePublicId || "") || null : null);
   const exampleAfterPublicId = previewImagePublicIds[1] ?? (legacyBefore && legacyAfter ? String(source.exampleAfterPublicId || "") || null : null);
+  if (source.coverAfterLinked === true && exampleBeforeUrl && (exampleAfterPublicId !== thumbnailPublicId || exampleAfterUrl !== thumbnail)) {
+    return { error: "Linked cover and after images must match." };
+  }
   const collections = Array.isArray(source.collections) ? [...new Set(source.collections.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))] : [];
   const imageCount = Number(source.imageCount);
   const tokensRequired = Number(source.tokensRequired);
@@ -486,7 +540,7 @@ function validateStyle(body: unknown, fixedId?: string): { value?: Style; error?
     try {
       const parsedUrl = new URL(url);
       if (parsedUrl.protocol !== "https:") return { error: "Image links must use HTTPS." };
-      if (publicId && (!publicId.startsWith("picmee/styles/") || publicId.includes("..") || publicId.length > 255 || parsedUrl.hostname !== "res.cloudinary.com" || !parsedUrl.pathname.includes(`/${publicId}.`))) return { error: "Each Cloudinary image ID must match its uploaded image URL." };
+      if (publicId && (!isManagedStyleImageId(publicId) || publicId.length > 255 || parsedUrl.hostname !== "res.cloudinary.com" || !decodeURIComponent(parsedUrl.pathname).includes(`/${publicId}.`))) return { error: "Each Cloudinary image ID must match its uploaded image URL." };
       if (url === thumbnail && (!publicId || parsedUrl.hostname !== "res.cloudinary.com")) return { error: "Upload a cover image to Cloudinary before saving." };
     } catch { return { error: "Enter valid HTTPS Cloudinary image links." }; }
   }
@@ -504,6 +558,7 @@ function validateStyle(body: unknown, fixedId?: string): { value?: Style; error?
       ...(tagValidation ? { tags: tagValidation.tags } : {}),
       thumbnail,
       thumbnailPublicId,
+      ...(typeof source.coverAfterLinked === "boolean" ? { coverAfterLinked: source.coverAfterLinked } : {}),
       exampleBeforeUrl,
       exampleBeforePublicId,
       exampleAfterUrl,

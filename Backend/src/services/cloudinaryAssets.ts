@@ -18,6 +18,20 @@ export function cloudinaryIsConfigured(): boolean {
   return Boolean(env.cloudinaryCloudName && env.cloudinaryApiKey && env.cloudinaryApiSecret);
 }
 
+export async function uploadRawStyleImage(buffer: Buffer, filename: string, mime: string, publicId: string): Promise<string> {
+  if (!cloudinaryIsConfigured()) throw new Error("Cloudinary upload is not configured.");
+  const params = { public_id: publicId, overwrite: "false", timestamp: String(Math.floor(Date.now() / 1000)) };
+  const body = new FormData();
+  for (const [key, value] of Object.entries(params)) body.append(key, value);
+  body.append("api_key", env.cloudinaryApiKey);
+  body.append("signature", signCloudinaryParameters(params));
+  body.append("file", new Blob([new Uint8Array(buffer)], { type: mime }), filename);
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(env.cloudinaryCloudName)}/image/upload`, { method: "POST", body, signal: AbortSignal.timeout(30_000) });
+  const uploaded = await response.json() as { public_id?: string; secure_url?: string };
+  if (!response.ok || uploaded.public_id !== publicId || !uploaded.secure_url) throw new Error("Original image upload failed. Please retry.");
+  return uploaded.secure_url;
+}
+
 export function createStyleImageUploadSignature(collectionNames: string[]): CloudinaryUploadSignature {
   const names = collectionNames.length ? collectionNames : ["Other"];
   const primarySlug = slugify(names[0]) || "other";
