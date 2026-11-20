@@ -20,7 +20,12 @@ export function cloudinaryIsConfigured(): boolean {
 
 export async function uploadRawStyleImage(buffer: Buffer, filename: string, mime: string, publicId: string): Promise<string> {
   if (!cloudinaryIsConfigured()) throw new Error("Cloudinary upload is not configured.");
-  const params = { public_id: publicId, overwrite: "false", timestamp: String(Math.floor(Date.now() / 1000)) };
+  const params = {
+    public_id: publicId,
+    asset_folder: "Madds-aiphotostudio/Raw-images",
+    overwrite: "false",
+    timestamp: String(Math.floor(Date.now() / 1000)),
+  };
   const body = new FormData();
   for (const [key, value] of Object.entries(params)) body.append(key, value);
   body.append("api_key", env.cloudinaryApiKey);
