@@ -50,6 +50,8 @@
     releaseEditorUploads(editorImageIds());
   }
   let rawImages = [];
+  let rawImagesLoadedAt = 0, rawLoadPromise = null, rawLoadRevision = 0, rawGridKey = null, rawPreview = null, workspaceEpoch = 0;
+  const rawRefreshInterval = 30_000;
   const rawFolders = { men: "Men", women: "Women", couples: "Couples", groups: "Groups", others: "Others" };
   let rawFolder = null;
   let selectFromLibrary = false;
@@ -57,10 +59,28 @@
   function imageFolders(image) {
     return image.folders?.length ? image.folders : ["others"];
   }
+  function showRawPreview(image) {
+    if (libraryBusy || styleSaving) return;
+    rawPreview = image;
+    byId("raw-preview-title").textContent = image.name;
+    byId("raw-preview-photo").src = image.url;
+    byId("raw-preview-photo").alt = image.name;
+    const download = byId("raw-preview-download");
+    const url = window.MaddsRawImageLibrary.download(image);
+    download.hidden = !url;
+    if (url) download.href = url;
+    else download.removeAttribute("href");
+    byId("raw-preview-select").hidden = !selectFromLibrary;
+    byId("raw-image-preview-dialog").showModal();
+  }
+  function closeRawPreview() {
+    rawPreview = null;
+    byId("raw-preview-photo").removeAttribute("src");
+    byId("raw-preview-download").removeAttribute("href");
+  }
   function renderRawImages() {
     const query = byId("raw-image-search").value.trim().toLowerCase();
     const grid = byId("raw-image-grid");
-    grid.replaceChildren();
     for (const button of byId("raw-image-folders").querySelectorAll("[data-raw-folder]")) {
       const folder = button.dataset.rawFolder;
       button.textContent = `${rawFolders[folder]} (${rawImages.filter(image => imageFolders(image).includes(folder)).length})`;
@@ -71,24 +91,64 @@
     byId("raw-image-search").disabled = !rawFolder;
     byId("raw-image-add").disabled = !rawFolder || libraryBusy;
     byId("raw-image-add").textContent = rawFolder ? `Add to ${rawFolders[rawFolder]}` : "Add images";
+    const visible = rawImages.filter(image => imageFolders(image).includes(rawFolder) && image.name.toLowerCase().includes(query));
+    const gridKey = JSON.stringify([rawFolder, selectFromLibrary, query, rawImagesLoadedAt > 0, visible.map(image => [image.publicId, image.url, image.name, imageFolders(image)])]);
+    if (gridKey === rawGridKey) {
+      grid.querySelectorAll("select, .raw-select-image").forEach(element => { element.disabled = libraryBusy; });
+      return;
+    }
+    rawGridKey = gridKey;
+    const previousScroll = grid.scrollTop;
+    grid.replaceChildren();
     if (!rawFolder) { grid.textContent = "Select a folder to browse or upload original images."; return; }
-    for (const image of rawImages.filter(image => imageFolders(image).includes(rawFolder) && image.name.toLowerCase().includes(query))) {
-      const button = document.createElement(selectFromLibrary ? "button" : "article");
-      if (selectFromLibrary) button.type = "button";
+    if (!rawImagesLoadedAt && !visible.length) {
+      grid.innerHTML = Array.from({ length: 8 }, () => '<div class="raw-image-skeleton" aria-hidden="true"></div>').join("");
+      return;
+    }
+    for (const [index, image] of visible.entries()) {
+      const button = document.createElement("article");
       button.className = "raw-image-card";
+      const preview = document.createElement("button");
+      preview.className = "raw-image-photo-button";
+      preview.type = "button";
+      preview.setAttribute("aria-label", `Preview ${image.name}`);
       const photo = document.createElement("img");
-      photo.src = image.url;
+      photo.src = window.MaddsRawImageLibrary.thumbnail(image);
       photo.alt = image.name;
-      photo.loading = "lazy";
+      photo.loading = index < 8 ? "eager" : "lazy";
+      photo.decoding = "async";
+      preview.append(photo);
+      preview.addEventListener("click", () => showRawPreview(image));
       const label = document.createElement("span");
       label.textContent = image.name;
-      button.append(photo, label);
-      if (selectFromLibrary) button.addEventListener("click", () => {
-        if (libraryBusy || styleSaving) return;
-        selectOriginalImage(image);
-        byId("raw-image-dialog").close();
-      });
-      else {
+      label.title = image.name;
+      const actions = document.createElement("div");
+      actions.className = "raw-card-actions";
+      const downloadUrl = window.MaddsRawImageLibrary.download(image);
+      if (downloadUrl) {
+        const download = document.createElement("a");
+        download.className = "button secondary";
+        download.href = downloadUrl;
+        download.target = "_blank";
+        download.rel = "noopener";
+        download.textContent = "Download";
+        download.setAttribute("aria-label", `Download ${image.name}`);
+        actions.append(download);
+      }
+      button.append(preview, label, actions);
+      if (selectFromLibrary) {
+        const choose = document.createElement("button");
+        choose.type = "button";
+        choose.className = "button primary raw-select-image";
+        choose.textContent = "Use image";
+        choose.disabled = libraryBusy;
+        choose.addEventListener("click", () => {
+          if (libraryBusy || styleSaving) return;
+          selectOriginalImage(image);
+          byId("raw-image-dialog").close();
+        });
+        actions.append(choose);
+      } else {
         const move = document.createElement("select");
         move.setAttribute("aria-label", `Move ${image.name} to folder`);
         const placeholder = new Option("Move to folder…", "");
@@ -98,39 +158,66 @@
         move.addEventListener("change", async () => {
           if (!move.value || libraryBusy) return;
           libraryBusy = true;
+          const owner = workspaceEpoch;
           const folder = move.value;
           renderRawImages();
           try {
             await api("/api/admin/catalog/raw-images/folder", { method: "PATCH", body: JSON.stringify({ publicId: image.publicId, folder }) });
-            image.folders = [folder];
+            if (owner !== workspaceEpoch) return;
+            invalidateRawImages();
+            rawImages = rawImages.map(entry => entry.publicId === image.publicId ? { ...entry, folders: [folder] } : entry);
             byId("raw-image-status").textContent = `Moved to ${rawFolders[folder]}`;
           } catch (error) { byId("raw-image-status").textContent = error.message; }
-          finally { libraryBusy = false; renderRawImages(); }
+          finally { if (owner === workspaceEpoch) { libraryBusy = false; renderRawImages(); void loadRawImages(); } }
         });
         button.append(move);
       }
       grid.append(button);
     }
     if (!grid.children.length) grid.textContent = query ? "No matching original images." : "This folder is empty. Add original images here.";
+    grid.scrollTop = previousScroll;
   }
-  async function loadRawImages() {
-    byId("raw-image-status").textContent = "Loading original images…";
-    try {
-      const data = await api("/api/admin/catalog/raw-images");
-      rawImages = data.images;
-      renderRawImages();
-      byId("raw-image-status").textContent = `${rawImages.length} reusable originals`;
-    } catch (error) {
-      byId("raw-image-status").textContent = error.message;
-    }
+  function invalidateRawImages() {
+    ++rawLoadRevision;
+    rawLoadPromise = null;
+    rawImagesLoadedAt = rawImages.length ? 1 : 0;
+  }
+  function loadRawImages() {
+    if (rawLoadPromise) return rawLoadPromise;
+    if (rawImagesLoadedAt && Date.now() - rawImagesLoadedAt < rawRefreshInterval) return Promise.resolve();
+    const revision = ++rawLoadRevision;
+    const dialog = byId("raw-image-dialog");
+    if (dialog.open) byId("raw-image-status").textContent = rawImages.length ? "Checking for updates…" : "Loading original images…";
+    const loading = (async () => {
+      try {
+        const data = await api("/api/admin/catalog/raw-images");
+        if (revision !== rawLoadRevision) return;
+        rawImages = data.images || [];
+        rawImagesLoadedAt = Date.now();
+        if (dialog.open) {
+          renderRawImages();
+          byId("raw-image-status").textContent = `${rawImages.length} reusable originals`;
+        }
+      } catch (error) {
+        if (revision !== rawLoadRevision) return;
+        if (dialog.open) {
+          byId("raw-image-status").textContent = rawImages.length ? `Showing previously loaded images. ${error.message}` : error.message;
+          if (!rawImages.length) byId("raw-image-grid").textContent = "Could not load images. Close and reopen the library to retry.";
+        }
+      } finally {
+        if (revision === rawLoadRevision) rawLoadPromise = null;
+      }
+    })();
+    rawLoadPromise = loading;
+    return loading;
   }
   function openRawLibrary(selectImage) {
     selectFromLibrary = selectImage;
-    rawFolder = null;
     byId("raw-image-search").value = "";
-    rawImages = [];
+    byId("raw-image-grid").scrollTop = 0;
     renderRawImages();
     byId("raw-image-dialog").showModal();
+    byId("raw-image-status").textContent = rawImagesLoadedAt ? `${rawImages.length} reusable originals` : "Loading original images…";
     void loadRawImages();
   }
   async function uploadRawImage(file, folder) {
@@ -189,6 +276,21 @@
   });
 
   function clearSession() {
+    ++workspaceEpoch;
+    rawImages = [];
+    invalidateRawImages();
+    rawGridKey = null;
+    rawFolder = null;
+    libraryBusy = false;
+    if (byId("raw-image-preview-dialog").open) byId("raw-image-preview-dialog").close();
+    closeRawPreview();
+    if (byId("raw-image-dialog").open) byId("raw-image-dialog").close();
+    byId("raw-image-grid").replaceChildren();
+    state.catalogLoaded = false;
+    state.catalogLoading = false;
+    state.styles = [];
+    state.collections = [];
+    state.sections = [];
     sessionApi.reset();
     workspaceApp.closeMenu();
     styleGroups.reset();
@@ -237,6 +339,7 @@
   async function loadCatalog() {
     if (state.catalogLoading) return;
     state.catalogLoading = true;
+    const owner = workspaceEpoch;
     const refreshButton = byId("refresh-button");
     refreshButton.disabled = true;
     refreshButton.classList.add("is-loading");
@@ -248,12 +351,14 @@
       byId("collections-list").innerHTML = '<div class="loading-message"><span class="loading-spinner"></span>Loading collections…</div>';
     }
     try {
-      const data = await api("/api/admin/catalog");
+      const catalogue = api("/api/admin/catalog");
+      void styleGroups.refresh(catalogue);
+      const data = await catalogue;
+      if (owner !== workspaceEpoch) return;
       byId("account-email").textContent = data.currentUser?.name || "Team member";
       state.styles = data.styles || [];
       state.tagging = data.tagging || null;
       styleTags.refresh();
-      await styleGroups.refresh();
       state.collections = data.collections || [];
       state.sections = data.sections || [];
       state.recentChanges = data.recentChanges || [];
@@ -265,9 +370,12 @@
       renderCollections();
       renderCollectionOptions();
       state.catalogLoaded = true;
+      styleGroups.render();
+      void loadRawImages();
       notifications.catalogChanged();
       if (state.activePanel === "notifications-panel") void notifications.refresh();
     } catch (error) {
+      if (owner !== workspaceEpoch) return;
       if (error.message.includes("not allowed")) {
         clearSession();
         showLogin("This account can sign in, but it has not been approved for catalogue access. Ask the Madds Workspace owner to add its email to the backend ADMIN_EMAILS setting.");
@@ -279,6 +387,7 @@
         byId("collections-list").innerHTML = '<div class="empty-state">Could not load collections. Use the refresh button to try again.</div>';
       }
     } finally {
+      if (owner !== workspaceEpoch) return;
       state.catalogLoading = false;
       refreshButton.disabled = false;
       refreshButton.classList.remove("is-loading");
@@ -775,6 +884,7 @@
     try {
       const result = await api(`/api/admin/catalog/styles/${encodeURIComponent(id)}`, { method: "DELETE" });
       state.styles = state.styles.filter((item) => item.id !== id);
+      invalidateRawImages();
       if (result.cloudinaryCleanupPending) state.pendingCloudinaryCleanup += 1;
       const cleanupButton = byId("retry-cloudinary-cleanup");
       cleanupButton.hidden = state.pendingCloudinaryCleanup === 0;
@@ -919,7 +1029,7 @@
       sessionStorage.setItem(tokenKey, data.accessToken);
       sessionStorage.setItem(refreshKey, data.refreshToken);
       showApp(data.user?.name);
-      await loadCatalog();
+      void loadCatalog();
     } catch (error) { showLogin(error.message); }
     finally { submit.disabled = false; submit.textContent = "Sign in"; }
   });
@@ -1046,17 +1156,27 @@
     const button = event.target.closest("[data-raw-folder]");
     if (!button || libraryBusy) return;
     rawFolder = button.dataset.rawFolder;
+    byId("raw-image-grid").scrollTop = 0;
     byId("raw-image-search").value = "";
     byId("raw-image-status").textContent = "";
     renderRawImages();
   });
   byId("raw-image-search").addEventListener("input", renderRawImages);
+  byId("raw-preview-close").addEventListener("click", () => byId("raw-image-preview-dialog").close());
+  byId("raw-image-preview-dialog").addEventListener("close", closeRawPreview);
+  byId("raw-preview-select").addEventListener("click", () => {
+    if (!rawPreview || libraryBusy || styleSaving || !selectFromLibrary) return;
+    selectOriginalImage(rawPreview);
+    byId("raw-image-preview-dialog").close();
+    byId("raw-image-dialog").close();
+  });
   byId("raw-image-add").addEventListener("click", () => byId("raw-image-files").click());
   byId("raw-image-files").addEventListener("change", async event => {
     const input = event.currentTarget;
     const files = [...input.files];
     if (!files.length || libraryBusy || !rawFolder) return;
     const folder = rawFolder;
+    const owner = workspaceEpoch;
     libraryBusy = true;
     renderRawImages();
     const failures = [];
@@ -1065,14 +1185,18 @@
         byId("raw-image-status").textContent = `Saving ${index + 1} of ${files.length}…`;
         try {
           if (!["image/jpeg", "image/png", "image/webp", "image/avif"].includes(file.type) || file.size > 10 * 1024 * 1024) throw new Error("Invalid image");
-          await uploadRawImage(file, folder);
+          const image = await uploadRawImage(file, folder);
+          if (owner !== workspaceEpoch) return;
+          invalidateRawImages();
+          rawImages = [image, ...rawImages.filter(entry => entry.publicId !== image.publicId)];
         } catch { failures.push(file.name); }
       }
+      if (owner !== workspaceEpoch) return;
+      invalidateRawImages();
       await loadRawImages();
       if (failures.length) byId("raw-image-status").textContent = `Could not save: ${failures.join(", ")}. Retry these images.`;
     } finally {
-      libraryBusy = false;
-      renderRawImages();
+      if (owner === workspaceEpoch) { libraryBusy = false; renderRawImages(); }
       input.value = "";
     }
   });
@@ -1189,6 +1313,7 @@
       const wasEditing = Boolean(state.editingId);
       const result = await api(state.editingId ? `/api/admin/catalog/styles/${encodeURIComponent(state.editingId)}` : "/api/admin/catalog/styles", { method: state.editingId ? "PUT" : "POST", body: JSON.stringify(style) });
       styleUploads.saved(editorImageIds());
+      invalidateRawImages();
       releaseEditorUploads();
       const savedAt = new Date().toISOString();
       const savedStyle = { ...result.style, createdAt: wasEditing ? state.styles.find((item) => item.id === result.style.id)?.createdAt : savedAt, updatedAt: savedAt };
@@ -1259,4 +1384,11 @@
 
   if (!apiBase) showLogin("Set the backend URL in config.js before signing in.");
   else if (sessionStorage.getItem(tokenKey)) { showApp(""); void loadCatalog(); }
+  else {
+    // A single connection attempt can begin while the member types credentials.
+    // Login remains independent of this optional public health request.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+    void fetch(`${apiBase}/health`, { cache: "no-store", signal: controller.signal }).catch(() => {}).finally(() => clearTimeout(timeout));
+  }
 })();

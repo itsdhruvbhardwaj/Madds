@@ -47,7 +47,7 @@ router.get("/", async (req, res) => {
     { $project: Object.fromEntries(fields.split(" ").map(field => [field, 1])) },
   ];
   const [users, total] = await Promise.all([User.aggregate(pipeline), User.countDocuments(filter)]);
-  res.json({ users, total, page, pages: Math.max(1, Math.ceil(total / 25)), sort });
+  res.json({ users, total, page, pageSize: 25, pages: Math.max(1, Math.ceil(total / 25)), sort });
 });
 router.get("/:id", async (req, res) => {
   const user = await User.findById(req.params.id).select(`${fields} passwordHash googleId`).lean();

@@ -141,7 +141,7 @@ router.get("/catalog", async (req: AuthenticatedRequest, res: Response) => {
   void retryPendingCloudinaryCleanup(3).catch((error: unknown) => {
     console.warn("Background Cloudinary cleanup retry failed.", error instanceof Error ? error.message : "UNKNOWN");
   });
-  const [styles, collections, sections, styleTimestamps, collectionTimestamps, lastEditors] = await Promise.all([
+  const [styles, collections, sections, styleTimestamps, collectionTimestamps, lastEditors, pendingCloudinaryCleanup] = await Promise.all([
     listCatalogStyles(true),
     listCatalogCollections(),
     HomeSectionConfig.find().sort({ order: 1, title: 1 }).lean(),
@@ -152,8 +152,8 @@ router.get("/catalog", async (req: AuthenticatedRequest, res: Response) => {
       { $sort: { createdAt: -1, _id: -1 } },
       { $group: { _id: "$itemId", name: { $first: "$actorName" }, action: { $first: "$action" } } },
     ]),
+    CloudinaryCleanup.countDocuments({ $or: [{ styleId: { $ne: "pending-upload" } }, { attempts: { $gt: 0 } }, { cleanupAfter: { $lte: new Date() } }] }),
   ]);
-  const pendingCloudinaryCleanup = await CloudinaryCleanup.countDocuments({ $or: [{ styleId: { $ne: "pending-upload" } }, { attempts: { $gt: 0 } }, { cleanupAfter: { $lte: new Date() } }] });
   const styleTimes = new Map(styleTimestamps.map((item) => [String(item.id), { createdAt: item.createdAt, updatedAt: item.updatedAt, lastEditedByName: item.lastEditedByName }]));
   const collectionTimes = new Map(collectionTimestamps.map((item) => [String(item.id), { createdAt: item.createdAt, updatedAt: item.updatedAt }]));
   res.json({

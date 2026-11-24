@@ -8,6 +8,8 @@
   <link rel="alternate icon" type="image/png" sizes="512x512" href="assets/Icon5.png">
   <title>Madds Workspace</title>
   <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preconnect" href="https://picme-ai.onrender.com" crossorigin>
+  <link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
   <link rel="apple-touch-icon" sizes="180x180" href="assets/workspace-180.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Workspace">
@@ -22,7 +24,7 @@
   <link rel="stylesheet" href="settings-layout.css?v=20261117-model-controls-1">
   <link rel="stylesheet" href="workspace-app.css?v=20261116-installable-1">
   <link rel="stylesheet" href="group-selection.css?v=20261117-visual-groups-1">
-  <link rel="stylesheet" href="raw-image-library.css?v=20261120-raw-folders-3">
+  <link rel="stylesheet" href="raw-image-library.css?v=20261124-workspace">
 </head>
 <body>
   <div id="workspace-connection" class="workspace-status" role="status" tabindex="-1" hidden><div><strong>You're offline</strong><p id="workspace-connection-copy">Reconnect to continue. Your edits stay in this window; nothing is queued.</p></div><button id="workspace-reconnect" class="button secondary" type="button">Try again</button></div>
@@ -381,6 +383,11 @@
       <div id="raw-image-grid" class="raw-image-grid"></div>
     </form>
   </dialog>
+  <dialog id="raw-image-preview-dialog" class="editor-dialog" aria-labelledby="raw-preview-title">
+    <div class="raw-preview-header"><h2 id="raw-preview-title"></h2><button id="raw-preview-close" class="icon-button" type="button" aria-label="Close image preview">×</button></div>
+    <div class="raw-preview-image"><img id="raw-preview-photo" alt=""></div>
+    <div class="raw-preview-actions"><a id="raw-preview-download" class="button secondary" target="_blank" rel="noopener">Download</a><button id="raw-preview-select" class="button primary" type="button" hidden>Use image</button></div>
+  </dialog>
 
   <dialog id="discard-confirm-dialog" class="editor-dialog compact-dialog">
     <form method="dialog"><header class="dialog-header"><div><p class="eyebrow">UNSAVED CHANGES</p><h2>Discard this style?</h2></div></header><p class="muted">Your unsaved edits will be lost.</p><footer class="dialog-footer"><button type="button" class="button secondary" id="keep-style-editing">Keep editing</button><button type="button" class="button danger" id="discard-style-editing">Discard changes</button></footer></form>
@@ -414,14 +421,15 @@
   <script src="settings.js?v=20261116-installable-1" defer></script>
   <script src="watermark.js?v=20261116-installable-1" defer></script>
   <script src="storage.js?v=20261114-refresh" defer></script>
-  <script src="users.js?v=20261108-date-format" defer></script>
+  <script src="users.js?v=20261108-date-format-20261124" defer></script>
   <script src="feedback.js?v=20261114-sender" defer></script>
-  <script src="style-groups.js?v=20261117-visual-groups-1" defer></script><script src="style-tags.js?v=20261116-tags" defer></script>
+  <script src="style-groups.js?v=20261124-workspace" defer></script><script src="style-tags.js?v=20261116-tags" defer></script>
   <script src="style-bulk.js?v=20261117-visual-groups-1" defer></script>
   <script src="style-uploads.js?v=20261120-raw-library-1" defer></script>
   <script src="performance.js?v=20261108-date-format" defer></script>
   <script src="image-generation.js?v=20261117-model-controls-1" defer></script>
   <script src="settings-navigation.js?v=20261117-model-controls-1" defer></script>
-  <script src="app.js?v=20261120-raw-folders-2" defer></script>
+  <script src="raw-image-library.js?v=20261124-workspace" defer></script>
+  <script src="app.js?v=20261124-workspace" defer></script>
 </body>
 </html>

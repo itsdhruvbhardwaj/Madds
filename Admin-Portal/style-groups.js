@@ -24,10 +24,12 @@
       $('style-groups-list').querySelectorAll('[data-edit-group]').forEach(button => button.onclick = () => open(groups.find(group => group.id === button.dataset.editGroup)));
       getCatalog().groups = groups; getCatalog().groupsAvailable = available;
     }
-    async function refresh() {
+    async function refresh(catalogueReady) {
       const ticket = ++revision;
       try { const data = await api('/api/admin/catalog/groups'); if (ticket !== revision) return; groups = data.groups || []; available = true; }
       catch { if (ticket !== revision) return; available = false; }
+      if (catalogueReady) { try { await catalogueReady; } catch { return; } }
+      if (ticket !== revision) return;
       render(); onChange();
     }
     function renderEditor() {

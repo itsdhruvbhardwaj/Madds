@@ -39,7 +39,7 @@ test("unknown outcome never claims a refund or successful image", () => {
   assert.doesNotMatch(generationDetails({ status: "outcome_unknown" }), /Credits refunded/);
 });
 
-function userListFixture() {
+function userListFixture(rows = []) {
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, { innerHTML: "", textContent: "", hidden: false,
@@ -52,7 +52,7 @@ function userListFixture() {
   vm.runInNewContext(fs.readFileSync(require("node:path").join(__dirname, "../users.js"), "utf8"), sandbox);
   const requests = [];
   const users = sandbox.window.MaddsUsers.create({ api: async url => {
-    requests.push(url); return { users: [], page: Number(new URL(url, "https://example.com").searchParams.get("page")), pages: 3, total: 60 };
+    requests.push(url); return { users: rows, page: Number(new URL(url, "https://example.com").searchParams.get("page")), pageSize: 25, pages: 3, total: 60 };
   }, notify() {} });
   return { users, element, requests };
 }
@@ -71,8 +71,17 @@ test("changing sorting resets pagination and carries the active search and statu
   const next = new URL(requests.at(-1), "https://example.com").searchParams;
   assert.equal(next.get("sort"), "last_active_desc"); assert.equal(next.get("page"), "2");
 });
-test("user lists show a Last active column and empty rows span all six columns", async () => {
+test("user lists show serial numbers and Last active, and empty rows span all seven columns", async () => {
   const { users, element } = userListFixture(); await users.refresh();
   assert.match(element("users-list").innerHTML, /<th>Last active<\/th>/);
-  assert.match(element("users-list").innerHTML, /colspan="6"/);
+  assert.match(element("users-list").innerHTML, /S.No.<\/th>/);
+  assert.match(element("users-list").innerHTML, /colspan="7"/);
+});
+test("serial numbers continue across pages", async () => {
+  const { users, element } = userListFixture([{ _id: "first", name: "First", credits: 1 }, { _id: "second", name: "Second", credits: 2 }]);
+  await users.refresh();
+  assert.match(element("users-list").innerHTML, /user-serial-number">1</);
+  element("users-next").onclick(); await new Promise(resolve => setImmediate(resolve));
+  assert.match(element("users-list").innerHTML, /user-serial-number">26</);
+  assert.match(element("users-list").innerHTML, /user-serial-number">27</);
 });
