@@ -53,7 +53,7 @@
   let rawImagesLoadedAt = 0, rawLoadPromise = null, rawLoadRevision = 0, rawGridKey = null, rawPreview = null, workspaceEpoch = 0;
   const rawRefreshInterval = 30_000;
   const rawFolders = { men: "Men", women: "Women", couples: "Couples", groups: "Groups", others: "Others" };
-  let rawFolder = null;
+  let rawFolder = "men";
   let selectFromLibrary = false;
   let libraryBusy = false;
   function imageFolders(image) {
@@ -151,7 +151,7 @@
       } else {
         const move = document.createElement("select");
         move.setAttribute("aria-label", `Move ${image.name} to folder`);
-        const placeholder = new Option("Move to folder…", "");
+        const placeholder = new Option("Move to…", "");
         move.append(placeholder);
         for (const [folder, title] of Object.entries(rawFolders)) move.append(new Option(title, folder));
         move.disabled = libraryBusy;
@@ -170,7 +170,7 @@
           } catch (error) { byId("raw-image-status").textContent = error.message; }
           finally { if (owner === workspaceEpoch) { libraryBusy = false; renderRawImages(); void loadRawImages(); } }
         });
-        button.append(move);
+        actions.append(move);
       }
       grid.append(button);
     }
@@ -280,7 +280,7 @@
     rawImages = [];
     invalidateRawImages();
     rawGridKey = null;
-    rawFolder = null;
+    rawFolder = "men";
     libraryBusy = false;
     if (byId("raw-image-preview-dialog").open) byId("raw-image-preview-dialog").close();
     closeRawPreview();

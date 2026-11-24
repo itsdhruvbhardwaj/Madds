@@ -24,7 +24,7 @@
   <link rel="stylesheet" href="settings-layout.css?v=20261117-model-controls-1">
   <link rel="stylesheet" href="workspace-app.css?v=20261116-installable-1">
   <link rel="stylesheet" href="group-selection.css?v=20261117-visual-groups-1">
-  <link rel="stylesheet" href="raw-image-library.css?v=20261124-workspace">
+  <link rel="stylesheet" href="raw-image-library.css?v=20261124-library-layout">
 </head>
 <body>
   <div id="workspace-connection" class="workspace-status" role="status" tabindex="-1" hidden><div><strong>You're offline</strong><p id="workspace-connection-copy">Reconnect to continue. Your edits stay in this window; nothing is queued.</p></div><button id="workspace-reconnect" class="button secondary" type="button">Try again</button></div>
@@ -367,13 +367,13 @@
       <header class="dialog-header"><h2>Original image library</h2><button class="icon-button" value="cancel" aria-label="Close library">×</button></header>
       <p class="field-hint">Original images are kept for future styles, even when a style is deleted.</p>
       <nav id="raw-image-folders" class="raw-image-folders" aria-label="Original image folders">
-        <button type="button" data-raw-folder="men" aria-pressed="false">Men</button>
+        <button type="button" data-raw-folder="men" aria-pressed="true">Men</button>
         <button type="button" data-raw-folder="women" aria-pressed="false">Women</button>
         <button type="button" data-raw-folder="couples" aria-pressed="false">Couples</button>
         <button type="button" data-raw-folder="groups" aria-pressed="false">Groups</button>
         <button type="button" data-raw-folder="others" aria-pressed="false">Others</button>
       </nav>
-      <h3 id="raw-image-folder-title">Choose a folder</h3>
+      <h3 id="raw-image-folder-title">Men</h3>
       <div class="raw-image-toolbar">
         <input id="raw-image-search" type="search" placeholder="Search this folder" aria-label="Search this folder" disabled>
         <input id="raw-image-files" type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple hidden>
@@ -430,6 +430,6 @@
   <script src="image-generation.js?v=20261117-model-controls-1" defer></script>
   <script src="settings-navigation.js?v=20261117-model-controls-1" defer></script>
   <script src="raw-image-library.js?v=20261124-workspace" defer></script>
-  <script src="app.js?v=20261124-workspace" defer></script>
+  <script src="app.js?v=20261124-library-layout" defer></script>
 </body>
 </html>

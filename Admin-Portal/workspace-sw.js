@@ -2,7 +2,7 @@
  * Lifecycle notifications only: no fetch handler, Cache Storage or background sync.
  * All pages, uploads and API operations continue to use the network normally.
  */
-const WORKSPACE_RELEASE = '20261124-workspace';
+const WORKSPACE_RELEASE = '20261124-library-layout';
 self.addEventListener('message', event => {
   if (event.data?.type === 'ACTIVATE_WORKSPACE_UPDATE') event.waitUntil(self.skipWaiting());
 });
