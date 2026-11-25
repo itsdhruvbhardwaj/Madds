@@ -1,0 +1,513 @@
+/* Notification controls share Workspace's authenticated API client. No Firebase keys belong here. */
+(() => {
+  const labels = {
+    ALL_USERS: "All eligible users", NEW_USERS: "Newly joined users", ACTIVE_USERS: "Active in the last 7 days",
+    INACTIVE_7_DAYS: "Inactive for 7 days", INACTIVE_14_DAYS: "Inactive for 14 days",
+    INACTIVE_30_DAYS: "Inactive for 30 days", SPECIFIC_USERS: "Selected users",
+    USERS_WITHOUT_RECENT_GENERATIONS: "Without recent creations",
+    OLDER_APP_VERSION: "Older app version", UNKNOWN_APP_VERSION: "Version unknown",
+  };
+  const types = { APP_UPDATE: "App update · opens Google Play", PRODUCT_UPDATE: "Product updates", NEW_STYLE: "New styles & trends", OFFER: "Offers & rewards", REENGAGEMENT: "Re-engagement" };
+  const escape = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+  const dates = typeof module !== "undefined" && module.exports ? require("./dates.js") : window.MaddsDates;
+  const formatDate = value => dates.dateTime(value);
+  const statusLabel = (value) => ({ DRAFT: "Draft", SCHEDULED: "Scheduled", PROCESSING: "Sending", SENT: "Finished", FAILED: "Failed", CANCELLED: "Cancelled" })[value] || value || "Draft";
+  function localSchedule(value, now = Date.now()) {
+    value = dates.scheduleISO(value);
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) throw new Error("Choose a date and time.");
+    const date = new Date(value);
+    const pad = (number) => String(number).padStart(2, "0");
+    const roundtrip = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    if (!Number.isFinite(date.getTime()) || roundtrip !== value || date.getTime() <= now || date.getTime() > now + 365 * 86400000) throw new Error("Choose a valid future time within one year.");
+    return date.toISOString();
+  }
+  const validTemplate = text => !/[{}]/u.test(text.split("{firstName}").join(""));
+  const truncate = (text, limit) => text.slice(0, limit).replace(/[\uD800-\uDBFF]$/u, "");
+  function personalizedPreview(title, body, value) {
+    const clean = String(value ?? "").replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/gu, " ").trim();
+    const name = truncate(clean.split(/\s+/u)[0] || "there", 24);
+    return { title: truncate(title.split("{firstName}").join(name), 120), body: truncate(body.split("{firstName}").join(name), 500) };
+  }
+  function buildDraft(values) {
+    const title = values.title.trim(), body = values.body.trim();
+    if (!title || title.length > 120 || !body || body.length > 500) throw new Error("Enter a title and message within the character limits.");
+    if (!validTemplate(title) || !validTemplate(body)) throw new Error("Use {firstName} for personalization. Other placeholders are not supported.");
+    if (!Object.hasOwn(types, values.notificationType) || !Object.hasOwn(labels, values.targetAudience)) throw new Error("Choose a category and audience.");
+    const userIds = [...new Set(values.userIds.split(/[\s,]+/).filter(Boolean))];
+    if (values.targetAudience === "SPECIFIC_USERS" && (!userIds.length || userIds.length > 1000 || userIds.some((id) => !/^[0-9a-f]{24}$/i.test(id)))) throw new Error("Enter 1 to 1,000 valid user IDs, separated by commas or new lines.");
+    const minimumVersionCode = Number(values.minimumVersionCode);
+    if (values.targetAudience === "OLDER_APP_VERSION" && (!Number.isInteger(minimumVersionCode) || minimumVersionCode < 1 || minimumVersionCode > 2100000000)) throw new Error("Enter the available release's numeric version code from Play Console.");
+    if (values.notificationType === "APP_UPDATE" && values.targetAudience === "UNKNOWN_APP_VERSION") throw new Error("Older builds cannot open the update action. Use Product updates with Home for devices with an unknown version.");
+    const recentDays = Number(values.recentDays || (values.targetAudience === "NEW_USERS" ? 1 : 7));
+    if (!Number.isInteger(recentDays) || recentDays < 1 || recentDays > 365) throw new Error("Choose a window between 1 and 365 days.");
+    if (values.imageUrl.trim()) {
+      let url; try { url = new URL(values.imageUrl.trim()); } catch { throw new Error("Use a valid HTTPS image URL."); }
+      if (url.protocol !== "https:" || url.username || url.password || url.href.length > 1000) throw new Error("Use a valid HTTPS image URL without credentials.");
+    }
+    if (values.notificationType === "NEW_STYLE" && values.destination !== "style") throw new Error("A new-style notification must open a published style.");
+    if (values.notificationType !== "APP_UPDATE" && values.destination === "style" && !values.styleId) throw new Error("Choose a published style.");
+    if (values.notificationType !== "APP_UPDATE" && values.destination === "collection" && !values.collectionId) throw new Error("Choose a collection.");
+    return { title, body, notificationType: values.notificationType, targetAudience: values.targetAudience,
+      targetConditions: { recentDays, ...(values.targetAudience === "OLDER_APP_VERSION" ? { minimumVersionCode } : {}), userIds: values.targetAudience === "SPECIFIC_USERS" ? userIds : [] },
+      ...(values.notificationType !== "APP_UPDATE" && values.destination === "style" ? { relatedStyleId: values.styleId } : {}),
+      ...(values.notificationType !== "APP_UPDATE" && values.destination === "collection" ? { collectionId: values.collectionId } : {}),
+      ...(values.imageUrl.trim() ? { imageUrl: values.imageUrl.trim() } : {}) };
+  }
+
+  function campaignToDraft(campaign) {
+    return { title: campaign.title || '', body: campaign.body || '', notificationType: campaign.notificationType,
+      targetAudience: campaign.targetAudience, targetConditions: { ...(campaign.targetConditions || {}), userIds: [...(campaign.targetConditions?.userIds || [])] },
+      ...(campaign.relatedStyleId ? { relatedStyleId: campaign.relatedStyleId } : {}),
+      ...(campaign.collectionId ? { collectionId: campaign.collectionId } : {}),
+      ...(campaign.imageUrl ? { imageUrl: campaign.imageUrl } : {}), status: 'DRAFT' };
+  }
+
+  async function prepareDelivery({ api, base, selected, draft, dirty, previewName, onSaved, isCurrent = () => true }) {
+    const save = !selected || dirty;
+    const result = save ? await api(selected ? `${base}/${selected._id}` : base, {
+      method: selected ? "PATCH" : "POST",
+      body: JSON.stringify({ ...draft, ...(selected ? { expectedRevision: selected.revision ?? 0 } : {}) }),
+    }) : await api(`${base}/${selected._id}`);
+    if (!isCurrent()) return null;
+    const campaign = result.campaign;
+    if (!campaign || campaign.status !== "DRAFT" || (!save && (campaign.revision ?? 0) !== (selected.revision ?? 0))) {
+      throw new Error("This notification changed. Refresh and review the latest version.");
+    }
+    if (save) onSaved(campaign);
+    const preview = await api(`${base}/${campaign._id}/preview`, { method: "POST", body: JSON.stringify({ previewName }) });
+    return isCurrent() ? { campaign, ...preview } : null;
+  }
+
+  function canvasToBlob(canvas, type, quality) {
+    return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("This image could not be compressed.")), type, quality));
+  }
+  async function loadImage(file) {
+    const sourceUrl = URL.createObjectURL(file);
+    try {
+      const image = new Image(); image.src = sourceUrl; await image.decode();
+      return image;
+    } finally { URL.revokeObjectURL(sourceUrl); }
+  }
+  async function compressNotificationImage(file) {
+    if (!file || !["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new Error("Choose a JPG, PNG, or WebP image.");
+    const image = await loadImage(file);
+    const sourceWidth = image.naturalWidth, sourceHeight = image.naturalHeight;
+    if (!sourceWidth || !sourceHeight) throw new Error("This image has invalid dimensions.");
+    let scale = Math.min(1, 1200 / sourceWidth, 630 / sourceHeight);
+    const canvas = document.createElement("canvas"), context = canvas.getContext("2d", { alpha: true });
+    if (!context) throw new Error("This browser cannot compress the image.");
+    for (let pass = 0; pass < 10; pass += 1) {
+      canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+      canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      for (let quality = 0.88; quality >= 0.42; quality -= 0.08) {
+        let blob = await canvasToBlob(canvas, "image/webp", quality);
+        if (blob.type !== "image/webp") blob = await canvasToBlob(canvas, "image/jpeg", quality);
+        if (blob.size <= 300_000) return { file: blob, width: canvas.width, height: canvas.height };
+      }
+      scale *= 0.82;
+    }
+    throw new Error("Couldn't compress this image below 300 KB. Try a smaller image.");
+  }
+
+  function create({ api, notify, getCatalog }) {
+    const $ = (id) => document.getElementById(id);
+    const base = "/api/admin/notifications";
+    let campaigns = [], nextCursor = null, selected = null, copiedDraft = null, enabled = false, available = false;
+    const historySelection = new Set(), finishedStatuses = ['SENT', 'FAILED', 'CANCELLED'];
+    let busy = false, loading = false, epoch = 0, selection = 0, baseline = "", dirty = false;
+    let stats = null, logs = [], logCursor = null, review = null, cooldownHours = 0;
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const options = (map, current) => Object.entries(map).map(([value, label]) => `<option value="${escape(value)}" ${current === value ? "selected" : ""}>${escape(label)}</option>`).join("");
+    const error = (message = "") => { $("push-error").textContent = message; };
+    const isDraft = () => !selected || selected.status === "DRAFT";
+    const canLeave = () => !busy && (!dirty || window.confirm("Discard unsaved notification changes?"));
+    function banner() {
+      $("push-delivery-status").hidden = available && enabled;
+      $("push-delivery-status").textContent = !available ? "Notification controls are unavailable. Refresh to try again." :
+        "Delivery is paused. You can continue saving and previewing drafts.";
+      $("push-delivery-status").classList.remove("is-enabled");
+    }
+    function renderHistory() {
+      const drafts = campaigns.filter(item => item.status === 'DRAFT');
+      const recent = campaigns.filter(item => item.status !== 'DRAFT');
+      const finished = recent.filter(item => finishedStatuses.includes(item.status));
+      for (const id of historySelection) if (!finished.some(item => item._id === id)) historySelection.delete(id);
+      $('push-campaigns').innerHTML = drafts.map(item => `<div class="push-draft-card"><button type="button" class="push-campaign ${selected?._id === item._id ? 'is-selected' : ''}" data-campaign="${escape(item._id)}" aria-pressed="${selected?._id === item._id}" ${busy ? 'disabled' : ''}><span class="push-status">${escape(statusLabel(item.status))}</span><strong>${escape(item.title)}</strong><small>${escape(labels[item.targetAudience] || item.targetAudience)}</small><small>Last edited ${escape(formatDate(item.updatedAt || item.createdAt))}</small></button><button type="button" class="delete-button push-card-clear" data-clear-draft="${escape(item._id)}" aria-label="Clear draft: ${escape(item.title)}" ${busy ? 'disabled' : ''}>Clear</button></div>`).join('') || '<p class="muted push-empty">No saved drafts. Start a notification when you are ready.</p>';
+      $('push-recent').innerHTML = `<div class="push-recent-heading"><h3>Recent activity</h3><button type="button" class="delete-button" data-clear-history ${busy || loading || !available || !historySelection.size ? 'disabled' : ''}>Delete selected (${historySelection.size})</button></div>${finished.length ? `<label class="push-history-select-all"><input type="checkbox" data-history-all ${historySelection.size === finished.length ? 'checked' : ''} ${busy || loading ? 'disabled' : ''}>Select all shown</label>` : ''}${recent.length ? recent.map(item => {
+        const terminal = finishedStatuses.includes(item.status), canResend = terminal && !item.reminderDayKey;
+        return `<article class="push-history-card">${terminal ? `<label class="push-history-select"><input type="checkbox" data-history-select="${escape(item._id)}" aria-label="Select ${escape(item.title)}" ${historySelection.has(item._id) ? 'checked' : ''} ${busy || loading ? 'disabled' : ''}></label>` : ''}<button type="button" class="push-campaign ${selected?._id === item._id ? 'is-selected' : ''}" data-campaign="${escape(item._id)}" aria-pressed="${selected?._id === item._id}" ${busy ? 'disabled' : ''}><span class="push-status">${escape(statusLabel(item.status))}</span><strong>${escape(item.title)}</strong>${item.reminderDayKey ? `<small>Automatic daily reminder · ${escape(item.reminderDayKey)}</small>` : ''}<small>${escape(formatDate(item.scheduledAt || item.createdAt))}</small></button>${canResend ? `<button type="button" class="button secondary push-resend" data-resend="${escape(item._id)}" ${busy || !available ? 'disabled' : ''}>Resend</button>` : ''}</article>`;
+      }).join('') : '<p class="muted">No recent activity.</p>'}`;
+      $('push-more').hidden = !nextCursor; $('push-more').disabled = loading || busy;
+    }
+    function values() { return Object.fromEntries(new FormData($("push-form"))); }
+    function updateDirty() {
+      dirty = Boolean(copiedDraft) || JSON.stringify(values()) !== baseline;
+      $("push-save-state").textContent = dirty ? "Unsaved changes" : selected ? (selected.status === "DRAFT" ? "Saved draft" : statusLabel(selected.status)) : "New draft";
+      updateActions(); livePreview();
+    }
+    function updateActions() {
+      const draft = isDraft();
+      if ($("push-form")) { $("push-form").querySelector("fieldset").disabled = busy || !draft; conditionalFields(); }
+      for (const id of ["push-save", "push-preview", "push-send", "push-schedule", "push-cancel"]) {
+        const button = $(id); if (!button) continue;
+        button.disabled = busy || !available || (id === "push-cancel" && (!selected || dirty)) ||
+          (["push-send", "push-schedule"].includes(id) && (!draft || !enabled)) ||
+          (["push-save", "push-preview"].includes(id) && !draft);
+      }
+      $("push-new").disabled = busy;
+      if ($("push-clear")) $("push-clear").disabled = busy || !draft || (selected && !available);
+    }
+    function livePreview() {
+      if (!$("push-form")) return;
+      const form = $("push-form");
+      const preview = personalizedPreview(form.elements.title.value || "Your notification title", form.elements.body.value || "Your message will appear here.", $("push-preview-name")?.value);
+      $("push-preview-title").textContent = preview.title;
+      $("push-preview-body").textContent = preview.body;
+      $("push-title-count").textContent = `${form.elements.title.value.length}/120`;
+      $("push-body-count").textContent = `${form.elements.body.value.length}/500`;
+    }
+    function conditionalFields() {
+      const form = $("push-form"); if (!form) return;
+      if (form.elements.notificationType.value === "NEW_STYLE") form.elements.destination.value = "style";
+      if (form.elements.notificationType.value === "APP_UPDATE") form.elements.destination.value = "update";
+      else if (form.elements.destination.value === "update") form.elements.destination.value = "home";
+      form.elements.destination.disabled = !isDraft() || ["NEW_STYLE", "APP_UPDATE"].includes(form.elements.notificationType.value);
+      $("push-version-field").hidden = form.elements.targetAudience.value !== "OLDER_APP_VERSION";
+      form.elements.minimumVersionCode.disabled = !isDraft() || form.elements.targetAudience.value !== "OLDER_APP_VERSION";
+      form.elements.destination.querySelector('option[value="update"]').disabled = form.elements.notificationType.value !== "APP_UPDATE";
+      $("push-unknown-version").hidden = form.elements.targetAudience.value !== "UNKNOWN_APP_VERSION";
+      $("push-users-field").hidden = form.elements.targetAudience.value !== "SPECIFIC_USERS";
+      const newUsers = form.elements.targetAudience.value === "NEW_USERS";
+      if (form.dataset.daysAudience && form.dataset.daysAudience !== form.elements.targetAudience.value) form.elements.recentDays.value = newUsers ? "1" : "7";
+      form.dataset.daysAudience = form.elements.targetAudience.value;
+      $("push-days-field").hidden = !newUsers && form.elements.targetAudience.value !== "USERS_WITHOUT_RECENT_GENERATIONS";
+      $("push-days-label").textContent = newUsers ? "Joined within the last (days)" : "Days without a completed creation";
+      $("push-days-hint").textContent = newUsers ? "Only accounts created in this window are included. Signing in again or reinstalling does not make an existing account new. This sends once when you confirm; it is not an automatic signup message." : "Users without a completed creation during this window.";
+      $("push-style-field").hidden = form.elements.destination.value !== "style";
+      $("push-collection-field").hidden = form.elements.destination.value !== "collection";
+      // Disabled controls aren't included in FormData; values() handles destination below.
+    }
+    function catalogChanged() {
+      const form = $("push-form"); if (!form) return;
+      for (const [name, items, placeholder] of [
+        ["styleId", getCatalog().styles.filter((item) => item.verified === true), "Choose a published style"],
+        ["collectionId", getCatalog().collections, "Choose a collection"],
+      ]) {
+        const input = form.elements[name], source = selected || copiedDraft, current = input.value || (name === "styleId" ? source?.relatedStyleId : source?.collectionId) || "";
+        input.innerHTML = `<option value="">${placeholder}</option>` + items.map((item) => `<option value="${escape(item.id)}">${escape(item.name)}</option>`).join("");
+        if (current && !items.some((item) => item.id === current)) input.insertAdjacentHTML("beforeend", `<option value="${escape(current)}">${escape(current)} (unavailable)</option>`);
+        input.value = current;
+      }
+    }
+    function renderEditor() {
+      const item = selected || copiedDraft || {}, draft = isDraft();
+      $("push-editor").innerHTML = `<div class="push-section-heading"><div><span class="push-status">${escape(statusLabel(item.status))}</span><h2>${item._id ? "Notification details" : "New notification"}</h2></div><span id="push-save-state" class="muted"></span></div>
+        <form id="push-form" class="push-form"><fieldset ${draft ? "" : "disabled"} class="push-fields">
+          <div class="push-two-fields"><label>Category<select name="notificationType">${options(types, item.notificationType || "PRODUCT_UPDATE")}</select></label><label>Audience<select name="targetAudience">${options(labels, item.targetAudience || "ALL_USERS")}</select></label></div>
+          <label id="push-users-field" hidden>User IDs<textarea name="userIds" rows="3" placeholder="Separate IDs with commas or new lines">${escape((item.targetConditions?.userIds || []).join("\n"))}</textarea><small class="field-hint">Use account IDs, not email addresses. Maximum 1,000.</small></label>
+          <label id="push-days-field" hidden><span id="push-days-label">Joined within the last (days)</span><input name="recentDays" type="number" min="1" max="365" value="${escape(item.targetConditions?.recentDays || (item.targetAudience === "NEW_USERS" ? 1 : 7))}"><small id="push-days-hint" class="field-hint"></small></label>
+          <label id="push-version-field" hidden>Available release version code<input name="minimumVersionCode" type="number" min="1" max="2100000000" list="push-version-options" value="${escape(item.targetConditions?.minimumVersionCode || "")}"><datalist id="push-version-options"></datalist><small class="field-hint">Send only to devices with a reported code below this number. Use a release available to the selected testers/users in Google Play. Unknown versions are excluded.</small></label>
+          <p id="push-version-summary" class="field-hint"></p>
+          <p id="push-unknown-version" class="field-hint" hidden>These devices have not reported a version. They are not necessarily outdated. Use Product updates opening Home; legacy builds cannot open the new Google Play action.</p>
+          <label>Title <span id="push-title-count" class="field-hint"></span><input name="title" maxlength="120" value="${escape(item.title)}" required><button type="button" class="button secondary" data-personalize="title">Insert first name</button></label>
+          <label>Message <span id="push-body-count" class="field-hint"></span><textarea name="body" maxlength="500" rows="3" required>${escape(item.body)}</textarea><button type="button" class="button secondary" data-personalize="body">Insert first name</button></label>
+          <div class="push-two-fields"><label>Open when tapped<select name="destination">${options({ update: "Google Play · update app", home: "Home", style: "A published style", collection: "A collection" }, item.notificationType === "APP_UPDATE" ? "update" : item.relatedStyleId ? "style" : item.collectionId ? "collection" : "home")}</select></label><label id="push-style-field" hidden>Style<select name="styleId"></select></label><label id="push-collection-field" hidden>Collection<select name="collectionId"></select></label></div>
+          <label>Notification image <span class="field-hint">Optional · JPG, PNG, or WebP · compressed to 300 KB</span><input name="imageUrl" type="hidden" value="${escape(item.imageUrl)}"><div class="image-upload-row"><input id="push-image-file" type="file" accept="image/jpeg,image/png,image/webp"><button id="push-image-upload" type="button" class="button secondary">Upload image</button><span id="push-image-status" class="field-hint">${item.imageUrl ? "Image uploaded" : "No image selected"}</span></div></label>
+        </fieldset>
+        <label>Preview name<input id="push-preview-name" maxlength="80" value="Maddies"><small class="field-hint">Preview only. Recipients use their own profile first name, or "there" if missing. Use {firstName} in your title or message.</small></label>
+        <p id="push-cooldown-state" class="field-hint">${cooldownHours ? `Notification cooldown: ${cooldownHours} hours.` : "Testing mode: notification cooldown is off."}</p>
+        <div class="push-phone-preview" aria-label="Notification preview"><span class="push-app-name">madds · now</span><strong id="push-preview-title"></strong><p id="push-preview-body"></p><img id="push-preview-image" alt="Notification image preview" referrerpolicy="no-referrer" hidden><small>Preview · Appearance varies by device</small></div>
+        <p class="field-hint">Only users who allow this category and device notifications are eligible. Inactivity audiences exclude unknown activity.</p>
+        <div class="push-actions">${draft ? '<button id="push-send" class="button primary" type="button">Send notification</button><button id="push-save" class="button secondary" type="submit">Save draft (optional)</button><button id="push-clear" class="delete-button" type="button">Clear draft</button>' : ""}<button id="push-preview" class="button secondary" type="button">Check audience (optional)</button></div>
+        <div id="push-audience-result" class="push-audience-result" role="status"></div>
+        ${draft ? `<details class="push-sending"><summary>Schedule for later (optional)</summary><div class="push-schedule-content"><p class="field-hint">Your changes are saved and the audience is checked automatically before you confirm. Scheduling is optional.</p><label>Schedule in ${escape(zone)}<input id="push-schedule-time" type="text" placeholder="DD/MM/YYYY HH:mm" aria-label="Schedule date and time, DD/MM/YYYY HH:mm" maxlength="16" autocomplete="off"><small class="field-hint">DD/MM/YYYY · 24-hour time. Choose a future date and time.</small></label><button id="push-schedule" type="button" class="button secondary">Schedule notification</button></div></details>` : `<p class="muted">${escape(item.status === "SCHEDULED" ? `Scheduled: ${formatDate(item.scheduledAt)}` : `Status: ${statusLabel(item.status)}`)}</p>`}
+        ${item._id && ["DRAFT", "SCHEDULED", "PROCESSING"].includes(item.status) ? '<button id="push-cancel" type="button" class="delete-button">Cancel notification</button>' : ""}
+        </form><div id="push-stats"></div><div id="push-logs"></div>`;
+      catalogChanged(); conditionalFields(); livePreview();
+      const versionSummary = $("push-version-summary"), versionOptions = $("push-version-options");
+      api(`${base}/device-versions`).then(result => {
+        if ($("push-version-summary") !== versionSummary) return;
+        const versions = result.versions || [];
+        versionOptions.innerHTML = versions.filter(v => v.versionCode != null).map(v => `<option value="${escape(v.versionCode)}">${escape(v.versionName || "Version")} · ${escape(v.devices)} devices</option>`).join("");
+        versionSummary.textContent = versions.length ? "Last reported: " + versions.map(v => `${v.versionCode == null ? "Unknown" : `${v.versionName || "Version"} (code ${v.versionCode})`}: ${v.devices} devices`).join(" · ") + ". Counts are before account/category eligibility checks. Reports refresh when the app syncs." : "No devices have reported an app version yet.";
+      }).catch(() => { if ($("push-version-summary") === versionSummary) versionSummary.textContent = "Version summary unavailable. You can enter the Play Console version code manually."; });
+      baseline = JSON.stringify(values()); dirty = false; updateDirty(); renderDetails();
+      $("push-form").querySelectorAll("[data-personalize]").forEach(button => button.addEventListener("click", () => {
+        const field = $("push-form").elements[button.dataset.personalize];
+        const start = field.selectionStart ?? field.value.length, end = field.selectionEnd ?? start;
+        const next = field.value.slice(0, start) + "{firstName}" + field.value.slice(end);
+        if (next.length > field.maxLength) { error("Make room for the first-name placeholder within the character limit."); return; }
+        field.value = next; field.focus(); field.setSelectionRange(start + 11, start + 11); updateDirty();
+      }));
+      $("push-form").addEventListener("input", updateDirty);
+      $("push-form").addEventListener("change", () => { conditionalFields(); updateDirty(); });
+      function imagePreview() {
+        const image = $("push-preview-image"); let url;
+        try { url = new URL($("push-form").elements.imageUrl.value); } catch { image.hidden = true; image.removeAttribute("src"); return; }
+        if (url.protocol !== "https:" || url.username || url.password) { image.hidden = true; image.removeAttribute("src"); return; }
+        image.hidden = false; image.src = url.href; image.onerror = () => { image.hidden = true; };
+      }
+      async function uploadImage() {
+        const file = $("push-image-file").files?.[0], button = $("push-image-upload"), status = $("push-image-status");
+        if (!file) { status.textContent = "Choose an image first."; return; }
+        button.disabled = true; status.textContent = "Compressing image…";
+        try {
+          const compressed = await compressNotificationImage(file);
+          status.textContent = `Compressed to ${(compressed.file.size / 1000).toFixed(0)} KB · Uploading…`;
+          const signed = await api(`${base}/upload-signature`, { method: "POST" });
+          const upload = new FormData();
+          upload.append("file", compressed.file, compressed.file.type === "image/webp" ? "notification.webp" : "notification.jpg");
+          upload.append("api_key", signed.apiKey); upload.append("timestamp", String(signed.timestamp));
+          upload.append("folder", signed.folder); upload.append("public_id", signed.publicId); upload.append("tags", signed.tags); upload.append("signature", signed.signature);
+          const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/image/upload`, { method: "POST", body: upload });
+          const uploaded = await response.json().catch(() => ({}));
+          if (!response.ok || uploaded.public_id !== signed.expectedPublicId || typeof uploaded.secure_url !== "string") throw new Error(uploaded.error?.message || "Cloudinary couldn't upload the image.");
+          $("push-form").elements.imageUrl.value = uploaded.secure_url;
+          status.textContent = `Uploaded · ${(compressed.file.size / 1000).toFixed(0)} KB · ${compressed.width} × ${compressed.height}`;
+          imagePreview(); updateDirty();
+        } catch (failure) { status.textContent = failure.message || "Image upload failed."; }
+        finally { button.disabled = false; $("push-image-file").value = ""; }
+      }
+      $("push-image-upload").addEventListener("click", uploadImage); imagePreview();
+      $("push-form").addEventListener("submit", save);
+      $("push-preview").addEventListener("click", checkAudience);
+      $("push-send")?.addEventListener("click", () => prepareReview("send"));
+      $("push-schedule")?.addEventListener("click", () => prepareReview("schedule"));
+      $("push-cancel")?.addEventListener("click", cancelCampaign);
+      $("push-clear")?.addEventListener("click", clearDraft);
+    }
+    function renderDetails() {
+      if (!$("push-stats")) return;
+      $("push-stats").innerHTML = selected ? stats ? `<h3>Delivery results</h3><div class="push-metrics">${[["Recipients (devices)", stats.totalRecipients], ["Accepted by FCM", stats.successfulDeliveries], ["Failed", stats.failedDeliveries], ["Skipped", stats.skippedDeliveries], ["Pending / in flight", stats.pendingDeliveries]].map(([label, count]) => `<div><strong>${Number(count) || 0}</strong><span>${label}</span></div>`).join("")}</div><p class="field-hint">Acceptance by FCM does not confirm that a notification was displayed or read.</p>` : '<p class="muted">Delivery statistics are not available yet.</p>' : "";
+      $("push-logs").innerHTML = selected ? `<h3>Delivery history</h3>${logs.length ? `<div class="push-log-scroll"><table class="push-log-table"><thead><tr><th>Result</th><th>Attempts</th><th>Time</th><th>Details</th></tr></thead><tbody>${logs.map((log) => `<tr><td>${escape(log.status === "ACCEPTED" ? "Accepted by FCM" : log.status)}</td><td>${Number(log.attempts) || 0}</td><td>${escape(formatDate(log.sentAt || log.createdAt))}</td><td>${escape(log.error || "—")}</td></tr>`).join("")}</tbody></table></div>` : '<p class="muted">No delivery attempts yet.</p>'}${logCursor ? '<button id="push-more-logs" class="button secondary" type="button">Load more history</button>' : ""}` : "";
+      $("push-more-logs")?.addEventListener("click", () => loadDetails(true));
+    }
+    async function loadDetails(more = false) {
+      if (!selected) return;
+      const id = selected._id, ticket = selection, session = epoch;
+      const button = $("push-more-logs"); if (button) button.disabled = true;
+      try {
+        const [result, history] = await Promise.all([api(`${base}/${id}/stats`), api(`${base}/${id}/logs${more && logCursor ? `?cursor=${encodeURIComponent(logCursor)}` : ""}`)]);
+        if (ticket !== selection || session !== epoch) return;
+        stats = result.stats; logs = more ? [...logs, ...(history.logs || [])] : history.logs || []; logCursor = history.nextCursor; renderDetails();
+      } catch (failure) { if (ticket === selection && session === epoch) error(`Could not load delivery results: ${failure.message}`); }
+      finally { if (button?.isConnected) button.disabled = false; }
+    }
+    function clearComposer() {
+      selection++; selected = null; copiedDraft = null; stats = null; logs = []; logCursor = null; review = null; dirty = false;
+      error(); renderHistory(); renderEditor();
+    }
+    function newNotification() { if (!canLeave()) return false; clearComposer(); return true; }
+    function leave() { if (!canLeave()) return false; selection++; dirty = false; return true; }
+    async function resend(id) {
+      if (!canLeave() || !available) return;
+      const ticket = ++selection, session = epoch;
+      busy = true; updateActions(); renderHistory(); error();
+      try {
+        const result = await api(`${base}/${encodeURIComponent(id)}`);
+        if (ticket !== selection || session !== epoch) return;
+        if (!result.campaign || !finishedStatuses.includes(result.campaign.status)) throw Error('Only finished notifications can be loaded for resend.');
+        if (result.campaign.reminderDayKey) throw Error('Daily reminders are managed in Automations and cannot be resent as a general announcement.');
+        copiedDraft = campaignToDraft(result.campaign); selected = null; stats = null; logs = []; logCursor = null; review = null;
+        renderHistory(); renderEditor(); notify('Content loaded into a new draft. Review it, then choose Send notification.');
+      } catch (failure) { if (ticket === selection && session === epoch) error(failure.message); }
+      finally { if (session === epoch) { busy = false; updateActions(); renderHistory(); } }
+    }
+    async function open(id) {
+      if (!canLeave()) return;
+      const ticket = ++selection, session = epoch;
+      error();
+      try {
+        const result = await api(`${base}/${encodeURIComponent(id)}`);
+        if (ticket !== selection || session !== epoch) return;
+        selected = result.campaign; copiedDraft = null; stats = null; logs = []; logCursor = null;
+        renderHistory(); renderEditor(); void loadDetails();
+      } catch (failure) { if (ticket === selection && session === epoch) error(failure.message); }
+    }
+    async function loadCampaigns(more = false) {
+      if (loading || busy) return;
+      loading = true; const session = epoch;
+      $("push-refresh").disabled = true; $("push-more").disabled = true; error();
+      if (!campaigns.length) { $("push-campaigns").textContent = "Loading drafts…"; $("push-recent").textContent = ""; }
+      try {
+        const data = await api(`${base}${more && nextCursor ? `?cursor=${encodeURIComponent(nextCursor)}` : ""}`);
+        if (session !== epoch) return;
+        available = true; enabled = data.deliveryEnabled === true; cooldownHours = Number(data.cooldownHours) || 0;
+        campaigns = more ? [...new Map([...campaigns, ...(data.campaigns || [])].map((item) => [item._id, item])).values()] : data.campaigns || [];
+        nextCursor = data.nextCursor; renderHistory();
+      } catch (failure) { if (session === epoch) { available = false; enabled = false; error(`Could not load notifications: ${failure.message}`); renderHistory(); } }
+      finally { if (session === epoch) { loading = false; $("push-refresh").disabled = false; banner(); updateActions(); renderHistory(); } }
+    }
+    async function refresh() {
+      if (loading || busy) return;
+      if (!$("push-form")) renderEditor();
+      await loadCampaigns();
+      if (selected && !dirty && !busy) await open(selected._id);
+    }
+    async function save(event) {
+      event.preventDefault(); if (busy || !available || !isDraft()) return;
+      let draft;
+      try {
+        const form = $("push-form"), data = values(); data.destination = form.elements.destination.value;
+        draft = buildDraft(data);
+      } catch (failure) { error(failure.message); return; }
+      busy = true; updateActions(); error(); const session = epoch;
+      try {
+        const result = await api(selected ? `${base}/${selected._id}` : base, { method: selected ? "PATCH" : "POST",
+          body: JSON.stringify({ ...draft, ...(selected ? { expectedRevision: selected.revision ?? 0 } : {}) }) });
+        if (session !== epoch) return;
+        selected = result.campaign; selection++; stats = null; logs = []; logCursor = null;
+        campaigns = [selected, ...campaigns.filter((item) => item._id !== selected._id)]; clearComposer(); notify("Notification draft saved.");
+      } catch (failure) { if (session === epoch) error(failure.message); }
+      finally { if (session === epoch) { busy = false; updateActions(); renderHistory(); } }
+    }
+    async function checkAudience() { await prepareReview("audience"); }
+    async function prepareReview(action) {
+      if (busy || !available || !isDraft() || (action !== "audience" && !enabled)) return;
+      let scheduledAt, draft, snapshot, previewName;
+      try {
+        const form = $("push-form"), data = values(); data.destination = form.elements.destination.value;
+        draft = buildDraft(data); snapshot = JSON.stringify(values()); previewName = $("push-preview-name")?.value || "";
+        if (action === "schedule") scheduledAt = localSchedule($("push-schedule-time").value);
+      } catch (failure) { error(failure.message); return; }
+      busy = true; updateActions(); error(); const session = epoch;
+      let saved = false, audienceMessage = "";
+      try {
+        const result = await prepareDelivery({ api, base, selected, draft, dirty, previewName,
+          isCurrent: () => session === epoch,
+          onSaved: campaign => {
+            selected = campaign; copiedDraft = null; selection++; stats = null; logs = []; logCursor = null;
+            baseline = snapshot; dirty = false; saved = true;
+            campaigns = [selected, ...campaigns.filter(item => item._id !== selected._id)]; renderHistory();
+          } });
+        if (!result || session !== epoch) return;
+        const sample = result.audience;
+        audienceMessage = `${sample.eligibleDevicesInSample} eligible devices among ${sample.scannedDevices} checked${sample.hasMoreDevices ? "; more devices are available" : ""}. Preferences are checked again at delivery.`;
+        if (action !== "audience") {
+          review = { id: result.campaign._id, action, scheduledAt, expectedRevision: result.campaign.revision ?? 0,
+            preview: result.preview, audienceMessage };
+          showReview(result.campaign);
+        }
+      } catch (failure) { if (session === epoch) error(failure.message); }
+      finally {
+        if (session === epoch) {
+          busy = false;
+          if (saved) { renderEditor(); $("push-preview-name").value = previewName; livePreview(); }
+          if (audienceMessage) $("push-audience-result").textContent = audienceMessage;
+          updateActions();
+        }
+      }
+    }
+    function showReview(campaign) {
+      $("push-review-dialog")?.remove();
+      const dialog = document.createElement("dialog"); dialog.id = "push-review-dialog"; dialog.className = "editor-dialog compact-dialog push-review-dialog";
+      dialog.innerHTML = `<div class="push-review-content"><h2>${review.action === "schedule" ? "Confirm schedule" : "Send notification?"}</h2><span class="push-app-name">${escape(types[campaign.notificationType])}</span><h3>${escape(review.preview?.title || campaign.title)}</h3><p class="push-review-body">${escape(review.preview?.body || campaign.body)}</p><p class="field-hint">Changes saved. Personalized text is a preview; recipients use their own name.</p><p>Audience: <b>${escape(labels[campaign.targetAudience])}</b></p><p>${escape(review.audienceMessage)}</p>${campaign.targetAudience === "SPECIFIC_USERS" ? `<p>${campaign.targetConditions.userIds.length} selected account IDs</p>` : ""}<p>Opens: ${escape(campaign.deepLink)}</p>${campaign.targetAudience === "OLDER_APP_VERSION" ? `<p>Reported version code below ${escape(campaign.targetConditions.minimumVersionCode)}. Unknown versions excluded.</p>` : ""}${review.scheduledAt ? `<p>${escape(formatDate(review.scheduledAt))} · ${escape(zone)}<small class="field-hint">UTC: ${escape(dates.dateTime(review.scheduledAt, { utc: true }))}</small></p>` : "<p>Delivery starts when the worker processes this notification.</p>"}<p class="muted">Only eligible users who opted in will be included. The audience is checked again at delivery.</p><p id="push-review-error" class="form-error" role="alert"></p><div class="push-actions"><button id="push-review-back" type="button" class="button secondary">Back</button><button id="push-review-confirm" type="button" class="button primary">${review.action === "schedule" ? "Confirm schedule" : "Send notification"}</button></div></div>`;
+      document.body.append(dialog); dialog.showModal();
+      $("push-review-back").addEventListener("click", () => { dialog.close(); review = null; });
+      dialog.addEventListener("cancel", (event) => { if (busy) event.preventDefault(); else review = null; });
+      $("push-review-confirm").addEventListener("click", confirmReview);
+    }
+    async function confirmReview() {
+      if (busy || !review) return;
+      const current = { ...review }, session = epoch;
+      busy = true; $("push-review-confirm").disabled = true; $("push-review-back").disabled = true; updateActions();
+      try {
+        const result = await api(`${base}/${current.id}/${current.action}`, { method: "POST", body: JSON.stringify({ expectedRevision: current.expectedRevision, ...(current.scheduledAt ? { scheduledAt: current.scheduledAt } : {}) }) });
+        if (session !== epoch) return;
+        selected = result.campaign; campaigns = campaigns.map((item) => item._id === selected._id ? selected : item);
+        $("push-review-dialog").close(); clearComposer(); notify(current.action === "schedule" ? "Notification scheduled." : "Notification queued for delivery.");
+      } catch (failure) { if (session === epoch) $("push-review-error").textContent = `${failure.message} Refresh the notification before retrying if the outcome is uncertain.`; }
+      finally { if (session === epoch) { busy = false; updateActions(); renderHistory(); if ($("push-review-confirm")) { $("push-review-confirm").disabled = false; $("push-review-back").disabled = false; } } }
+    }
+    async function clearHistory() {
+      const ids = [...historySelection];
+      if (busy || loading || !available || !ids.length || !window.confirm(`Delete ${ids.length} selected finished notification${ids.length === 1 ? '' : 's'} from Recent activity? Delivery records remain for troubleshooting. Scheduled and sending notifications stay.`)) return;
+      busy = true; updateActions(); renderHistory(); error(); const session = epoch;
+      try {
+        const result = await api(`${base}/history/clear-selected`, { method: 'POST', body: JSON.stringify({ ids }) });
+        if (session !== epoch) return;
+        historySelection.clear();
+        if (selected && ids.includes(selected._id)) clearComposer();
+        notify(`${result.clearedCount || 0} finished notification${result.clearedCount === 1 ? '' : 's'} removed from Recent activity.`);
+        const refreshed = await api(base);
+        if (session !== epoch) return;
+        campaigns = refreshed.campaigns || []; nextCursor = refreshed.nextCursor;
+      } catch (failure) { if (session === epoch) error(failure.message); }
+      finally { if (session === epoch) { busy = false; updateActions(); renderHistory(); } }
+    }
+    async function clearDraftCard(id) {
+      const item = campaigns.find(item => item._id === id);
+      if (busy || !item || item.status !== "DRAFT" || !window.confirm(`Clear draft “${item.title}”? Its saved content${selected?._id === id ? " and unsaved edits" : ""} will be discarded.`)) return;
+      busy = true; updateActions(); renderHistory(); error(); const session = epoch;
+      try {
+        await api(`${base}/${id}`, { method: "DELETE", body: JSON.stringify({ expectedRevision: item.revision ?? 0 }) });
+        if (session !== epoch) return;
+        campaigns = campaigns.filter(item => item._id !== id);
+        if (selected?._id === id) { selected = null; copiedDraft = null; selection++; stats = null; logs = []; logCursor = null; renderEditor(); }
+        renderHistory(); notify("Draft cleared.");
+      } catch (failure) { if (session === epoch) error(failure.message); }
+      finally { if (session === epoch) { busy = false; updateActions(); renderHistory(); } }
+    }
+    async function clearDraft() {
+      if (busy || !isDraft() || !window.confirm("Clear this draft? Its saved content and unsaved edits will be discarded.")) return;
+      busy = true; updateActions(); error(); const session = epoch;
+      try {
+        if (selected) {
+          const id = selected._id;
+          await api(`${base}/${id}`, { method: "DELETE", body: JSON.stringify({ expectedRevision: selected.revision ?? 0 }) });
+          if (session !== epoch) return;
+          campaigns = campaigns.filter(item => item._id !== id);
+        }
+        selected = null; copiedDraft = null; selection++; stats = null; logs = []; logCursor = null;
+        renderHistory(); renderEditor(); notify("Draft cleared.");
+      } catch (failure) { if (session === epoch) error(failure.message); }
+      finally { if (session === epoch) { busy = false; updateActions(); renderHistory(); } }
+    }
+    async function cancelCampaign() {
+      if (busy || !selected || dirty || !window.confirm("Cancel this notification? Unsent work will stop. A batch already submitted cannot be recalled.")) return;
+      busy = true; updateActions(); error(); const session = epoch;
+      try {
+        const result = await api(`${base}/${selected._id}/cancel`, { method: "POST" });
+        if (session !== epoch) return;
+        selected = result.campaign; campaigns = campaigns.map((item) => item._id === selected._id ? selected : item);
+        clearComposer(); notify("Notification cancelled. Already submitted batches cannot be recalled.");
+      } catch (failure) { if (session === epoch) error(failure.message); }
+      finally { if (session === epoch) { busy = false; updateActions(); renderHistory(); } }
+    }
+    function reset() {
+      epoch++; selection++; campaigns = []; selected = null; copiedDraft = null; historySelection.clear(); nextCursor = null; stats = null; logs = []; logCursor = null;
+      busy = false; loading = false; available = false; enabled = false; dirty = false; review = null;
+      $("push-review-dialog")?.remove(); error(); renderHistory(); banner(); $("push-editor").innerHTML = '<p class="muted">Select a draft or create a new notification.</p>'; $("push-refresh").disabled = false; $("push-new").disabled = false;
+    }
+    $("push-new").addEventListener("click", newNotification);
+    $("push-refresh").addEventListener("click", refresh);
+    $("push-more").addEventListener("click", () => loadCampaigns(true));
+    $("push-campaigns").addEventListener("click", (event) => { const clear = event.target.closest("[data-clear-draft]"); if (clear) { void clearDraftCard(clear.dataset.clearDraft); return; } const button = event.target.closest("[data-campaign]"); if (button) void open(button.dataset.campaign); });
+    $('push-recent').addEventListener('click', event => {
+      if (event.target.closest('[data-clear-history]')) { void clearHistory(); return; }
+      const again = event.target.closest('[data-resend]'); if (again) { void resend(again.dataset.resend); return; }
+      const button = event.target.closest('[data-campaign]'); if (button) void open(button.dataset.campaign);
+    });
+    $('push-recent').addEventListener('change', event => {
+      if (busy || loading) return;
+      if (event.target.closest('[data-history-all]')) {
+        historySelection.clear();
+        if (event.target.checked) campaigns.filter(item => finishedStatuses.includes(item.status)).slice(0, 500).forEach(item => historySelection.add(item._id));
+      } else {
+        const input = event.target.closest('[data-history-select]'); if (!input) return;
+        const id = input.dataset.historySelect;
+        if (!campaigns.some(item => item._id === id && finishedStatuses.includes(item.status))) return;
+        if (input.checked) { if (historySelection.size >= 500) { notify('Select up to 500 notifications at a time.', true); renderHistory(); return; } historySelection.add(id); }
+        else historySelection.delete(id);
+      }
+      renderHistory();
+    });
+    window.addEventListener("beforeunload", (event) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } });
+    return { refresh, reset, catalogChanged, open, newNotification, leave, resend, hasPendingChanges: () => busy || dirty };
+  }
+  const exported = { create, buildDraft, localSchedule, personalizedPreview, prepareDelivery, campaignToDraft };
+  if (typeof module !== "undefined" && module.exports) module.exports = exported;
+  else window.MaddsNotifications = exported;
+})();

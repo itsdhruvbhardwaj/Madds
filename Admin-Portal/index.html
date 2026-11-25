@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#090909">
+  <link rel="icon" type="image/svg+xml" href="assets/madds-favicon.svg?v=2">
+  <link rel="alternate icon" type="image/png" sizes="512x512" href="assets/Icon5.png">
+  <title>Madds Workspace</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preconnect" href="https://picme-ai.onrender.com" crossorigin>
+  <link rel="preconnect" href="https://res.cloudinary.com" crossorigin>
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/workspace-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Workspace">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <script src="theme.js?v=20261105-themes"></script>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="portal-overrides.css?v=20261116-daily-reminder">
+  <link rel="stylesheet" href="studio-modern.css?v=20261114-feedback">
+  <link rel="stylesheet" href="themes.css?v=20261105-themes">
+  <link rel="stylesheet" href="performance.css?v=20261108-performance">
+  <link rel="stylesheet" href="ad-settings.css?v=20261109-master-ads">
+  <link rel="stylesheet" href="settings-layout.css?v=20261117-model-controls-1">
+  <link rel="stylesheet" href="workspace-app.css?v=20261116-installable-1">
+  <link rel="stylesheet" href="group-selection.css?v=20261117-visual-groups-1">
+  <link rel="stylesheet" href="raw-image-library.css?v=20261124-library-layout">
+</head>
+<body>
+  <div id="workspace-connection" class="workspace-status" role="status" tabindex="-1" hidden><div><strong>You're offline</strong><p id="workspace-connection-copy">Reconnect to continue. Your edits stay in this window; nothing is queued.</p></div><button id="workspace-reconnect" class="button secondary" type="button">Try again</button></div>
+  <div id="workspace-update" class="workspace-status" role="status" hidden><div><strong>Workspace update available</strong><p id="workspace-update-copy">Update when you have finished your current work.</p></div><button id="workspace-update-apply" class="button secondary" type="button">Update now</button></div>
+  <main id="login-view" class="login-shell">
+    <label class="theme-control login-theme-control"><span>Theme</span><select data-studio-theme aria-label="Sign-in theme"><option value="dark">Dark</option><option value="light">Light</option></select></label>
+    <section class="login-card">
+      <img class="brand-title login-brand-title" src="assets/madds-title.png" alt="Madds">
+      <h1>Workspace</h1>
+      <p class="muted">Sign in with an approved Madds team account.</p>
+      <form id="login-form" class="stack">
+        <label>Email address<input name="email" type="email" autocomplete="username" required></label>
+        <label for="login-password">Password</label>
+        <div class="password-field">
+          <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+          <button id="toggle-password" class="password-toggle" type="button" aria-label="Show password" title="Show password" aria-controls="login-password" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path class="password-eye-slash" d="m3 3 18 18"/></svg>
+          </button>
+        </div>
+        <button class="button primary" type="submit">Sign in</button>
+      </form>
+      <p id="login-message" class="message" role="status"></p>
+    </section>
+  </main>
+
+  <div id="app-view" class="app-shell" hidden>
+    <aside id="workspace-sidebar" class="sidebar" aria-label="Workspace navigation">
+      <button id="workspace-menu-close" class="icon-button workspace-menu-close" type="button" aria-label="Close navigation">×</button>
+      <div class="brand"><img class="brand-title studio-brand-title" src="assets/madds-title.png" alt="Madds"><span class="studio-word">Workspace</span></div>
+      <div class="side-label">WORKSPACE</div>
+      <button class="side-link active" data-panel="styles-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg> Styles <small id="style-count">0</small></button>
+      <button class="side-link" data-panel="performance-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16M7 16v-5m5 5V5m5 11V8"/></svg> Style performance</button>
+      <button class="side-link" data-panel="testing-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"/></svg> Prompt testing <small id="prompt-test-nav-status" class="test-nav-status" hidden></small></button>
+      <button class="side-link" data-panel="collections-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg> Collections</button>
+      <button class="side-link" data-panel="notifications-panel"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg> Notifications</button>
+      <button class="side-link" data-panel="feedback-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/><path d="M7 8h10M7 12h6"/></svg> Feedback</button>
+      <button class="side-link" data-panel="users-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m2 4a5 5 0 0 1 3 4v2"/></svg> Users</button>
+      <button class="side-link" data-panel="app-settings-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg> App settings</button>
+      <button class="side-link" data-panel="storage-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0"/></svg> Storage &amp; cleanup</button>
+      <button class="side-link" data-panel="logs-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg> Change logs</button>
+      <div class="sidebar-note"><span class="live-dot"></span> Connected to live catalogue</div>
+      <button id="workspace-install" class="workspace-install" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg> Install Workspace</button>
+      <button id="logout-button" class="side-logout">Sign out</button>
+    </aside>
+
+    <section class="main-area">
+      <header class="topbar"><button id="workspace-menu-toggle" class="icon-button workspace-menu-toggle" type="button" aria-label="Open navigation" aria-controls="workspace-sidebar" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><div><div class="eyebrow">CATALOGUE CONTROL</div><div id="account-email" class="account-email"></div></div><div class="top-actions"><label class="theme-control"><span>Theme</span><select data-studio-theme aria-label="Workspace theme"><option value="dark">Dark</option><option value="light">Light</option></select></label><button id="retry-cloudinary-cleanup" class="button secondary cleanup-button" type="button" hidden></button><span class="live-pill"><i></i> Live data</span><button id="refresh-button" class="icon-button" title="Refresh catalogue">↻</button></div></header>
+      <div id="notice" class="notice" role="status" hidden></div>
+
+      <section id="styles-panel" class="panel-view">
+        <div class="page-heading"><div><p class="eyebrow">YOUR CREATIVE LIBRARY</p><h1>Styles</h1><p class="muted">Edit prompts and collections used by Madds.</p></div><div class="style-heading-actions"><button id="open-raw-library" class="button secondary" type="button">Original images</button><button id="create-style-group" class="button secondary" type="button" aria-pressed="false" disabled>Create group</button><button id="add-style" class="button primary">＋ Add style</button></div></div>
+        <div class="workspace-tabs"><button id="styles-tab" type="button" aria-pressed="true">Styles</button><button id="groups-tab" type="button" aria-pressed="false">Groups</button></div><div id="style-list-view"><div class="toolbar"><label class="search-box"><span>⌕</span><input id="style-search" type="search" placeholder="Search styles, tags or prompts"></label><select id="collection-filter" aria-label="Filter by collection"><option value="">All collections</option></select><select id="verification-filter" aria-label="Filter by verification"><option value="all">All verification states</option><option value="verified">Verified</option><option value="unverified">Unverified</option></select><select id="tag-filter" aria-label="Filter by tags"><option value="">All tag states</option><option value="missing">Missing tags</option><option value="tagged">Has tags</option></select><select id="style-sort" aria-label="Sort styles"><option value="name-asc">Name: A to Z</option><option value="name-desc">Name: Z to A</option><option value="created-desc">Newest added</option><option value="created-asc">Oldest added</option><option value="updated-desc">Recently modified</option><option value="updated-asc">Least recently modified</option></select><span id="result-count" class="muted"></span></div>
+        <div id="style-bulk-controls" class="style-bulk-controls"><button id="style-bulk-toggle" class="style-bulk-toggle" type="button" aria-expanded="false" aria-controls="style-bulk-panel"><strong>Bulk style actions</strong><span id="style-bulk-toggle-hint">Expand to select styles <span aria-hidden="true">⌄</span></span></button><div id="style-bulk-panel" hidden><p id="style-selection-count" class="muted">0 selected</p><div class="style-bulk-actions"><button id="style-select-all" type="button" class="button secondary">Select all filtered styles</button><button id="style-select-clear" type="button" class="button secondary">Clear selection</button><button id="style-bulk-group" type="button" class="button secondary" disabled>Group selected styles</button><button id="style-bulk-verify" type="button" class="button primary" disabled>Mark verified</button><button id="style-bulk-unverify" type="button" class="button secondary" disabled>Mark unverified</button></div><div class="style-bulk-tag-entry"><label for="bulk-style-tags">Tags to add<input id="bulk-style-tags" type="text" list="style-tag-suggestions" placeholder="e.g. saree, wedding" autocomplete="off"></label><button id="style-bulk-tags" type="button" class="button secondary" disabled>Add tags to selected</button></div><p class="field-hint">Existing tags are kept. If a style would exceed 10 tags, nothing in the selection is changed.</p><p class="field-hint">Selection follows the main search, collection, and verification filters. Changing filters removes styles that no longer match. Verify only after reviewing images and testing prompts.</p></div></div>
+        <div id="style-group-selection" class="style-group-selection" hidden aria-label="Selected styles for a new group"><div><strong id="style-group-selection-count" role="status">0 / 8 styles selected</strong><p id="style-group-selection-hint">Select at least 2 similar styles by clicking their cards.</p><div id="style-group-selection-preview" class="style-group-selection-preview"></div></div><div class="style-group-selection-actions"><button id="style-group-selection-cancel" type="button" class="button secondary">Cancel</button><button id="style-group-selection-create" type="button" class="button primary" disabled>Continue to group</button></div></div>
+        <div id="styles-grid" class="styles-grid"></div></div><div id="style-groups-view" hidden><button id="new-style-group" type="button" class="button primary">New group</button><p id="style-groups-status" class="field-hint"></p><div id="style-groups-list"></div></div>
+      </section>
+
+      <section id="testing-panel" class="panel-view" hidden>
+        <div class="page-heading"><div><p class="eyebrow">PROMPT WORKBENCH</p><h1>Prompt testing</h1><p class="muted">Try an original photo and prompt with Sunburst. The photo and prompt are sent to OpenRouter for generation; test images are not saved to Cloudinary.</p></div></div>
+        <div class="prompt-test-layout">
+          <section class="prompt-test-controls">
+            <label class="test-image-picker" for="prompt-test-image"><span class="test-image-icon">＋</span><span><b id="prompt-test-file-name">Choose original image</b><small>JPG, PNG, or WebP · up to 10 MB</small></span></label>
+            <input id="prompt-test-image" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+            <img id="prompt-test-original-preview" class="test-original-preview" alt="Selected original image" hidden>
+            <label class="test-prompt-label" for="prompt-test-prompt">Prompt<textarea id="prompt-test-prompt" maxlength="10000" rows="9" placeholder="Describe the look you want Sunburst to create…"></textarea></label>
+            <p class="test-cost-note">Each generation uses the team’s OpenRouter account and may incur a charge.</p>
+            <p id="prompt-test-error" class="form-error" role="alert"></p>
+            <button id="generate-test-image" class="button primary" type="button">Generate test image</button>
+          </section>
+          <section class="prompt-test-result" aria-live="polite">
+            <div id="prompt-test-progress" class="test-generation-progress" role="status" aria-live="polite" hidden><span class="generation-orbit"><i></i></span><h2>Creating your test image</h2><p id="prompt-test-progress-status">Sunburst is generating your image…</p><div class="generation-progress-track"><i></i></div><small>You can keep working in other Workspace sections. This test will be here when you return.</small></div>
+            <div id="prompt-test-empty" class="test-empty-state"><span>✦</span><h2>Your test image will appear here</h2><p>Change the prompt or source photo and generate again until the result looks right.</p></div>
+            <img id="prompt-test-result-image" class="test-result-image" alt="Generated prompt test image" hidden>
+            <div id="test-export-controls" class="test-export-controls" hidden>
+              <label>Download aspect ratio<select id="test-export-aspect"><option value="5:7" selected>5:7 · Madds style card</option><option value="3:4">3:4</option><option value="2:3">2:3</option><option value="4:5">4:5</option><option value="1:1">1:1</option><option value="9:16">9:16</option><option value="16:9">16:9</option></select></label>
+              <label>Compression quality <span><output id="test-export-quality-value">82%</output><input id="test-export-quality" type="range" min="40" max="100" step="1" value="82"></span></label>
+              <p>Download is capped at 300 KB. Workspace may reduce quality or dimensions to meet the limit. The preview above stays at the original Sunburst quality.</p>
+              <button id="download-test-image" class="button secondary" type="button">Prepare and download</button>
+              <span id="download-test-status" class="field-hint" role="status"></span>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="performance-panel" class="panel-view" hidden>
+        <div class="page-heading"><div><p class="eyebrow">WHAT YOUR COMMUNITY CREATES</p><h1>Style performance</h1><p class="muted">Find popular verified styles and choose what belongs in Trending.</p></div><button id="performance-refresh" class="button secondary" type="button">Refresh</button></div>
+        <div class="performance-toolbar">
+          <label>Period<select id="performance-days"><option value="7">Last 7 days</option><option value="15">Last 15 days</option><option value="30">Last 30 days</option></select></label>
+          <label>Rank by<select id="performance-sort"><option value="successful">Successful generations</option><option value="users">Unique users</option><option value="failed">Failed generations</option><option value="recent">Last used</option></select></label>
+          <label class="performance-search">Find a style<input id="performance-search" type="search" placeholder="Style name" maxlength="100"></label>
+        </div>
+        <div id="performance-summary" class="performance-summary" aria-live="polite"></div>
+        <p id="performance-period" class="muted performance-note">Successful generations determine popularity. Unique users counts people with at least one successful generation of that style.</p>
+        <p id="performance-error" class="form-error" role="alert"></p>
+        <div class="performance-table-wrap" id="performance-results" aria-busy="false"><table class="performance-table"><thead><tr><th scope="col">Style</th><th scope="col">Successful</th><th scope="col">Unique users</th><th scope="col">Failed</th><th scope="col">Last used</th><th scope="col">Trending</th></tr></thead><tbody id="performance-rows"></tbody></table></div>
+        <div class="performance-footer"><span id="performance-page" class="muted"></span><div><button id="performance-prev" class="button secondary" type="button" disabled>Previous</button><button id="performance-next" class="button secondary" type="button" disabled>Next</button></div></div>
+        <p class="muted performance-note">Only currently verified styles are included in these rankings and totals. Counts use retained metadata; processing, uncertain outcomes, unverified and removed styles are excluded.</p>
+      </section>
+
+      <section id="collections-panel" class="panel-view" hidden>
+        <div class="page-heading"><div><p class="eyebrow">ORGANIZE YOUR LIBRARY</p><h1>Collections</h1><p class="muted">Create a collection, then assign it to styles in the editor. Deleting one moves styles assigned only to it into Other; multi-collection styles keep their remaining assignments. Styles and images are kept.</p></div></div>
+        <details class="home-order-panel"><summary>Home collection order <span class="field-hint">Arrange the app Home screen</span></summary><p class="muted">Move enabled collections up or down, then save. Hidden collections stay hidden. Empty collections may be skipped by the app.</p><ol id="home-order-list" class="home-order-list"></ol><div class="home-order-footer"><span id="home-order-state" class="field-hint">Saved Home order</span><button id="home-order-reset" class="button secondary" type="button" disabled>Reload layout</button><button id="home-order-save" class="button primary" type="button" disabled>Save order</button></div></details>
+        <form id="collection-form" class="collection-create"><label>New collection<input name="name" maxlength="60" placeholder="e.g. Festive Portraits" required></label><button class="button primary" type="submit">Create collection</button></form>
+        <div class="collection-toolbar"><label for="collection-sort" class="muted">Sort collections</label><select id="collection-sort" aria-label="Sort collections"><option value="name-asc">Name: A to Z</option><option value="name-desc">Name: Z to A</option><option value="created-desc">Newest added</option><option value="created-asc">Oldest added</option><option value="updated-desc">Recently modified</option><option value="updated-asc">Least recently modified</option></select></div>
+        <div class="collection-head"><span>Collection</span><span>Show on app Home</span><span>Styles</span><span>Actions</span></div>
+        <div id="collections-list" class="collections-list"></div>
+      </section>
+
+      <section id="notifications-panel" class="panel-view" hidden>
+        <div class="page-heading"><div><p class="eyebrow">KEEP YOUR COMMUNITY CONNECTED</p><h1>Notifications</h1><p class="muted">Create, schedule, and follow your notifications.</p></div><button id="push-new" class="button primary" type="button">＋ New notification</button></div>
+        <div id="push-delivery-status" class="push-banner" role="status">Checking notification availability…</div>
+        <div id="push-error" class="form-error" role="alert"></div>
+        <details class="welcome-back-panel daily-reminder-panel"><summary>Automations <span class="field-hint">Daily credit reminder</span></summary>
+          <div class="push-section-heading"><h2>Daily credit reminder</h2><button id="daily-reminder-refresh" class="button secondary" type="button">Refresh</button></div>
+          <p class="muted">Remind users who have not claimed today. Once per account per day, on the most recently active eligible Android device. Respects Offers &amp; Rewards preferences and expires at India midnight.</p>
+          <form id="daily-reminder-form" class="push-form push-fields">
+            <div class="push-two-fields"><label class="daily-reminder-toggle"><input type="checkbox" name="enabled">Send automatically each day</label><label>Send time (IST)<input type="time" name="sendTime" required></label></div>
+            <label>Title<input name="title" maxlength="120" required></label><label>Message<textarea name="body" maxlength="500" rows="3" required></textarea></label>
+            <p class="field-hint">Use {firstName} and {credits}. Tapping opens Home to claim; notifications never grant credits.</p>
+            <div class="push-phone-preview"><span class="push-app-name">madds · preview for Maddies</span><strong id="daily-reminder-preview-title"></strong><p id="daily-reminder-preview-body"></p></div>
+            <p id="daily-reminder-status" role="status"></p><p id="daily-reminder-hosting" class="field-hint"></p><p id="daily-reminder-editor" class="field-hint"></p>
+            <p class="field-hint">One run per reward day. Enabling after the selected time queues today's reminder on the next worker check. Changes stop unsent work from the previous setting; a day already started will not send again. Previously submitted notifications cannot be recalled.</p>
+            <p id="daily-reminder-error" class="form-error" role="alert"></p><button id="daily-reminder-save" class="button primary" type="submit" disabled>Save automation</button>
+          </form>
+          <h3>Last 7 runs</h3><div id="daily-reminder-runs"></div><details><summary>Settings history</summary><div id="daily-reminder-history"></div></details>
+        </details>
+        <details class="welcome-back-panel"><summary>Welcome-back credits <span class="field-hint">Reward users with fewer than 10 credits</span></summary>
+          <p class="muted">Only verified, active accounts with 0–9 credits qualify. If last activity was never recorded, account creation is used. Preview first, then choose recipients and confirm. No credits are added during preview.</p>
+          <form id="welcome-back-form" class="welcome-back-controls"><label>Activity filter<select name="inactiveDays"><option value="2">2 days</option><option value="7">7 days</option><option value="15">15 days</option><option value="30">30 days</option><option value="0">Any activity · low credits only</option></select></label><label>Credits per user<input name="amount" type="number" min="1" max="100000" step="1" value="20" required></label><button id="welcome-back-preview" class="button secondary" type="submit">Preview eligible users</button></form>
+          <p class="field-hint">Notification: “Hi {firstName}, a gift from Madds!” · “We've added your selected amount of free credits to your Madds account. Come create something new!”</p>
+          <p id="welcome-back-delivery" class="field-hint"></p><p id="welcome-back-error" class="form-error" role="alert"></p>
+          <div class="welcome-back-actions"><button id="welcome-back-all" class="button secondary" type="button" disabled>Select all</button><button id="welcome-back-clear" class="button secondary" type="button" disabled>Clear selection</button><button id="welcome-back-new" class="button secondary" type="button">New selection</button></div>
+          <div id="welcome-back-recipients"></div><p id="welcome-back-summary" role="status"></p><button id="welcome-back-confirm" class="button primary" type="button" disabled>Grant credits &amp; notify</button>
+          <div class="push-section-heading"><h3>Recent grants</h3><button id="welcome-back-refresh" class="button secondary" type="button">Refresh status</button></div><div id="welcome-back-history"></div>
+        </details>
+        <div class="push-workspace">
+          <section id="push-editor" class="push-editor" aria-label="Notification editor"><p class="muted">Select a draft or create a new notification.</p></section>
+          <aside class="push-history" aria-label="Notification drafts and activity"><div class="push-section-heading"><div><h2>Drafts</h2><p class="muted">Continue where you left off.</p></div><button id="push-refresh" class="button secondary" type="button">Refresh</button></div><div id="push-campaigns" class="push-campaigns" aria-live="polite"></div><div id="push-recent" class="push-recent" aria-live="polite"></div><button id="push-more" class="button secondary" type="button" hidden>Load more</button></aside>
+        </div>
+      </section>
+
+      <section id="feedback-panel" class="panel-view" hidden><div class="page-heading"><div><p class="eyebrow">LISTEN TO YOUR COMMUNITY</p><h1>Feedback</h1><p class="muted">Suggestions and bug reports from Madds users.</p></div><button id="feedback-refresh" class="button secondary">Refresh</button></div><div class="logs-toolbar"><label>Status<select id="feedback-filter"><option value="">All feedback</option><option value="NEW">New</option><option value="IN_REVIEW">In review</option><option value="RESOLVED">Resolved</option></select></label></div><p id="feedback-error" class="form-error" role="alert"></p><div id="feedback-list"></div><div class="logs-pagination"><button id="feedback-prev" class="button secondary">Previous</button><span id="feedback-page" class="muted"></span><button id="feedback-next" class="button secondary">Next</button></div></section>
+      <section id="users-panel" class="panel-view" hidden>
+        <div class="page-heading"><div><p class="eyebrow">ACCOUNT SUPPORT</p><h1>Users</h1><p class="muted">Manage accounts, credits, and creation history.</p></div></div>
+        <form id="users-search" class="logs-toolbar"><label>Find a user<input name="q" maxlength="120" placeholder="Name, email, or user ID"></label><label>Status<select name="status"><option value="">All users</option><option value="active">Active</option><option value="suspended">Suspended</option></select></label><label>Sort by<select name="sort"><option value="joined_desc">Newest joined</option><option value="joined_asc">Oldest joined</option><option value="last_active_desc">Recently active</option><option value="last_active_asc">Inactive longest</option></select></label><button class="button primary">Search</button></form>
+        <p id="users-error" class="form-error" role="alert"></p><div id="users-list"></div><div class="logs-pagination"><span id="users-count" class="muted"></span><div><button id="users-prev" class="button secondary">Previous</button><button id="users-next" class="button secondary">Next</button></div></div>
+        <section id="user-details" class="push-editor" hidden></section>
+      </section>
+      <section id="app-settings-panel" class="panel-view" hidden>
+        <div class="page-heading"><div><p class="eyebrow">APP CONTROLS</p><h1>App settings</h1><p class="muted">Manage generation, rewards, advertising and branding.</p></div></div>
+        <div class="settings-layout">
+          <aside class="settings-sidebar" aria-label="Settings navigation">
+            <label class="settings-search"><span>Find a setting</span><input id="settings-search" type="search" placeholder="Try daily bonus or banner…" autocomplete="off"></label>
+            <div id="settings-topic-list" role="tablist" aria-label="Settings categories" aria-orientation="vertical">
+            <div class="settings-topic-group"><p class="settings-group-label">Creation</p>
+              <button id="settings-tab-generation" class="settings-topic" type="button" role="tab" aria-controls="settings-section-generation" aria-selected="false" tabindex="-1" data-settings-topic="generation" data-settings-keywords="image generation model sunburst 2.5 2.6 quality complexity openrouter ai photo preview test"><span class="settings-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m3 16 5-5 5 5 3-3 5 5M16 6v4M14 8h4"/></svg></span><span><strong>Image generation</strong><small>Models, quality &amp; previews</small></span><span class="settings-topic-chevron" aria-hidden="true">›</span></button>
+            </div>
+            <div class="settings-topic-group"><p class="settings-group-label">Credits & rewards</p>
+              <button id="settings-tab-welcome" class="settings-topic" type="button" role="tab" aria-controls="settings-section-welcome" aria-selected="true" tabindex="0" data-settings-topic="welcome" data-settings-keywords="welcome signup registration new users user account onboarding gift credits amount balance"><span class="settings-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16v13H4zM3 7h18v4H3zM12 7v13M12 7H8a3 3 0 1 1 3-3zM12 7h4a3 3 0 1 0-3-3z"/></svg></span><span><strong>Welcome credits</strong><small>A gift for new accounts</small></span><span class="settings-topic-chevron" aria-hidden="true">›</span></button>
+              <button id="settings-tab-daily" class="settings-topic" type="button" role="tab" aria-controls="settings-section-daily" aria-selected="false" tabindex="-1" data-settings-topic="daily" data-settings-keywords="daily bonus login reward claim credits reminders notifications popup amount limit reset"><span class="settings-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><span><strong>Daily bonus</strong><small>Daily claims & credit amounts</small></span><span class="settings-topic-chevron" aria-hidden="true">›</span></button>
+              <button id="settings-tab-rewarded" class="settings-topic" type="button" role="tab" aria-controls="settings-section-rewarded" aria-selected="false" tabindex="-1" data-settings-topic="rewarded" data-settings-keywords="ad reward rewarded video credits earn amount"><span class="settings-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9 5 3-5 3z"/></svg></span><span><strong>Ad rewards</strong><small>Credits earned per rewarded ad</small></span><span class="settings-topic-chevron" aria-hidden="true">›</span></button>
+            </div>
+            <div class="settings-topic-group"><p class="settings-group-label">Ads & visibility</p>
+              <button id="settings-tab-ads" class="settings-topic" type="button" role="tab" aria-controls="settings-section-ads" aria-selected="false" tabindex="-1" data-settings-topic="ads" data-settings-keywords="advertising ads banner banners native feed interstitial full screen fullscreen full-screen rewarded enable disable daily bonus claim placement automatic frequency cooldown timer spacing generation photo avatar download"><span class="settings-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4 10 12-5v14L4 14zM4 10v4M7 15l1 5h3l-2-4M20 9v6"/></svg></span><span><strong>Advertising</strong><small>Ad formats, placements & timing</small></span><span class="settings-topic-chevron" aria-hidden="true">›</span></button>
+            </div>
+            <div class="settings-topic-group"><p class="settings-group-label">Branding</p>
+              <button id="settings-tab-watermark" class="settings-topic" type="button" role="tab" aria-controls="settings-section-watermark" aria-selected="false" tabindex="-1" data-settings-topic="watermark" data-settings-keywords="watermark branding logo image export photo opacity size padding download share"><span class="settings-topic-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6v5l3 4v4H6v-4l3-4zM4 20h16"/></svg></span><span><strong>Watermark</strong><small>Logo & image export appearance</small></span><span class="settings-topic-chevron" aria-hidden="true">›</span></button>
+            </div>
+            </div>
+            <p id="settings-no-results" class="field-hint" role="status" hidden>No matching settings. Try another keyword.</p>
+            <p class="settings-nav-note">Changes apply only after you save.</p>
+          </aside>
+          <div class="settings-content">
+            <section id="settings-section-generation" class="settings-section" role="tabpanel" aria-labelledby="settings-tab-generation" data-settings-section="generation" hidden>
+              <form id="image-generation-form" class="app-settings-form">
+                <div class="push-section-heading"><h2>Image generation</h2><button id="image-generation-refresh" class="button secondary" type="button">Refresh</button></div>
+                <p class="muted">Choose how Madds creates photos. Test your settings, review the result, then apply them to new app and Studio generations.</p>
+                <p id="image-generation-current" class="generation-current field-hint" role="status"></p>
+                <label>Model<select name="activeModel"><option value="sunburst25">Sunburst 2.5</option><option value="sunburst26">Sunburst 2.6</option></select></label>
+                <div class="generation-model-controls">
+                  <label>Quality<select name="quality"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">Extra high</option><option value="max">Maximum</option><option value="auto">Automatic</option></select><small class="field-hint">Rendering quality. Higher settings can cost more.</small></label>
+                  <label id="image-generation-complexity">Complexity <span class="field-hint">2.6 only</span><select name="complexity"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select><small class="field-hint">Planning effort before rendering. More planning can take longer; it is separate from quality.</small></label>
+                </div>
+                <p class="field-hint">Each model remembers its own settings. Switching the dropdown does not change the live app.</p>
+                <div class="generation-test-area">
+                  <h3>Preview before applying</h3><p class="field-hint">This generates one image through OpenRouter and uses your provider balance. It does not charge a user's Madds credits or change live settings.</p>
+                  <label for="image-generation-photo">Reference photo<input id="image-generation-photo" type="file" accept="image/jpeg,image/png,image/webp"></label>
+                  <label for="image-generation-prompt">Test prompt<textarea id="image-generation-prompt" rows="4" maxlength="10000" placeholder="Describe a familiar style so you can compare the result."></textarea></label>
+                  <button id="image-generation-test" class="button secondary" type="button">Generate test preview</button>
+                  <p id="image-generation-test-status" class="field-hint" role="status"></p>
+                  <img id="image-generation-result" class="generation-test-result" alt="Generated preview using the selected model settings" hidden>
+                </div>
+                <p id="image-generation-availability" class="field-hint" role="status"></p><p id="image-generation-error" class="form-error" role="alert"></p>
+                <button id="image-generation-save" class="button primary" type="submit" disabled>Apply to new generations</button>
+                <p id="image-generation-editor" class="field-hint"></p>
+                <details id="image-generation-history-section" class="settings-help" hidden><summary>Recent model changes</summary><div id="image-generation-history"></div></details>
+              </form>
+            </section>
+            <section id="settings-section-welcome" class="settings-section" role="tabpanel" aria-labelledby="settings-tab-welcome" data-settings-section="welcome">
+              <form id="app-settings-form" class="app-settings-form">
+          <div class="push-section-heading"><h2>Welcome credits</h2><button id="app-settings-refresh" class="button secondary" type="button">Refresh</button></div><p class="muted">A one-time gift for people creating a new Madds account.</p>
+          <p id="app-settings-current" class="field-hint"></p><label>Credits per new account<input name="welcomeCredits" type="number" min="0" max="100000" step="1" inputmode="numeric" required></label><p class="field-hint">Set 0 to turn off the welcome gift. Existing users keep their current balance.</p>
+          <p id="app-settings-error" class="form-error" role="alert"></p><button id="app-settings-save" class="button primary" type="submit" disabled>Save welcome credits</button><p id="app-settings-editor" class="field-hint"></p>
+        </form>
+            </section>
+            <section id="settings-section-daily" class="settings-section" role="tabpanel" aria-labelledby="settings-tab-daily" data-settings-section="daily" hidden>
+              <form id="daily-rewards-form" class="app-settings-form">
+          <div class="push-section-heading"><h2>Daily bonus</h2><button id="daily-rewards-refresh" class="button secondary" type="button">Refresh</button></div>
+          <p class="muted">Give verified users a free bonus they can claim once each day.</p>
+          <label class="watermark-enable"><input name="enabled" type="checkbox"> Enable daily rewards</label>
+          <p id="daily-rewards-current" class="field-hint"></p><label>Credits per daily claim<input name="credits" type="number" min="1" max="10" step="1" inputmode="numeric" required></label>
+          <p class="field-hint">Resets at midnight in India. Missed days do not add up, and changing the amount does not give a second claim today.</p>
+          <p id="daily-rewards-error" class="form-error" role="alert"></p><button id="daily-rewards-save" class="button primary" type="submit" disabled>Save daily rewards</button><p id="daily-rewards-editor" class="field-hint"></p>
+          <details class="settings-disclosure"><summary>Change history</summary><div id="daily-rewards-history"></div></details>
+        <div class="settings-related"><div><strong>Looking for daily reminders?</strong><p>Schedule notifications for users who have not claimed.</p></div><button class="button secondary" type="button" data-settings-reminders>Open notifications <span aria-hidden="true">↗</span></button></div></form>
+            </section>
+            <section id="settings-section-rewarded" class="settings-section" role="tabpanel" aria-labelledby="settings-tab-rewarded" data-settings-section="rewarded" hidden>
+              <form id="rewarded-credits-form" class="app-settings-form">
+          <div class="push-section-heading"><h2>Ad rewards</h2><button id="rewarded-credits-refresh" class="button secondary" type="button">Refresh</button></div>
+          <p class="muted">Set the credits earned for one completed, verified rewarded ad.</p>
+          <p id="rewarded-credits-current" class="field-hint"></p>
+          <label>Credits per rewarded ad<input name="credits" type="number" min="1" max="100000" step="1" inputmode="numeric" required></label>
+          <p class="field-hint">New ads use this amount. Ads already started keep the reward promised to the user.</p>
+          <p id="rewarded-credits-error" class="form-error" role="alert"></p><button id="rewarded-credits-save" class="button primary" type="submit" disabled>Save ad reward</button><p id="rewarded-credits-editor" class="field-hint"></p>
+        <div class="settings-related"><div><strong>Turn rewarded ads on or off</strong><p>Ad visibility is managed separately from its reward amount.</p></div><button class="button secondary" type="button" data-settings-open="ads" data-settings-detail="ad-formats">Open advertising <span aria-hidden="true">→</span></button></div></form>
+            </section>
+            <section id="settings-section-ads" class="settings-section" role="tabpanel" aria-labelledby="settings-tab-ads" data-settings-section="ads" hidden>
+              <form id="ad-settings-form" class="app-settings-form">
+          <div class="push-section-heading"><h2>Advertising</h2><button id="ad-settings-refresh" class="button secondary" type="button">Refresh</button></div>
+          <p class="muted">Choose where ads appear. The main switch pauses every ad format without losing your saved selections.</p>
+          <label class="watermark-enable"><input type="checkbox" name="enabled" aria-describedby="ad-master-status" aria-controls="ad-dependent-controls"> Allow ads in Madds</label>
+          <p id="ad-master-status" class="field-hint" role="status"></p>
+          <fieldset id="ad-dependent-controls" aria-label="Individual ad options">
+          <details id="ad-formats" class="settings-disclosure" open><summary>Banner &amp; rewarded ads <small>Standard ad formats</small></summary><div class="settings-disclosure-body"><label class="watermark-enable"><input type="checkbox" name="bannersEnabled"> Banners on eligible subscreens</label>
+          <label class="watermark-enable"><input type="checkbox" name="rewardedEnabled"> Optional rewarded ads for credits</label>
+          </div></details><details id="ad-native" class="settings-disclosure" data-settings-keywords="native feed home explore spacing collections styles"><summary>In-feed ads <small>Home &amp; Explore</small></summary><div class="settings-disclosure-body">
+          <label class="watermark-enable"><input type="checkbox" name="nativeHomeEnabled"> Native ads on Home</label>
+          <label class="watermark-enable"><input type="checkbox" name="nativeExploreEnabled"> Native ads on Explore</label>
+          <div class="watermark-controls"><label>Home: collections between native ads<input name="homeNativeEverySections" type="number" min="2" max="10" step="1" required></label><label>Explore: styles between native ads<input name="exploreNativeEveryStyles" type="number" min="12" max="60" step="6" required></label></div>
+          <p class="field-hint">Choose how often ad cards appear between collections or styles. If an ad is unavailable, no empty space is shown.</p>
+          </div></details><details id="ad-interstitials" class="settings-disclosure" data-settings-keywords="interstitial placement action daily bonus claim generation photo download avatar"><summary>Full-screen ads <small>Choose the actions that can show an ad</small></summary><div class="settings-disclosure-body"><p class="field-hint">Only the selected actions can show an interstitial. All share the same spacing limits.</p>
+          <div id="ad-placement-options" class="ad-placement-options"></div>
+          </div></details><details id="ad-timing" class="settings-disclosure" data-settings-keywords="timing timer interval automatic minimum gap cooldown frequency seconds"><summary>Timing &amp; spacing <small>Control ad frequency</small></summary><div class="settings-disclosure-body"><div class="watermark-controls"><label>Minimum gap between interstitials (seconds)<input name="minGapSeconds" type="number" min="60" max="3600" step="1" required></label><label>Automatic ad interval (seconds)<input name="timedIntervalSeconds" type="number" min="60" max="3600" step="1" required></label></div>
+          <p class="field-hint">Action ads require at least two eligible actions and respect the minimum gap. The automatic timer pauses during account setup, billing and other full-screen ads. Credits never depend on an interstitial showing.</p>
+          </div></details></fieldset>
+          <p id="ad-settings-error" class="form-error" role="alert"></p><button id="ad-settings-save" class="button primary" type="submit" disabled>Save ad settings</button><p id="ad-settings-editor" class="field-hint"></p>
+        <details class="settings-help"><summary>When will changes reach the app?</summary><p class="field-hint">Supported Android versions refresh settings about every five minutes while open. Offline devices keep the last saved configuration.</p></details></form>
+            </section>
+            <section id="settings-section-watermark" class="settings-section" role="tabpanel" aria-labelledby="settings-tab-watermark" data-settings-section="watermark" hidden>
+              <form id="watermark-form" class="app-settings-form watermark-form">
+          <div class="push-section-heading"><h2>Image watermark</h2><button id="watermark-refresh" class="button secondary" type="button">Refresh</button></div>
+          <p class="muted">Place your logo in the bottom-right corner of new image downloads and shares.</p>
+          <label class="watermark-enable"><input name="enabled" type="checkbox"> Enable watermark</label>
+          <input id="watermark-logo-file" type="file" accept="image/png" hidden>
+          <div><button id="watermark-upload" class="button secondary" type="button">Upload / replace logo</button><p id="watermark-logo-name" class="field-hint"></p></div>
+          <p class="field-hint">Use a transparent PNG up to 2 MB. Save the settings to apply an uploaded logo.</p>
+          <div class="watermark-controls"><label>Width (% of image)<input name="widthPercent" type="number" min="5" max="35" step="1" value="18" required></label><label>Opacity (%)<input name="opacityPercent" type="number" min="10" max="100" step="1" value="85" required></label><label>Edge spacing (%)<input name="paddingPercent" type="number" min="1" max="10" step="1" value="2" required></label></div>
+          <div class="watermark-preview" aria-label="Watermark placement preview"><span>Export preview</span><img id="watermark-preview-logo" alt="Watermark logo" hidden></div>
+          <p class="field-hint">Preview shows a sample image. Existing photos in a user’s gallery are unchanged. Offline exports use the last saved settings.</p>
+          <p id="watermark-error" class="form-error" role="alert"></p><button id="watermark-save" class="button primary" type="submit" disabled>Save watermark</button><p id="watermark-editor" class="field-hint"></p>
+        </form>
+            </section>
+            <div id="settings-search-empty" class="settings-search-empty" hidden><h2>No matching settings</h2><p class="muted">Try a shorter search, such as credits, ads or logo.</p><button id="settings-clear-search" class="button secondary" type="button">Clear search</button></div>
+          </div>
+        </div>
+      </section>
+      <section id="storage-panel" class="panel-view" hidden>
+        <div class="page-heading"><div><p class="eyebrow">KEEP MADDS LEAN</p><h1>Storage &amp; cleanup</h1><p class="muted">Review retention, remove eligible history and manage Cloudinary images.</p></div><button id="storage-refresh" class="button secondary" type="button">Refresh</button></div>
+        <p id="storage-error" class="form-error" role="alert"></p><div id="storage-summary" class="storage-summary"></div><p id="storage-note" class="field-hint"></p>
+        <p class="field-hint">15 days for general generation details and credit history. Credit balances, purchase and rewarded-ad proofs, admin adjustments, and unresolved generations are protected. Photos saved on users' devices are unaffected.</p>
+        <div id="storage-policies" class="storage-policies"></div>
+        <section class="storage-media"><div class="page-heading"><div><h2>Cloudinary images</h2><p class="muted">View images here. Delete unused style and notification images; replace active images through the style editor. Recent uploads are protected for 24 hours.</p></div></div>
+          <div class="logs-toolbar"><label>Folder<select id="media-folder"><option value="styles">Style images</option><option value="legacy">Original catalogue images</option><option value="notifications">Notification images</option><option value="profile">Profile images</option></select></label><button id="media-refresh" class="button secondary" type="button">Load images</button></div>
+          <p id="media-error" class="form-error" role="status"></p><div id="media-grid" class="media-grid"></div><button id="media-more" class="button secondary" type="button" hidden>Next page</button>
+        </section>
+        <section class="storage-media"><div class="push-section-heading"><h2>Image cleanup queue</h2><button id="cleanup-retry" class="button secondary" type="button">Retry due jobs</button></div><div id="cleanup-jobs"></div></section>
+      </section>
+      <section id="logs-panel" class="panel-view" hidden>
+        <div class="page-heading"><div><p class="eyebrow">TEAM ACTIVITY</p><h1>Change logs</h1><p class="muted">Read-only history of catalogue and Home screen changes.</p></div></div>
+        <div class="logs-toolbar"><label>Team member<select id="log-member-filter"><option value="">All team members</option></select></label><label>Change type<select id="log-action-filter"><option value="">All changes</option><option value="STYLE_CREATED">Style created</option><option value="STYLE_UPDATED">Style updated</option><option value="STYLE_DELETED">Style deleted</option><option value="COLLECTION_CREATED">Collection created</option><option value="COLLECTION_RENAMED">Collection renamed</option><option value="COLLECTION_DELETED">Collection deleted</option><option value="HOME_SECTION_UPDATED">Home visibility changed</option><option value="HOME_ORDER_UPDATED">Home order changed</option><option value="GROUP_CREATED">Group created</option><option value="GROUP_UPDATED">Group updated</option><option value="GROUP_ARCHIVED">Styles ungrouped</option></select></label><button id="logs-refresh" class="button secondary">Refresh logs</button></div>
+        <div class="logs-table-wrap"><table class="logs-table"><thead><tr><th>Date and time</th><th>Team member</th><th>Change</th><th>Item</th></tr></thead><tbody id="logs-body"></tbody></table></div>
+        <div class="logs-pagination"><span id="logs-page-label" class="muted"></span><div><button id="logs-previous" class="button secondary" disabled>Previous</button><button id="logs-next" class="button secondary" disabled>Next</button></div></div>
+      </section>
+    </section>
+  </div>
+
+  <dialog id="style-dialog" class="editor-dialog">
+    <form id="style-form" method="dialog">
+      <header class="dialog-header"><div><p class="eyebrow">STYLE DETAILS</p><h2 id="dialog-title">Add a style</h2></div><button type="button" class="icon-button" data-close="style-dialog" aria-label="Close">×</button></header>
+      <div class="form-grid">
+        <label>Style name<input name="name" maxlength="80" required placeholder="e.g. Golden Hour Portrait"></label>
+        <div class="id-preview-field"><span class="field-label">Internal style ID</span><span id="style-id-preview" class="style-id-preview">style-id-from-name</span><span class="field-hint">Generated from the name on creation, then kept stable so app references and favorites keep working.</span></div>
+        <label class="wide">Short description<textarea name="description" maxlength="300" rows="2" required></textarea></label>
+        <p id="style-group-membership" class="wide field-hint"></p><div class="wide style-tags-editor"><label for="style-tag-input">Search tags <span id="style-tag-count" class="field-hint">0 / 10 tags</span></label><div id="style-tag-chips" class="style-tag-chips"></div><div class="style-tag-entry"><input id="style-tag-input" name="tagDraft" type="text" list="style-tag-suggestions" autocomplete="off" placeholder="Add a tag, then press Enter" aria-describedby="style-tags-hint style-tags-error"><button id="style-tag-add" type="button" class="button secondary">Add</button></div><input id="style-tag-value" name="tags" type="hidden" value="[]"><datalist id="style-tag-suggestions"></datalist><p id="style-tags-hint" class="field-hint">Aim for 5–10 relevant tags. Clothing, colour, occasion, setting or mood. Phrases and comma-separated tags are supported. Optional; does not change verification.</p><p id="style-tags-availability" class="field-hint" role="status"></p><p id="style-tags-error" class="form-error" role="alert"></p></div>
+        <fieldset class="wide"><legend>Collections</legend><div id="collection-checkboxes" class="checkbox-grid"></div></fieldset>
+        <div class="wide prompt-editor"><div class="prompt-editor-heading"><label for="style-prompt">Generation prompt</label><button id="copy-style-prompt" class="button secondary" type="button">Copy prompt</button></div><textarea id="style-prompt" name="prompt" maxlength="10000" rows="6" required aria-describedby="style-prompt-count"></textarea><span id="style-prompt-count" class="field-hint prompt-count" role="status">0 characters · 0 / 250 words</span><span id="copy-prompt-status" class="field-hint" role="status"></span></div>
+        <input name="thumbnail" type="hidden">
+        <input name="thumbnailPublicId" type="hidden">
+        <input name="previewImages" type="hidden">
+        <input name="previewImagePublicIds" type="hidden">
+        <input name="exampleBeforeUrl" type="hidden">
+        <input name="exampleBeforePublicId" type="hidden">
+        <input name="exampleAfterUrl" type="hidden">
+        <input name="exampleAfterPublicId" type="hidden">
+        <div class="wide style-cover-upload style-example-upload">
+          <h3>Cover image <span class="required-mark">Required</span></h3><p class="field-hint">Shown on Madds Workspace and website style cards.</p>
+          <input id="cover-image-file" type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden>
+          <button id="upload-cover-image" class="button secondary" type="button">Upload cover image</button>
+          <span id="cover-image-status" class="field-hint" role="status">Required</span>
+          <img id="cover-image-preview" class="style-example-preview" alt="Style cover preview" hidden>
+        </div>
+        <div class="wide style-example-pair">
+          <div class="wide"><button id="clear-style-previews" class="button secondary" type="button">Remove before / after previews</button><p class="field-hint">Show only the cover photo in the app preview. Save the style to apply.</p></div>
+          <section class="style-example-upload">
+            <h3>Before preview</h3><p class="field-hint">Choose a reusable original or add a new one to the library.</p>
+            <button id="upload-before-image" class="button secondary" type="button">Choose or upload original</button>
+            <span id="before-image-status" class="field-hint" role="status">Optional</span>
+            <img id="before-image-preview" class="style-example-preview" alt="Before example preview" hidden>
+          </section>
+          <section class="style-example-upload">
+            <h3>After preview</h3><p class="field-hint">Optional. Upload it together with the before preview.</p>
+            <input id="after-image-file" type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden>
+            <button id="upload-after-image" class="button secondary" type="button">Upload generated image</button>
+            <label class="collection-check"><input id="link-cover-after" type="checkbox" name="linkCoverAfter"> Use cover as after image</label>
+            <span id="after-image-status" class="field-hint" role="status">Optional</span>
+            <img id="after-image-preview" class="style-example-preview" alt="After example preview" hidden>
+          </section>
+        </div>
+        <label>Reference photos required<select name="imageCount"><option value="1">1 photo</option><option value="2">2 photos</option><option value="3">3 photos</option></select></label>
+        <label>Credits per generation<input name="tokensRequired" type="number" min="1" max="10000" value="10" required></label>
+        <label class="wide">Gender tag<select name="genderTag"><option value="none">Everyone</option><option value="her">For her</option><option value="him">For him</option></select><small>Everyone styles appear in both male and female preferences. Choose For her or For him for styles intended for that audience.</small></label>
+        <label class="wide verification-control"><span class="verification-check"><input name="verified" type="checkbox"><b>Verified</b></span><small>Mark verified only after reviewing the cover image, any before/after previews, and testing the prompt in Prompt testing. Verified styles are the only styles shown in the app and on the website.</small></label>
+      </div>
+      <footer class="dialog-footer style-editor-footer"><span id="style-last-editor" class="style-last-editor" hidden></span><span id="form-error" class="form-error"></span><button type="button" class="button secondary" data-close="style-dialog">Cancel</button><button class="button primary" type="submit">Save style</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="raw-image-dialog" class="editor-dialog">
+    <form method="dialog">
+      <header class="dialog-header"><h2>Original image library</h2><button class="icon-button" value="cancel" aria-label="Close library">×</button></header>
+      <p class="field-hint">Original images are kept for future styles, even when a style is deleted.</p>
+      <nav id="raw-image-folders" class="raw-image-folders" aria-label="Original image folders">
+        <button type="button" data-raw-folder="men" aria-pressed="true">Men</button>
+        <button type="button" data-raw-folder="women" aria-pressed="false">Women</button>
+        <button type="button" data-raw-folder="couples" aria-pressed="false">Couples</button>
+        <button type="button" data-raw-folder="groups" aria-pressed="false">Groups</button>
+        <button type="button" data-raw-folder="others" aria-pressed="false">Others</button>
+      </nav>
+      <h3 id="raw-image-folder-title">Men</h3>
+      <div class="raw-image-toolbar">
+        <input id="raw-image-search" type="search" placeholder="Search this folder" aria-label="Search this folder" disabled>
+        <input id="raw-image-files" type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple hidden>
+        <button type="button" id="raw-image-add" class="button secondary" disabled>Add images</button>
+      </div>
+      <p id="raw-image-status" class="field-hint" role="status"></p>
+      <div id="raw-image-grid" class="raw-image-grid"></div>
+    </form>
+  </dialog>
+  <dialog id="raw-image-preview-dialog" class="editor-dialog" aria-labelledby="raw-preview-title">
+    <div class="raw-preview-header"><h2 id="raw-preview-title"></h2><button id="raw-preview-close" class="icon-button" type="button" aria-label="Close image preview">×</button></div>
+    <div class="raw-preview-image"><img id="raw-preview-photo" alt=""></div>
+    <div class="raw-preview-actions"><a id="raw-preview-download" class="button secondary" target="_blank" rel="noopener">Download</a><button id="raw-preview-select" class="button primary" type="button" hidden>Use image</button></div>
+  </dialog>
+
+  <dialog id="discard-confirm-dialog" class="editor-dialog compact-dialog">
+    <form method="dialog"><header class="dialog-header"><div><p class="eyebrow">UNSAVED CHANGES</p><h2>Discard this style?</h2></div></header><p class="muted">Your unsaved edits will be lost.</p><footer class="dialog-footer"><button type="button" class="button secondary" id="keep-style-editing">Keep editing</button><button type="button" class="button danger" id="discard-style-editing">Discard changes</button></footer></form>
+  </dialog>
+
+  <dialog id="rename-dialog" class="editor-dialog compact-dialog">
+    <form id="rename-form" method="dialog"><header class="dialog-header"><div><p class="eyebrow">COLLECTION</p><h2>Rename collection</h2></div><button type="button" class="icon-button" data-close="rename-dialog">×</button></header><label>Collection name<input name="name" maxlength="60" required></label><footer class="dialog-footer"><button type="button" class="button secondary" data-close="rename-dialog">Cancel</button><button class="button primary" type="submit">Save name</button></footer></form>
+  </dialog>
+  <dialog id="style-group-dialog" class="editor-dialog"><form id="style-group-form"><header class="dialog-header"><h2>Style group</h2><button id="close-style-group" class="icon-button" type="button" aria-label="Close group">×</button></header><div class="group-editor-layout"><div><label>Group name<input id="style-group-name" required minlength="2" maxlength="80" placeholder="e.g. Pastel Saree Editorial"></label><p class="field-hint">Choose similar, existing looks. No prompts or photos are duplicated.</p><p id="group-member-count" class="field-hint"></p><div id="group-member-list"></div><label>Add styles<input id="group-member-search" type="search" placeholder="Search styles to add"></label><div id="group-member-candidates"></div><label><input id="style-group-published" type="checkbox">Publish group</label><p class="field-hint">Only verified members appear to customers. Draft groups show members separately. Publishing needs two verified members and a verified cover.</p></div><div id="group-card-preview"></div></div><p id="style-group-error" class="form-error" role="alert"></p><footer class="dialog-footer"><button id="ungroup-styles" type="button" class="button secondary" hidden>Ungroup styles</button><button id="cancel-style-group" type="button" class="button secondary">Cancel</button><button id="save-style-group" type="submit" class="button primary">Save group</button></footer></form></dialog>
+  <div id="workspace-menu-backdrop" class="workspace-menu-backdrop" hidden></div>
+  <dialog id="workspace-install-dialog" class="editor-dialog workspace-install-dialog" aria-labelledby="workspace-install-title">
+    <img class="workspace-install-icon" src="assets/workspace-192.png" alt="">
+    <header class="dialog-header"><h2 id="workspace-install-title">Install Workspace</h2><button id="workspace-install-close" class="icon-button" type="button" aria-label="Close installation instructions">×</button></header>
+    <p>Keep Madds Workspace one tap away, in its own app window.</p>
+    <ol><li><strong>iPhone / iPad:</strong> Open this address in Safari, tap Share, then Add to Home Screen. Keep Open as Web App enabled if shown.</li><li><strong>Android / computer:</strong> Use Install below if available, or choose Install app / Add to Home screen from your browser menu.</li></ol>
+    <p class="field-hint">An internet connection is required. Team access and permissions stay the same. You may need to sign in again after installation or closing your session.</p>
+    <button id="workspace-install-now" class="button primary" type="button" hidden>Install Workspace</button>
+  </dialog>
+  <script src="config.js"></script>
+  <script src="session-api.js?v=20261116-installable-1" defer></script>
+  <script src="workspace-app.js?v=20261116-installable-1" defer></script>
+  <script src="dates.js?v=20261108-date-format" defer></script>
+  <script src="refresh-ui.js?v=20261114-refresh" defer></script>
+  <script src="notifications.js?v=20261116-installable-1" defer></script>
+  <script src="daily-reminder.js?v=20261116-installable-1" defer></script>
+  <script src="welcome-back.js?v=20261114-refresh" defer></script>
+  <script src="home-order.js?v=20261116-installable-1" defer></script>
+  <script src="ad-settings.js?v=20261116-installable-1" defer></script>
+  <script src="daily-rewards.js?v=20261116-installable-1" defer></script>
+  <script src="rewarded-credits.js?v=20261116-installable-1" defer></script>
+  <script src="settings.js?v=20261116-installable-1" defer></script>
+  <script src="watermark.js?v=20261116-installable-1" defer></script>
+  <script src="storage.js?v=20261114-refresh" defer></script>
+  <script src="users.js?v=20261108-date-format-20261124" defer></script>
+  <script src="feedback.js?v=20261114-sender" defer></script>
+  <script src="style-groups.js?v=20261124-workspace" defer></script><script src="style-tags.js?v=20261116-tags" defer></script>
+  <script src="style-bulk.js?v=20261117-visual-groups-1" defer></script>
+  <script src="style-uploads.js?v=20261120-raw-library-1" defer></script>
+  <script src="performance.js?v=20261108-date-format" defer></script>
+  <script src="image-generation.js?v=20261117-model-controls-1" defer></script>
+  <script src="settings-navigation.js?v=20261117-model-controls-1" defer></script>
+  <script src="raw-image-library.js?v=20261124-workspace" defer></script>
+  <script src="app.js?v=20261124-library-layout" defer></script>
+</body>
+</html>

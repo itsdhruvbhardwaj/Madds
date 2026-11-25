@@ -1,0 +1,132 @@
+package com.itsdhruvbhardwaj.picme.ui.screens.home
+import com.itsdhruvbhardwaj.picme.data.model.cardTitle
+import com.itsdhruvbhardwaj.picme.data.model.variantCount
+
+import androidx.compose.material3.MaterialTheme
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
+import com.itsdhruvbhardwaj.picme.R
+import com.itsdhruvbhardwaj.picme.ui.components.PicMeCompactHeader
+import com.itsdhruvbhardwaj.picme.ui.components.StyleCard
+
+@Composable
+fun StylesGridScreen(
+    viewModel: StylesGridViewModel,
+    onBackClick: () -> Unit,
+    onStyleClick: (String) -> Unit
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    val gridState = rememberLazyGridState()
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        val gridColumns = if (maxWidth < 600.dp) GridCells.Fixed(3)
+            else GridCells.Adaptive(minSize = 140.dp)
+        // Softly Blurred Glassmorphism Background
+
+
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = { PicMeCompactHeader(title = "All Styles", onBackClick = onBackClick) }
+        ) { innerPadding ->
+            Box(modifier = Modifier.fillMaxSize().padding(top = innerPadding.calculateTopPadding())) {
+                when (val state = uiState) {
+                    is StylesGridUiState.Loading -> {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    }
+                    is StylesGridUiState.Error -> {
+                        Column(
+                            modifier = Modifier.align(Alignment.Center),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = state.message,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(onClick = { /* ViewModel could expose a retry method */ }) {
+                                Text("Retry")
+                            }
+                        }
+                    }
+                    is StylesGridUiState.Success -> {
+                        if (state.styles.isEmpty()) {
+                            Text(
+                                text = "No styles found",
+                                modifier = Modifier.align(Alignment.Center)
+                            )
+                        } else {
+                            LazyVerticalGrid(
+                                state = gridState,
+                                columns = gridColumns,
+                                // Content padding to start below floating pill and leave room at bottom
+                                contentPadding = PaddingValues(
+                                    start = 6.dp,
+                                    end = 6.dp,
+                                    top = 8.dp,
+                                    bottom = 100.dp
+                                ),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                itemsIndexed(
+                                    items = state.styles,
+                                    key = { _, style -> style.id }
+                                ) { index, style ->
+                                    // Pagination trigger
+                                    if (index >= state.styles.size - 4 && !state.isNextPageLoading && state.hasMore) {
+                                        LaunchedEffect(Unit) {
+                                            viewModel.loadNextPage()
+                                        }
+                                    }
+
+                                    StyleCard(
+                                        name = style.cardTitle,
+                                        thumbnailUrl = style.thumbnail,
+                                        genderTag = style.genderTag,
+                                        variantCount = style.variantCount,
+                                        onClick = { onStyleClick(style.id) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        aspectRatio = 5f / 7f,
+                                        galleryStyle = true,
+                                        internalPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp),
+                                    )
+                                }
+
+                                if (state.isNextPageLoading) {
+                                    item {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(16.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+            }
+        }
+    }
+}

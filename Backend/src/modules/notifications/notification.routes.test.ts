@@ -1,0 +1,144 @@
+import express from "express";
+import request from "supertest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+const mocks = vi.hoisted(() => ({ history: vi.fn(), list: vi.fn(), versions: vi.fn(), create: vi.fn(), update: vi.fn(), findById: vi.fn(), init: vi.fn(), ready: vi.fn(), preview: vi.fn(), destination: vi.fn(), cloudinaryConfigured: vi.fn(), signature: vi.fn() }));
+vi.mock("../../middleware/auth.js", () => ({ requireAuth: (req: any, res: any, next: any) => {
+  if (!req.headers.authorization) return res.sendStatus(401);
+  req.user = { id: "admin-id", emailVerified: req.headers.authorization !== "Bearer unverified", email: req.headers.authorization === "Bearer user" ? "user@example.com" : "admin@example.com" }; next();
+} }));
+vi.mock("../../services/styles/catalog.js", () => ({ catalogDatabaseReady: mocks.ready }));
+vi.mock("../../services/cloudinaryAssets.js", () => ({ cloudinaryIsConfigured: mocks.cloudinaryConfigured, createNotificationImageUploadSignature: mocks.signature }));
+vi.mock("./notification.models.js", () => ({ initializeNotificationModels: mocks.init,
+    NotificationCampaign: { updateMany: mocks.history, find: (filter: unknown) => ({ sort: () => ({ limit: () => ({ lean: () => mocks.list(filter) }) }) }), create: mocks.create, findOneAndUpdate: mocks.update, findOneAndDelete: mocks.update, findById: () => ({ lean: mocks.findById }) }, NotificationLog: { updateMany: vi.fn() },
+}));
+vi.mock("./notification.service.js", () => ({ notificationService: { preview: mocks.preview }, validateDestination: mocks.destination }));
+vi.mock("../../models/DeviceToken.js", () => ({ DeviceToken: { aggregate: mocks.versions } }));
+import { adminNotificationsRouter } from "./notification.routes.js";
+const app = express(); app.use(express.json()); app.use("/admin/push", adminNotificationsRouter);
+const id = "aaaaaaaaaaaaaaaaaaaaaaaa";
+const draft = { title: "Madds news", body: "See what is new", notificationType: "PRODUCT_UPDATE", targetAudience: "ALL_USERS" };
+describe("admin notification API", () => {
+  beforeEach(() => {
+    vi.resetAllMocks(); vi.stubEnv("ADMIN_EMAILS", "admin@example.com"); vi.stubEnv("NOTIFICATION_DELIVERY_ENABLED", "false");
+    mocks.ready.mockReturnValue(true); mocks.create.mockResolvedValue({ _id: id, ...draft, status: "DRAFT" });
+    mocks.findById.mockResolvedValue({ _id: id, ...draft, status: "DRAFT", updatedAt: new Date() });
+    mocks.update.mockResolvedValue({ _id: id, status: "SCHEDULED" });
+    mocks.cloudinaryConfigured.mockReturnValue(true);
+    mocks.signature.mockReturnValue({ cloudName: "madds", apiKey: "public-key", timestamp: 123, signature: "signed", folder: "picmee/notifications", publicId: "notification-id", expectedPublicId: "picmee/notifications/notification-id", tags: "picmee-notification" });
+  });
+  afterEach(() => vi.unstubAllEnvs());
+  it("requires authentication and denies ordinary accounts before accessing campaigns", async () => {
+    expect((await request(app).post("/admin/push").send(draft)).status).toBe(401);
+    expect((await request(app).post("/admin/push").set("Authorization", "Bearer user").send(draft)).status).toBe(403);
+    expect((await request(app).post("/admin/push").set("Authorization", "Bearer unverified").send(draft)).status).toBe(403);
+    expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.init).not.toHaveBeenCalled();
+  });
+  it("restricts version counts to administrators and returns only grouped metadata", async () => {
+    expect((await request(app).get("/admin/push/device-versions")).status).toBe(401);
+    expect((await request(app).get("/admin/push/device-versions").set("Authorization", "Bearer user")).status).toBe(403);
+    mocks.versions.mockResolvedValue([{ versionCode: 9, versionName: "1.1.6", devices: 2 }]);
+    const response = await request(app).get("/admin/push/device-versions").set("Authorization", "Bearer admin");
+    expect(response.status).toBe(200);
+    expect(response.body.versions[0]).toEqual({versionCode: 9, versionName: "1.1.6", devices: 2});
+    expect(mocks.versions).toHaveBeenCalledWith(expect.arrayContaining([
+      { $match: { isActive: true, permissionGranted: true } }, { $limit: 100 },
+      { $project: { _id: 0, versionCode: "$_id", versionName: "$name", devices: 1, lastReportedAt: 1 } }
+    ]));
+  });
+  it("clears only finished activity behind administrator authentication", async () => {
+    expect((await request(app).post("/admin/push/history/clear")).status).toBe(401);
+    expect((await request(app).post("/admin/push/history/clear").set("Authorization", "Bearer user")).status).toBe(403);
+    expect(mocks.history).not.toHaveBeenCalled();
+    mocks.history.mockResolvedValue({ modifiedCount: 4 });
+    const response = await request(app).post("/admin/push/history/clear").set("Authorization", "Bearer admin");
+    expect(response.body).toEqual({ ok: true, clearedCount: 4 });
+    expect(mocks.history).toHaveBeenCalledWith({ status: { $in: ["SENT", "FAILED", "CANCELLED"] },
+      historyClearedAt: null, updatedAt: { $lte: expect.any(Date) } }, { $set: { historyClearedAt: expect.any(Date) } });
+  });
+  it('clears only selected IDs and keeps the terminal-state and timestamp guards', async () => {
+    mocks.history.mockResolvedValue({ modifiedCount: 1 });
+    const response = await request(app).post('/admin/push/history/clear-selected').set('Authorization', 'Bearer admin').send({ ids: [id, id] });
+    expect(response.body).toEqual({ ok: true, clearedCount: 1 });
+    expect(mocks.history).toHaveBeenCalledWith({ _id: { $in: [id] }, status: { $in: ['SENT', 'FAILED', 'CANCELLED'] },
+      historyClearedAt: null, updatedAt: { $lte: expect.any(Date) } }, { $set: { historyClearedAt: expect.any(Date) } });
+  });
+  it('rejects empty, malformed or unbounded selections and requires approved authentication', async () => {
+    for (const body of [{}, { ids: [] }, { ids: ['bad'] }, { ids: id }, { ids: Array(501).fill(id) }])
+      expect((await request(app).post('/admin/push/history/clear-selected').set('Authorization', 'Bearer admin').send(body)).status).toBe(400);
+    expect((await request(app).post('/admin/push/history/clear-selected').send({ ids: [id] })).status).toBe(401);
+    expect((await request(app).post('/admin/push/history/clear-selected').set('Authorization', 'Bearer user').send({ ids: [id] })).status).toBe(403);
+    expect(mocks.history).not.toHaveBeenCalled();
+  });
+  it("excludes cleared history on every page and keeps cursor filtering", async () => {
+    mocks.list.mockResolvedValue([]);
+    for (const suffix of ["", "?cursor=" + id]) {
+      const response = await request(app).get("/admin/push" + suffix).set("Authorization", "Bearer admin");
+      expect(response.status).toBe(200);
+      expect(mocks.list).toHaveBeenLastCalledWith({ historyClearedAt: null, ...(suffix ? { _id: { $lt: id } } : {}) });
+    }
+  });
+  it("creates an allowlisted draft with the authenticated creator", async () => {
+    expect((await request(app).post("/admin/push").set("Authorization", "Bearer admin").send({ ...draft, status: "SENT", createdBy: "victim" })).status).toBe(201);
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ createdBy: "admin-id", category: "productUpdates" }));
+    expect(mocks.create.mock.calls[0][0]).not.toHaveProperty("status");
+  });
+  it("clears only the reviewed draft and refuses changed or scheduled notifications", async () => {
+    expect((await request(app).delete(`/admin/push/${id}`).set("Authorization", "Bearer admin").send({ expectedRevision: 2 })).status).toBe(200);
+    expect(mocks.update).toHaveBeenCalledWith({ _id: id, status: "DRAFT", revision: 2 });
+    mocks.update.mockResolvedValue(null);
+    expect((await request(app).delete(`/admin/push/${id}`).set("Authorization", "Bearer admin").send({ expectedRevision: 2 })).status).toBe(409);
+    expect((await request(app).delete(`/admin/push/${id}`).set("Authorization", "Bearer admin").send({})).status).toBe(400);
+  });
+  it("returns a short-lived Cloudinary upload signature only to administrators", async () => {
+    expect((await request(app).post("/admin/push/upload-signature")).status).toBe(401);
+    const response = await request(app).post("/admin/push/upload-signature").set("Authorization", "Bearer admin");
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ ok: true, folder: "picmee/notifications", expectedPublicId: "picmee/notifications/notification-id" });
+  });
+  it("refuses send and schedule while the rollout switch is off", async () => {
+    for (const action of ["send", "schedule"]) {
+      expect((await request(app).post(`/admin/push/${id}/${action}`).set("Authorization", "Bearer admin").send({ scheduledAt: "2027-01-01T00:00:00Z" })).status).toBe(503);
+    }
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+  it("queues with an atomic draft/version check and rejects a repeated send", async () => {
+    vi.stubEnv("NOTIFICATION_DELIVERY_ENABLED", "true");
+    expect((await request(app).post(`/admin/push/${id}/send`).set("Authorization", "Bearer admin")).status).toBe(202);
+    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ _id: id, status: "DRAFT", updatedAt: expect.any(Date) }),
+      expect.objectContaining({ $set: expect.objectContaining({ status: "SCHEDULED", recipientCutoffAt: expect.any(Date) }) }), { new: true });
+    mocks.update.mockResolvedValue(null);
+    expect((await request(app).post(`/admin/push/${id}/send`).set("Authorization", "Bearer admin")).status).toBe(409);
+  });
+  it("requires an explicit timezone for scheduling", async () => {
+    vi.stubEnv("NOTIFICATION_DELIVERY_ENABLED", "true");
+    expect((await request(app).post(`/admin/push/${id}/schedule`).set("Authorization", "Bearer admin").send({ scheduledAt: "2027-01-01T12:00:00" })).status).toBe(400);
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+  it("rejects a send or schedule when the reviewed revision has changed", async () => {
+    vi.stubEnv("NOTIFICATION_DELIVERY_ENABLED", "true");
+    for (const action of ["send", "schedule"]) {
+      const response = await request(app).post(`/admin/push/${id}/${action}`).set("Authorization", "Bearer admin")
+        .send({ expectedRevision: 99, scheduledAt: new Date(Date.now() + 86_400_000).toISOString() });
+      expect(response.status).toBe(409);
+    }
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+  it("uses a reviewed revision to protect draft edits from another team member", async () => {
+    const response = await request(app).patch(`/admin/push/${id}`).set("Authorization", "Bearer admin").send({ ...draft, expectedRevision: 3 });
+    expect(response.status).toBe(200);
+    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ revision: 3, status: "DRAFT" }), expect.anything(), { new: true });
+  });
+  it("cancels queued/in-progress campaigns and reports in-flight limitations", async () => {
+    const response = await request(app).post(`/admin/push/${id}/cancel`).set("Authorization", "Bearer admin");
+    expect(response.status).toBe(200);
+    expect(response.body.note).toContain("cannot be recalled");
+    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ status: { $in: ["DRAFT", "SCHEDULED", "PROCESSING", "CANCELLED"] } }),
+      expect.objectContaining({ $unset: { leaseOwner: 1, leaseUntil: 1 } }), { new: true });
+  });
+  it("rejects malformed IDs and hides private internal errors", async () => {
+    expect((await request(app).get("/admin/push/not-an-id").set("Authorization", "Bearer admin")).status).toBe(400);
+    mocks.create.mockRejectedValue(new Error("secret credential"));
+    const response = await request(app).post("/admin/push").set("Authorization", "Bearer admin").send(draft);
+    expect(response.status).toBe(503); expect(JSON.stringify(response.body)).not.toContain("secret");
+  });
+});

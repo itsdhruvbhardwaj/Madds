@@ -1,0 +1,144 @@
+# Madds Workspace Admin Portal
+
+Private team portal for managing the backend style catalogue. It is a static site with no embedded secrets; all edits go through authenticated backend endpoints.
+
+Search tags are edited as removable chips in the style editor, with catalogue
+suggestions, canonical aliases and a 10-tag limit. Use Missing tags to find older
+styles or Bulk style actions to add tags without replacing existing ones. See
+[style tag workflow and release notes](../docs/style-tags.md). Deploy the backend
+first; tag controls stay disabled against older servers.
+
+## Backend setup
+
+1. Deploy the updated `Backend` service with its existing MongoDB connection.
+2. In the backend host's environment settings, set `ADMIN_EMAILS` to the comma-separated, verified Madds team account emails that may edit the catalogue, for example `owner@example.com,editor@example.com`.
+3. Set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in the backend host's environment settings. Keep the API secret only on the backend; the portal receives short-lived upload signatures.
+4. Make sure `CLIENT_ORIGIN` includes the portal's deployed HTTPS origin if the backend has an origin allowlist. Keep the public website origin there too.
+5. On first backend start with an empty style catalogue, existing styles are imported from the current TypeScript catalogue. Later starts keep portal edits in MongoDB.
+
+The portal account must have a verified email and a password accepted by `/api/auth/login`. A signed-in account not listed in `ADMIN_EMAILS` receives no catalogue access. Use the existing user/password setup or password reset flow for team accounts; do not share the owner's login.
+
+## Run locally
+
+Set `window.PICMEE_API_BASE` in `config.js` to the backend URL, then serve this folder with any static file server and open its local URL. For the production portal, deploy this folder as a static site and set the same backend URL in `config.js` before deploying.
+
+## Notification controls
+
+The Notifications tab uses the existing approved Workspace login. It supports:
+
+- Draft creation/editing with a live text preview and optional HTTPS image preview.
+- A blank composer on each visit and after saving or sending; saved drafts open only
+  when selected. Personalized previews use **Maddies** as the sample first name.
+- Select finished notifications individually or select all shown, then **Delete selected**
+  to remove them from recent activity. Delivery records remain available for diagnostics;
+  scheduled and processing notifications cannot be selected for deletion.
+- **Resend** copies a finished notification's message, image, audience and destination
+  into a new editable draft. It never sends automatically or reuses the old schedule.
+- All seven audience types, category selection, selected account IDs and creation windows.
+- Home, published-style and collection destinations from the current catalogue.
+- Audience sampling, immediate-send review and scheduling in the browser's timezone
+  with the exact UTC time shown before confirmation.
+- Cancellation, paginated campaigns and delivery history, and device-level results
+  labelled **Accepted by FCM**, not displayed/read.
+- Unsaved-change protection, operation locking, session cleanup and stale-draft
+  checks when another administrator edits a reviewed campaign.
+
+Deploy the updated backend notification APIs before these static assets. Selected
+history deletion uses `/history/clear-selected`; older servers reject that action
+without clearing other history. Workspace
+reads the backend's deliveryEnabled flag. With delivery paused, drafts and previews
+remain usable while send/schedule controls are disabled. Leave backend delivery
+disabled until Android account-safe display and deduplication are tested.
+
+The backend accepts optional expectedRevision on draft edits, sends and scheduling.
+Workspace always submits the revision it reviewed; stale actions fail without queuing
+a different version. Existing API clients without that field remain compatible.
+
+Local checks:
+
+```text
+node --test Admin-Portal/tests/notifications.test.cjs
+node Admin-Portal/tests/preview-server.cjs
+```
+
+The preview server at http://127.0.0.1:4178 uses in-memory fixture data, overrides
+the API URL only in the served fixture config, and never calls Firebase or the
+production backend. Any email/password can be used there. Add --enabled to exercise
+mock send/schedule controls. This does not enable production delivery.
+
+Browser verification covered draft save, new-style selection, audience sampling,
+send review/queueing, local-to-UTC scheduling, cancellation, completed delivery
+results, and paused delivery. Five frontend validation tests and nine backend
+notification API tests passed; JavaScript syntax and backend TypeScript builds pass.
+Production connectivity and real delivery still require deployment/device checks.
+
+## Catalogue behavior
+
+- Style edits and new styles are saved directly to MongoDB and are returned by the existing public `/api/styles` API. Generation and favorites also read the live catalogue.
+- Collection names are stored separately. Renaming one updates the collection labels on assigned styles.
+- New styles default to the `Other` collection, and backend startup assigns existing unassigned styles to `Other`.
+- The Prompt testing tab sends an original image and prompt to the configured OpenRouter Sunburst model through an authenticated backend route. The Workspace-only request uses Sunburst's 3:4 portrait ratio. Test images are held in memory for the request and the original generated result remains available in the preview; neither is stored in Cloudinary by this step. Each generation may incur an OpenRouter charge. Before download, team members can crop to a supported export ratio (5:7 by default) and choose image quality; Workspace creates a separate WebP/JPEG copy capped at 300 KB, reducing quality and then dimensions if needed.
+- Style images are resized proportionally to at most 900×1260 and compressed in the browser to 300,000 bytes or less before upload. WebP is preferred, with JPEG as a browser fallback. Assets are stored under `picmee/styles/<first-selected-collection>`, with Cloudinary credentials kept on the backend. Delivery URLs also use automatic quality and format while preserving the uploaded aspect ratio.
+- Images uploaded but not saved with a style become eligible for cleanup after 24 hours and are retried in the background when the catalogue is loaded. Cleanup records use the full Cloudinary public ID; legacy records created with a bare upload ID are resolved through Cloudinary's Admin Search API before deletion. Replacing or deleting a style removes an image only when no other style references it. Failed deletions remain queued for retry.
+- The Collections screen controls whether each collection appears on the app Home screen. New collections start hidden; switch them on when you are ready to feature them.
+- Deleting a collection moves styles assigned only to it into `Other`; styles assigned to multiple collections keep their remaining assignments. The collection's Home section and collection record are removed, but styles and Cloudinary images are retained. `Other` is protected as the fallback.
+- Deleting a style removes it from the live catalogue and favorites. Its ID can be reused after deletion; IDs already assigned to a live style remain unique. Existing generation history is kept.
+- The backend writes a small audit record for each create, edit, and collection change.
+
+## Rewarded-ad amount
+
+App settings > Rewarded-ad credits shows the current server default or saved Workspace override. Save a whole-number amount to change the offer for newly started rewarded ads. In-progress ads retain their promised amount, and AdMob verification remains unchanged. See [rewarded-credit settings](../docs/rewarded-credit-settings.md) for compatibility and rollout details.
+
+## Daily login rewards
+
+App settings > Daily login rewards controls the daily claim amount and launch switch for the updated Android app. Defaults are disabled and 2 credits. Render-approved administrators can change the amount only within the server's daily ceiling. The panel includes before/after change history. See [daily reward behavior and release notes](../docs/daily-rewards.md).
+
+Notifications > Automations > Daily credit reminder controls an automatic reminder
+for unclaimed daily credits. It defaults off at 20:00 IST, supports editable content
+and shows recent runs and settings history. See [daily reminder behavior and rollout](../docs/daily-reminders.md)
+for device capability, expiry, deduplication and reliable worker hosting requirements.
+
+## Settings navigation
+
+App settings presents one category at a time: Welcome credits, Daily bonus,
+Ad rewards, Advertising and Watermark. Search filters categories and reveals
+matching ad detail groups. Only the selected category loads; returning to an
+already opened form preserves unsaved input. Refresh applies to that category
+only. Existing save confirmations, revisions, permission checks and settings APIs
+are unchanged. Advertising groups formats, in-feed ads, full-screen placements and
+timing separately. Related links connect ad reward amounts to visibility controls
+and daily bonuses to notification automations.
+
+## Installable, online-first Workspace
+
+Workspace can be installed from the existing HTTPS address. Use **Install
+Workspace** in the navigation, or Safari > Share > Add to Home Screen on iPhone.
+The manifest supplies standalone launch settings and standard, maskable and Apple
+touch icons. Mobile navigation is a keyboard-accessible drawer with safe-area
+padding. No new host, backend service, permission or account type is needed.
+
+`workspace-sw.js` manages update availability only. It has no fetch handler,
+Cache Storage, offline catalogue, background sync or action queue. API requests
+use `cache: no-store`; failed requests must be retried manually. Reconnection
+never repeats a save or sends a notification. An already open page may remain
+visible without a connection, but admin operations need the server.
+
+Updates are offered when a new worker release is detected. **Bump
+WORKSPACE_RELEASE in workspace-sw.js on every Workspace deployment**, including
+CSS-only releases. Apply updates explicitly after saving work and closing editors.
+Other open windows never reload automatically. Serve index.html and workspace-sw.js
+with revalidation (`Cache-Control: no-cache`); ensure manifest.webmanifest is served
+as JSON (`application/manifest+json` preferred), without authentication or an HTML
+fallback. Existing static hosting can serve all these files directly.
+
+Tokens remain in sessionStorage; installation does not put admin credentials into
+permanent storage. Reopening a closed session can require sign-in. Renewal shares
+one request across concurrent calls and retains the session on network/server errors.
+The existing backend's refreshAttemptId recovery handles lost renewal responses.
+Only confirmed invalid credentials clear the session. Logout clears local credentials
+even when offline; it can revoke the server session only when the server is reachable.
+
+Verify Chrome/Edge/Android installation and iPhone Safari Add to Home Screen after
+deployment. Check reopen/login, uploads/downloads, drawer navigation, offline error
+messages and explicit updates with unsaved forms. The in-app preview browser does
+not expose a native operating-system installation prompt.

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="google-adsense-account" content="ca-pub-7668637948120420">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#090909">
+    <meta name="description" content="Explore AI photo styles from Madds. Find a look you love and create it in the Madds Android app.">
+    <link rel="canonical" href="https://maddsofficial.com/">
+    <link rel="icon" type="image/svg+xml" href="assets/madds-favicon.svg?v=2">
+    <link rel="alternate icon" type="image/png" sizes="512x512" href="assets/Icon5.png">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="support.css?v=20261101">
+    <title>Madds — AI photo styles</title>
+    <script src="api-config.js" defer></script>
+    <script src="site.js" defer></script>
+  </head>
+  <body data-page="home">
+    <header class="site-header">
+      <a class="brand" href="index.html" aria-label="Madds home">
+        <img class="brand-title" src="assets/madds-title.png" alt="Madds">
+      </a>
+      <button class="menu-toggle" type="button" aria-label="Open navigation" aria-expanded="false">☰</button>
+      <nav class="main-nav" aria-label="Main navigation">
+        <a class="active" href="index.html">Home</a>
+        <a href="app.html">App</a>
+        <a href="about.html">About Us</a><a href="help.html">Support</a>
+      </nav>
+      <a class="header-cta" href="app.html">Discover Madds <span aria-hidden="true">↗</span></a>
+    </header>
+
+    <main>
+      <section class="hero page-width">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="eyebrow-dot"></span> YOUR PHOTO, A NEW POINT OF VIEW</p>
+          <h1>Find a look.<br><span>Make it Madds.</span></h1>
+          <p class="hero-description">Explore creative AI photo styles, pick the one that feels like you, and bring it to life in the Madds app.</p>
+          <a class="button button-primary" href="#styles">Explore styles <span aria-hidden="true">↓</span></a>
+          <div class="hero-note"><span class="sparkle">✦</span> New styles added regularly</div>
+        </div>
+        <div class="hero-art" aria-label="Madds AI portrait style examples">
+          <div class="hero-glow"></div>
+          <div class="hero-trending-cards" id="hero-trending-cards" aria-hidden="true"></div>
+          <div class="hero-art-caption"><span class="live-dot"></span> Trending styles</div>
+        </div>
+      </section>
+
+      <section class="style-browser page-width" id="styles" aria-labelledby="styles-heading">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">THE MADDS STYLE LIBRARY</p>
+            <h2 id="styles-heading">What are you creating today?</h2>
+          </div>
+          <p class="result-count" id="result-count" aria-live="polite">Loading styles…</p>
+        </div>
+
+        <div class="filter-toolbar">
+          <div class="filter-row" id="collection-filters" role="group" aria-label="Filter styles by collection">
+            <button class="filter-chip selected" type="button" data-collection="">All</button>
+          </div>
+          <label class="search-box">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m16 16 4 4"></path></svg>
+            <input id="style-search" type="search" placeholder="Search styles…" autocomplete="off">
+            <span class="search-shortcut">⌕</span>
+          </label>
+        </div>
+
+        <div class="style-grid" id="style-grid" aria-live="polite" aria-busy="true"></div>
+        <div class="load-state" id="load-state" role="status"></div>
+        <div class="load-sentinel" id="load-sentinel" aria-hidden="true"></div>
+        <button class="button button-secondary load-more" id="load-more" type="button" hidden>Load more styles <span aria-hidden="true">↓</span></button>
+      </section>
+
+      <section class="app-callout page-width">
+        <div class="callout-mark">✦</div>
+        <div>
+          <p class="eyebrow">READY WHEN YOU ARE</p>
+          <h2>Your next favorite photo is a few taps away.</h2>
+          <p>Choose a style in Madds and create a fresh version of your photo.</p>
+        </div>
+        <a class="button button-light" href="app.html">Explore the app <span aria-hidden="true">↗</span></a>
+      </section>
+    </main>
+
+    <footer class="site-footer page-width"><a class="brand footer-brand" href="index.html"><img class="brand-title" src="assets/madds-title.png" alt="Madds"></a><p>Make a little more of every picture.</p><nav aria-label="Footer navigation"><a href="index.html">Home</a><a href="app.html">App</a><a href="about.html">About Madds</a><a href="help.html">Help &amp; Support</a><a href="contact.html">Contact</a><a href="privacy.html">Privacy Policy</a><a href="delete-account.html">Delete account</a><a href="terms.html">Terms of Service</a></nav><span class="copyright">© <span data-year></span> Madds</span></footer>
+  </body>
+</html>

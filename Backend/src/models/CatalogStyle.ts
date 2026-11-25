@@ -1,0 +1,32 @@
+import mongoose, { Schema } from "mongoose";
+
+const CatalogStyleSchema = new Schema(
+  {
+    id: { type: String, required: true, unique: true, trim: true, lowercase: true },
+    name: { type: String, required: true, trim: true },
+    lastEditedByName: { type: String, default: null, trim: true, maxlength: 160 },
+    description: { type: String, required: true, trim: true },
+    prompt: { type: String, required: true, trim: true },
+    verified: { type: Boolean, default: false, index: true },
+    genderTag: { type: String, enum: ["her", "him", "none"], default: "none" },
+    tags: { type: [String], default: [], validate: { validator: (tags: string[]) => tags.length <= 10 && tags.every(tag => tag.length <= 40), message: 'Use at most 10 tags, each up to 40 characters.' } },
+    thumbnail: { type: String, required: true, trim: true },
+    thumbnailPublicId: { type: String, default: null, trim: true },
+    coverAfterLinked: { type: Boolean },
+    previewImagePublicIds: { type: [String], default: [] },
+    exampleBeforeUrl: { type: String, default: null, trim: true },
+    exampleBeforePublicId: { type: String, default: null, trim: true },
+    exampleAfterUrl: { type: String, default: null, trim: true },
+    exampleAfterPublicId: { type: String, default: null, trim: true },
+    previewImages: { type: [String], default: [] },
+    imageCount: { type: Number, enum: [1, 2, 3], required: true },
+    tokensRequired: { type: Number, min: 1, required: true },
+    collections: { type: [String], default: [] },
+  },
+  { timestamps: true },
+);
+
+CatalogStyleSchema.index({ name: "text", description: "text" });
+
+export const CatalogStyle =
+  mongoose.models.CatalogStyle || mongoose.model("CatalogStyle", CatalogStyleSchema);

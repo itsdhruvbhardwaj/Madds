@@ -1,0 +1,26 @@
+# Daily login rewards
+
+Android shows the daily bonus popup once per app foreground visit while an active, verified account is eligible. Dismissing it suppresses it for that visit and leaves a compact Home claim strip below the header, before Trending. A later return from the background checks the server again and may show the popup. Tab switches and activity recreation are not new visits. Process lifecycle tracking avoids treating app-owned full-screen activities as a fresh visit. The popup waits for a quiet Home screen, completed setup/tour and no generation, purchase, rewarded-ad or feedback overlay. Its availability does not depend on Cloudinary or image requests. Native-feed positions and physical banner layout are preserved.
+
+A successful claim (including an already-claimed reconciliation) immediately hides both UI elements for that server day and updates the current account's confirmed balance. No credits are added optimistically or locally. An unsuccessful or lost response is reconciled; retrying is safe. If the configured amount or day changes before claiming, the current offer is fetched and reviewed before a retry. Initial eligibility failures hide the reward and retry with bounded backoff. Account changes cancel old work; request and balance persistence are owner-checked.
+
+Reward days use Asia/Kolkata midnight, independent of the phone clock and VPN. GET /api/daily-rewards returns the current day, next reset, server time, settings revision, amount and claim status with no-store. POST /api/daily-rewards/claim accepts only the displayed day/revision; the backend chooses the owner and amount. Claims use a deterministic account/day primary key, a unique secondary account/day index and one MongoDB transaction for claim proof, balance increment and DAILY_REWARD credit history. Duplicate taps, concurrent devices, auth refresh retries and lost responses cannot grant the same day twice. Proof is independent of short-lived history and is removed during permanent account cleanup. Missed days never accumulate. A midnight crossing can legitimately allow claims on adjacent days.
+
+Workspace > App settings > Daily login rewards controls enabled/disabled and credits per claim. Defaults are disabled and 2 credits. Only verified accounts in Render's existing ADMIN_EMAILS list can read/change settings. Each edit has an expected revision and an atomic before/after audit record with administrator and timestamp. The history shows the latest 20 changes. Existing claimed rewards and balances are never rewritten.
+
+DAILY_REWARD_MAX_CREDITS is a hosting-controlled ceiling; when unset the safe ceiling is 10. It must be a valid positive whole number. Workspace cannot exceed it. Invalid settings/storage fail closed. Lowering the ceiling below a saved reward disables new offers until corrected. No daily grant runs automatically on deployment, sign-in or in a background scheduler. Enable the feature deliberately after deploying the backend and Studio and releasing the updated Android app. The web app has no new daily-claim UI in this change, and existing app versions ignore the new feature.
+
+Validation covers India midnight, repeat and concurrent claims, recorded credit amounts, invalid/config-changed offers, environment limits, account eligibility, admin protection, audit writes, stale saves, visit dismissal/reopening, account switches, lost-response reconciliation and current-account balance updates. Local fixtures never grant production credits.
+
+The Home daily bonus card and claim popup share a post-claim interstitial placement,
+`daily_bonus_claim`, controlled in Workspace > App settings > Ads. It defaults off,
+including when an older server or saved setting omits it. Both claim surfaces disclose
+that an ad may follow when the placement and ad master switch are enabled. Credits
+are confirmed and persisted before any ad is considered; no ad callback grants or
+withholds daily credits. A missing, failed, disabled or rate-limited ad never blocks
+claiming. Already-claimed receipts, uncertain-response reconciliation, ineligible or
+failed claims, account switches, backgrounding and stale events do not trigger ads.
+Only the same resumed Home screen can consume a fresh success event, after the
+popup closes; existing shared cooldown, action-spacing and other flow guards apply.
+This is an optional ordinary interstitial after claim completion, not a rewarded-ad
+exchange. Settings changes require the updated backend/Workspace and Android build.

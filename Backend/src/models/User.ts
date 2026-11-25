@@ -1,0 +1,92 @@
+import mongoose, { Schema } from "mongoose";
+
+const UserSchema = new Schema(
+  {
+    engagementPromptCount: { type: Number, default: 0 },
+    engagementPromptIds: { type: [String], default: [], select: false },
+    engagementResponseIds: { type: [String], default: [], select: false },
+    engagementLastPromptId: String,
+    engagementLastPromptAt: Date,
+    engagementNextPromptAt: Date,
+    engagementFeedbackAt: Date,
+    engagementRatingOpenedAt: Date,
+    engagementOptOutAt: Date,
+    appTourVersionSeen: { type: Number, default: 1, min: 0, max: 1 },
+    stylePreferenceSetupComplete: { type: Boolean, default: true },
+    stylePreference: { type: String, enum: ["all", "male", "female"], default: "all" },
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    email: {
+      type: String,
+      required: true,
+      trim: true,
+      lowercase: true,
+      unique: true,
+      index: true,
+    },
+    passwordHash: {
+      type: String,
+      default: null,
+    },
+    googleId: {
+      type: String,
+      sparse: true,
+      unique: true,
+      index: true,
+    },
+    profileImage: {
+      type: String,
+      default: "",
+    },
+    profileImagePublicId: { type: String, default: "" },
+    profileImageCleanupIds: { type: [String], default: [] },
+    profileAppearance: { type: String, enum: ["photo", "avatar", "default"], default: "photo" },
+    avatarId: { type: String, default: null },
+    avatarBackground: { type: String, default: "gold" },
+    profileSetupComplete: { type: Boolean, default: true },
+    lastActiveAt: { type: Date, default: null, index: true },
+    notificationPreferences: {
+      newStyles: { type: Boolean, default: false },
+      offers: { type: Boolean, default: false },
+      productUpdates: { type: Boolean, default: false },
+      reengagement: { type: Boolean, default: false },
+    },
+    // Persisted on new accounts only; legacy users retain their saved choices.
+    notificationDefaultsEligible: { type: Boolean, default: false },
+    // Durable receipts: retrying an installation's Allow must not undo later choices.
+    notificationPermissionInstallations: { type: [String], default: [], select: false },
+    emailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    credits: {
+      type: Number,
+      default: 0,
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+    deletionScheduledAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+    deletionCleanupStartedAt: {
+      type: Date,
+      default: null,
+    },
+    authVersion: {
+      type: Number,
+      default: 0,
+    },
+  },
+  { timestamps: true },
+);
+
+UserSchema.index({ createdAt: -1, _id: -1 });
+
+export const User = mongoose.models.User || mongoose.model("User", UserSchema);

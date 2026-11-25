@@ -1,0 +1,1394 @@
+(() => {
+  const apiBase = String(window.PICMEE_API_BASE || "").replace(/\/$/, "");
+  const tokenKey = "picmee_admin_access";
+  const refreshKey = "picmee_admin_refresh";
+  const state = { styles: [], collections: [], sections: [], logs: [], logMembers: [], logPage: 1, logPagination: null, pendingCloudinaryCleanup: 0, activePanel: "styles-panel", editingId: null, renamingId: null, styleEditorBaseline: null, catalogLoaded: false, catalogLoading: false, logsLoading: false, promptTestFile: null, promptTestOriginalUrl: null, promptTestResultUrl: null, promptTestDownloadUrl: null, promptTestGenerating: false };
+  let styleSaving = false;
+  const byId = (id) => document.getElementById(id);
+  function setPasswordVisible(visible) {
+    byId("login-password").type = visible ? "text" : "password";
+    const toggle = byId("toggle-password");
+    toggle.setAttribute("aria-pressed", String(visible));
+    toggle.setAttribute("aria-label", visible ? "Hide password" : "Show password");
+    toggle.title = visible ? "Hide password" : "Show password";
+  }
+  byId("toggle-password").addEventListener("click", () => setPasswordVisible(byId("login-password").type === "password"));
+  const styleUploads = window.MaddsStyleUploads.create({ discard: async publicId => {
+    const result = await api("/api/admin/catalog/cloudinary/discard-upload", { method: "POST", body: JSON.stringify({ publicId }) });
+    if (result.pending) notify("Unused image cleanup is queued and will retry automatically.", true);
+  } });
+  function editorImageIds() {
+    const fields = byId("style-form").elements;
+    return [fields.thumbnailPublicId.value, fields.exampleBeforePublicId.value, fields.exampleAfterPublicId.value,
+      ...fields.previewImagePublicIds.value.split(/\r?\n/)].map(id => id.trim()).filter(Boolean);
+  }
+  function releaseEditorUploads(keep = []) {
+    void styleUploads.releaseUnused(keep).catch(() => notify("Unused upload cleanup is saved for a later automatic retry.", true));
+  }
+  function synchronizeImageFields() {
+    const form = byId("style-form");
+    const fields = form.elements;
+    const linked = byId("link-cover-after").checked;
+    window.MaddsStyleUploads.synchronizeFields(fields, linked);
+    if (linked) {
+      const after = byId("after-image-preview");
+      after.hidden = !fields.exampleAfterUrl.value;
+      if (fields.exampleAfterUrl.value) after.src = fields.exampleAfterUrl.value;
+      else after.removeAttribute("src");
+      byId("after-image-status").textContent = "Linked to cover image";
+    }
+    byId("upload-after-image").hidden = linked;
+  }
+  function selectOriginalImage(image) {
+    const fields = byId("style-form").elements;
+    fields.exampleBeforeUrl.value = image.url;
+    fields.exampleBeforePublicId.value = image.publicId;
+    byId("before-image-preview").src = image.url;
+    byId("before-image-preview").hidden = false;
+    byId("before-image-status").textContent = "Selected from original image library";
+    synchronizeImageFields();
+    releaseEditorUploads(editorImageIds());
+  }
+  let rawImages = [];
+  let rawImagesLoadedAt = 0, rawLoadPromise = null, rawLoadRevision = 0, rawGridKey = null, rawPreview = null, workspaceEpoch = 0;
+  const rawRefreshInterval = 30_000;
+  const rawFolders = { men: "Men", women: "Women", couples: "Couples", groups: "Groups", others: "Others" };
+  let rawFolder = "men";
+  let selectFromLibrary = false;
+  let libraryBusy = false;
+  function imageFolders(image) {
+    return image.folders?.length ? image.folders : ["others"];
+  }
+  function showRawPreview(image) {
+    if (libraryBusy || styleSaving) return;
+    rawPreview = image;
+    byId("raw-preview-title").textContent = image.name;
+    byId("raw-preview-photo").src = image.url;
+    byId("raw-preview-photo").alt = image.name;
+    const download = byId("raw-preview-download");
+    const url = window.MaddsRawImageLibrary.download(image);
+    download.hidden = !url;
+    if (url) download.href = url;
+    else download.removeAttribute("href");
+    byId("raw-preview-select").hidden = !selectFromLibrary;
+    byId("raw-image-preview-dialog").showModal();
+  }
+  function closeRawPreview() {
+    rawPreview = null;
+    byId("raw-preview-photo").removeAttribute("src");
+    byId("raw-preview-download").removeAttribute("href");
+  }
+  function renderRawImages() {
+    const query = byId("raw-image-search").value.trim().toLowerCase();
+    const grid = byId("raw-image-grid");
+    for (const button of byId("raw-image-folders").querySelectorAll("[data-raw-folder]")) {
+      const folder = button.dataset.rawFolder;
+      button.textContent = `${rawFolders[folder]} (${rawImages.filter(image => imageFolders(image).includes(folder)).length})`;
+      button.setAttribute("aria-pressed", String(folder === rawFolder));
+      button.disabled = libraryBusy;
+    }
+    byId("raw-image-folder-title").textContent = rawFolder ? rawFolders[rawFolder] : "Choose a folder";
+    byId("raw-image-search").disabled = !rawFolder;
+    byId("raw-image-add").disabled = !rawFolder || libraryBusy;
+    byId("raw-image-add").textContent = rawFolder ? `Add to ${rawFolders[rawFolder]}` : "Add images";
+    const visible = rawImages.filter(image => imageFolders(image).includes(rawFolder) && image.name.toLowerCase().includes(query));
+    const gridKey = JSON.stringify([rawFolder, selectFromLibrary, query, rawImagesLoadedAt > 0, visible.map(image => [image.publicId, image.url, image.name, imageFolders(image)])]);
+    if (gridKey === rawGridKey) {
+      grid.querySelectorAll("select, .raw-select-image").forEach(element => { element.disabled = libraryBusy; });
+      return;
+    }
+    rawGridKey = gridKey;
+    const previousScroll = grid.scrollTop;
+    grid.replaceChildren();
+    if (!rawFolder) { grid.textContent = "Select a folder to browse or upload original images."; return; }
+    if (!rawImagesLoadedAt && !visible.length) {
+      grid.innerHTML = Array.from({ length: 8 }, () => '<div class="raw-image-skeleton" aria-hidden="true"></div>').join("");
+      return;
+    }
+    for (const [index, image] of visible.entries()) {
+      const button = document.createElement("article");
+      button.className = "raw-image-card";
+      const preview = document.createElement("button");
+      preview.className = "raw-image-photo-button";
+      preview.type = "button";
+      preview.setAttribute("aria-label", `Preview ${image.name}`);
+      const photo = document.createElement("img");
+      photo.src = window.MaddsRawImageLibrary.thumbnail(image);
+      photo.alt = image.name;
+      photo.loading = index < 8 ? "eager" : "lazy";
+      photo.decoding = "async";
+      preview.append(photo);
+      preview.addEventListener("click", () => showRawPreview(image));
+      const label = document.createElement("span");
+      label.textContent = image.name;
+      label.title = image.name;
+      const actions = document.createElement("div");
+      actions.className = "raw-card-actions";
+      const downloadUrl = window.MaddsRawImageLibrary.download(image);
+      if (downloadUrl) {
+        const download = document.createElement("a");
+        download.className = "button secondary";
+        download.href = downloadUrl;
+        download.target = "_blank";
+        download.rel = "noopener";
+        download.textContent = "Download";
+        download.setAttribute("aria-label", `Download ${image.name}`);
+        actions.append(download);
+      }
+      button.append(preview, label, actions);
+      if (selectFromLibrary) {
+        const choose = document.createElement("button");
+        choose.type = "button";
+        choose.className = "button primary raw-select-image";
+        choose.textContent = "Use image";
+        choose.disabled = libraryBusy;
+        choose.addEventListener("click", () => {
+          if (libraryBusy || styleSaving) return;
+          selectOriginalImage(image);
+          byId("raw-image-dialog").close();
+        });
+        actions.append(choose);
+      } else {
+        const move = document.createElement("select");
+        move.setAttribute("aria-label", `Move ${image.name} to folder`);
+        const placeholder = new Option("Move to…", "");
+        move.append(placeholder);
+        for (const [folder, title] of Object.entries(rawFolders)) move.append(new Option(title, folder));
+        move.disabled = libraryBusy;
+        move.addEventListener("change", async () => {
+          if (!move.value || libraryBusy) return;
+          libraryBusy = true;
+          const owner = workspaceEpoch;
+          const folder = move.value;
+          renderRawImages();
+          try {
+            await api("/api/admin/catalog/raw-images/folder", { method: "PATCH", body: JSON.stringify({ publicId: image.publicId, folder }) });
+            if (owner !== workspaceEpoch) return;
+            invalidateRawImages();
+            rawImages = rawImages.map(entry => entry.publicId === image.publicId ? { ...entry, folders: [folder] } : entry);
+            byId("raw-image-status").textContent = `Moved to ${rawFolders[folder]}`;
+          } catch (error) { byId("raw-image-status").textContent = error.message; }
+          finally { if (owner === workspaceEpoch) { libraryBusy = false; renderRawImages(); void loadRawImages(); } }
+        });
+        actions.append(move);
+      }
+      grid.append(button);
+    }
+    if (!grid.children.length) grid.textContent = query ? "No matching original images." : "This folder is empty. Add original images here.";
+    grid.scrollTop = previousScroll;
+  }
+  function invalidateRawImages() {
+    ++rawLoadRevision;
+    rawLoadPromise = null;
+    rawImagesLoadedAt = rawImages.length ? 1 : 0;
+  }
+  function loadRawImages() {
+    if (rawLoadPromise) return rawLoadPromise;
+    if (rawImagesLoadedAt && Date.now() - rawImagesLoadedAt < rawRefreshInterval) return Promise.resolve();
+    const revision = ++rawLoadRevision;
+    const dialog = byId("raw-image-dialog");
+    if (dialog.open) byId("raw-image-status").textContent = rawImages.length ? "Checking for updates…" : "Loading original images…";
+    const loading = (async () => {
+      try {
+        const data = await api("/api/admin/catalog/raw-images");
+        if (revision !== rawLoadRevision) return;
+        rawImages = data.images || [];
+        rawImagesLoadedAt = Date.now();
+        if (dialog.open) {
+          renderRawImages();
+          byId("raw-image-status").textContent = `${rawImages.length} reusable originals`;
+        }
+      } catch (error) {
+        if (revision !== rawLoadRevision) return;
+        if (dialog.open) {
+          byId("raw-image-status").textContent = rawImages.length ? `Showing previously loaded images. ${error.message}` : error.message;
+          if (!rawImages.length) byId("raw-image-grid").textContent = "Could not load images. Close and reopen the library to retry.";
+        }
+      } finally {
+        if (revision === rawLoadRevision) rawLoadPromise = null;
+      }
+    })();
+    rawLoadPromise = loading;
+    return loading;
+  }
+  function openRawLibrary(selectImage) {
+    selectFromLibrary = selectImage;
+    byId("raw-image-search").value = "";
+    byId("raw-image-grid").scrollTop = 0;
+    renderRawImages();
+    byId("raw-image-dialog").showModal();
+    byId("raw-image-status").textContent = rawImagesLoadedAt ? `${rawImages.length} reusable originals` : "Loading original images…";
+    void loadRawImages();
+  }
+  async function uploadRawImage(file, folder) {
+    const compressed = await compressStyleImage(file);
+    const body = new FormData();
+    body.append("image", compressed.file);
+    body.append("folder", folder);
+    return (await api("/api/admin/catalog/raw-images", { method: "POST", body })).image;
+  }
+  const notifications = window.MaddsNotifications.create({ api, notify, getCatalog: () => state });
+  const welcomeBack = window.MaddsWelcomeBack.create({ api, notify, openNotification: id => { void notifications.open(id); } });
+  const users = window.MaddsUsers.create({ api, notify });
+  const storage = window.MaddsStorage.create({ api, notify });
+  const settings = window.MaddsSettings.create({ api, notify });
+  const adSettings = window.MaddsAdSettings.create({ api, notify });
+  const rewardedCredits = window.MaddsRewardedCredits.create({ api, notify });
+  const dailyRewards = window.MaddsDailyRewards.create({ api, notify });
+  const dailyReminder = window.MaddsDailyReminder.create({ api, notify });
+  const watermark = window.MaddsWatermark.create({ api, notify });
+  const imageGeneration = window.MaddsImageGeneration.create({ api, notify });
+  const settingsNavigation = window.MaddsSettingsNavigation.create({
+    controllers: { generation: imageGeneration, welcome: settings, daily: dailyRewards, rewarded: rewardedCredits, ads: adSettings, watermark },
+    onReminders: () => {
+      document.querySelector('.side-link[data-panel="notifications-panel"]').click();
+      if (state.activePanel !== 'notifications-panel') return;
+      const automation = byId('daily-reminder-form').closest('details');
+      automation.open = true; automation.scrollIntoView({ block: 'start' });
+    }
+  });
+  const homeOrder = window.MaddsHomeOrder.create({ api, notify, onSaved: sections => { state.sections = sections; renderCollections(); } });
+  const performance = window.MaddsPerformance.create({ api, notify, onChanged: loadCatalog });
+  const feedback = window.MaddsFeedback.create({ api, notify });
+  const bulkStyles = window.MaddsStyleBulk.create({ api, notify, getCatalog: () => state, reload: loadCatalog, groupSelected: ids => styleGroups.openNew(ids) });
+  const styleTags = window.MaddsStyleTags.create({ getCatalog: () => state });
+  const styleGroups = window.MaddsStyleGroups.create({ api, notify, getCatalog: () => state, onChange: renderStyles,
+    selectStyles: () => bulkStyles.startGrouping(), onSaved: () => bulkStyles.finishGrouping() });
+
+  const sessionApi = window.MaddsSessionApi.create({ base: apiBase, storage: sessionStorage,
+    onExpired: () => { clearSession(); showLogin("Your session has ended. Please sign in again."); }
+  });
+  function api(path, options = {}, retry = true) { return sessionApi.api(path, options, retry); }
+
+  function canUpdateWorkspace() {
+    if (styleSaving || state.promptTestGenerating || document.querySelector('dialog[open]')) return false;
+    if (state.styleEditorBaseline !== null && styleEditorSnapshot() !== state.styleEditorBaseline) return false;
+    if ([settings, dailyRewards, rewardedCredits, adSettings, watermark, imageGeneration, notifications, dailyReminder, homeOrder].some(tool => tool.hasPendingChanges())) return false;
+    if (!byId('user-details').hidden) return false;
+    if (document.querySelector('[aria-busy="true"], #upload-cover-image:disabled, #upload-before-image:disabled, #upload-after-image:disabled')) return false;
+    return !byId('collection-form').elements.name.value.trim();
+  }
+  const workspaceApp = window.MaddsWorkspaceApp.create({ canReload: canUpdateWorkspace,
+    onRefresh: () => { if (!byId('app-view').hidden) byId('refresh-button').click(); }
+  });
+  window.addEventListener('beforeunload', event => {
+    if (!canUpdateWorkspace()) { event.preventDefault(); event.returnValue = ''; }
+  });
+
+  function clearSession() {
+    ++workspaceEpoch;
+    rawImages = [];
+    invalidateRawImages();
+    rawGridKey = null;
+    rawFolder = "men";
+    libraryBusy = false;
+    if (byId("raw-image-preview-dialog").open) byId("raw-image-preview-dialog").close();
+    closeRawPreview();
+    if (byId("raw-image-dialog").open) byId("raw-image-dialog").close();
+    byId("raw-image-grid").replaceChildren();
+    state.catalogLoaded = false;
+    state.catalogLoading = false;
+    state.styles = [];
+    state.collections = [];
+    state.sections = [];
+    sessionApi.reset();
+    workspaceApp.closeMenu();
+    styleGroups.reset();
+    performance.reset();
+    feedback.reset();
+    storage.reset();
+    settings.reset();
+    rewardedCredits.reset();
+    dailyRewards.reset();
+    dailyReminder.reset();
+    adSettings.reset();
+    watermark.reset();
+    imageGeneration.reset();
+    settingsNavigation.reset();
+    homeOrder.reset();
+    bulkStyles.reset();
+    users.reset();
+    notifications.reset();
+    welcomeBack.reset();
+    sessionStorage.removeItem(tokenKey);
+    sessionStorage.removeItem(refreshKey);
+  }
+  function showLogin(message = "") {
+    setPasswordVisible(false);
+    byId("login-view").hidden = false;
+    byId("app-view").hidden = true;
+    byId("login-message").textContent = message;
+  }
+  function showApp(name) {
+    byId("login-view").hidden = true;
+    byId("app-view").hidden = false;
+    byId("account-email").textContent = name || "Team member";
+  }
+  function notify(message, isError = false) {
+    const box = byId("notice");
+    box.textContent = message;
+    box.classList.toggle("error", isError);
+    box.hidden = false;
+    clearTimeout(notify.timer);
+    notify.timer = setTimeout(() => { box.hidden = true; }, 5000);
+  }
+  function escapeHtml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+  }
+
+  async function loadCatalog() {
+    if (state.catalogLoading) return;
+    state.catalogLoading = true;
+    const owner = workspaceEpoch;
+    const refreshButton = byId("refresh-button");
+    refreshButton.disabled = true;
+    refreshButton.classList.add("is-loading");
+    refreshButton.setAttribute("aria-label", "Refreshing catalogue");
+    byId("styles-grid").setAttribute("aria-busy", "true");
+    byId("collections-list").setAttribute("aria-busy", "true");
+    if (!state.catalogLoaded) {
+      byId("styles-grid").innerHTML = `<div class="catalogue-skeleton" aria-label="Loading styles">${Array.from({ length: 8 }, () => '<div class="skeleton-card"><div class="skeleton-image"></div><div class="skeleton-lines"><i></i><i></i><i></i></div></div>').join("")}</div>`;
+      byId("collections-list").innerHTML = '<div class="loading-message"><span class="loading-spinner"></span>Loading collections…</div>';
+    }
+    try {
+      const catalogue = api("/api/admin/catalog");
+      void styleGroups.refresh(catalogue);
+      const data = await catalogue;
+      if (owner !== workspaceEpoch) return;
+      byId("account-email").textContent = data.currentUser?.name || "Team member";
+      state.styles = data.styles || [];
+      state.tagging = data.tagging || null;
+      styleTags.refresh();
+      state.collections = data.collections || [];
+      state.sections = data.sections || [];
+      state.recentChanges = data.recentChanges || [];
+      state.pendingCloudinaryCleanup = Number(data.pendingCloudinaryCleanup || 0);
+      const cleanupButton = byId("retry-cloudinary-cleanup");
+      cleanupButton.hidden = state.pendingCloudinaryCleanup === 0;
+      cleanupButton.textContent = `Retry image cleanup (${state.pendingCloudinaryCleanup})`;
+      renderStyles();
+      renderCollections();
+      renderCollectionOptions();
+      state.catalogLoaded = true;
+      styleGroups.render();
+      void loadRawImages();
+      notifications.catalogChanged();
+      if (state.activePanel === "notifications-panel") void notifications.refresh();
+    } catch (error) {
+      if (owner !== workspaceEpoch) return;
+      if (error.message.includes("not allowed")) {
+        clearSession();
+        showLogin("This account can sign in, but it has not been approved for catalogue access. Ask the Madds Workspace owner to add its email to the backend ADMIN_EMAILS setting.");
+      } else if (!byId("login-view").hidden) {
+        showLogin(error.message);
+      } else notify(error.message, true);
+      if (!state.catalogLoaded) {
+        byId("styles-grid").innerHTML = '<div class="empty-state">Could not load the catalogue. Use the refresh button to try again.</div>';
+        byId("collections-list").innerHTML = '<div class="empty-state">Could not load collections. Use the refresh button to try again.</div>';
+      }
+    } finally {
+      if (owner !== workspaceEpoch) return;
+      state.catalogLoading = false;
+      refreshButton.disabled = false;
+      refreshButton.classList.remove("is-loading");
+      refreshButton.setAttribute("aria-label", "Refresh catalogue");
+      byId("styles-grid").setAttribute("aria-busy", "false");
+      byId("collections-list").setAttribute("aria-busy", "false");
+    }
+  }
+
+  async function loadLogs(page = state.logPage) {
+    if (state.logsLoading) return;
+    state.logsLoading = true;
+    const params = new URLSearchParams({ page: String(page), limit: "50" });
+    if (byId("log-member-filter").value) params.set("member", byId("log-member-filter").value);
+    if (byId("log-action-filter").value) params.set("action", byId("log-action-filter").value);
+    const refreshButton = byId("logs-refresh");
+    refreshButton.disabled = true;
+    byId("logs-body").setAttribute("aria-busy", "true");
+    byId("logs-body").innerHTML = '<tr><td colspan="4" class="logs-loading"><span class="loading-spinner"></span>Loading change logs…</td></tr>';
+    try {
+      const data = await api(`/api/admin/catalog/logs?${params}`);
+      state.logs = data.logs || [];
+      state.logMembers = data.members || [];
+      state.logPage = data.pagination?.page || page;
+      state.logPagination = data.pagination || { page, total: 0, totalPages: 0 };
+      renderLogs();
+    } catch (error) { notify(error.message, true); renderLogs(); }
+    finally {
+      state.logsLoading = false;
+      refreshButton.disabled = false;
+      byId("logs-body").setAttribute("aria-busy", "false");
+    }
+  }
+
+  function renderLogs() {
+    const memberFilter = byId("log-member-filter");
+    const selectedMember = memberFilter.value;
+    memberFilter.innerHTML = '<option value="">All team members</option>' + state.logMembers.map((member) => `<option value="${escapeHtml(member.email)}">${escapeHtml(member.name)} (${escapeHtml(member.email)})</option>`).join("");
+    if ([...memberFilter.options].some((option) => option.value === selectedMember)) memberFilter.value = selectedMember;
+
+    const actions = {
+      STYLE_CREATED: "Style created", STYLE_UPDATED: "Style updated", STYLE_DELETED: "Style deleted",
+      COLLECTION_CREATED: "Collection created", COLLECTION_RENAMED: "Collection renamed", COLLECTION_DELETED: "Collection deleted",
+      GROUP_CREATED: 'Group created', GROUP_UPDATED: 'Group updated', GROUP_ARCHIVED: 'Styles ungrouped',
+      HOME_SECTION_UPDATED: "Home visibility changed", HOME_ORDER_UPDATED: "Home order changed",
+    };
+    const body = byId("logs-body");
+    if (!state.logs.length) {
+      body.innerHTML = '<tr><td colspan="4" class="logs-empty">No changes match these filters.</td></tr>';
+    } else {
+      body.innerHTML = state.logs.map((log) => `<tr><td>${escapeHtml(window.MaddsDates.dateTime(log.createdAt))}</td><td><span class="log-member-name">${escapeHtml(log.actorName || log.actorEmail)}</span><span class="log-member-email">${escapeHtml(log.actorEmail)}</span></td><td><span class="log-action">${escapeHtml(actions[log.action] || log.action)}</span></td><td>${escapeHtml(log.itemName)}<span class="log-item-id">${escapeHtml(log.itemId)}</span></td></tr>`).join("");
+    }
+    const pagination = state.logPagination || { page: 1, total: 0, totalPages: 0 };
+    byId("logs-page-label").textContent = pagination.total ? `Page ${pagination.page} of ${pagination.totalPages} · ${pagination.total} changes` : "No changes recorded yet";
+    byId("logs-previous").disabled = pagination.page <= 1;
+    byId("logs-next").disabled = pagination.page >= pagination.totalPages;
+  }
+
+  function renderStyles() {
+    const query = byId("style-search").value.trim().toLowerCase();
+    const collection = byId("collection-filter").value;
+    const verification = byId("verification-filter").value;
+    const tagFilter = byId('tag-filter').value;
+    const filtered = state.styles.filter((style) => {
+      const matchesCollection = !collection || style.collections.includes(collection);
+      const matchesVerification = verification === "all" || (verification === "verified" ? style.verified === true : style.verified !== true);
+      const matchesTags = !tagFilter || (tagFilter === 'missing' ? !style.tags?.length : Boolean(style.tags?.length));
+      return matchesCollection && matchesVerification && matchesTags && (!query || window.MaddsStyleTags.matches(style, query, state.tagging?.aliases));
+    });
+    sortItems(filtered, byId("style-sort").value);
+    byId("style-count").textContent = String(state.styles.length);
+    byId("result-count").textContent = `${filtered.length} shown`;
+    const grid = byId("styles-grid");
+    bulkStyles.catalogChanged(filtered);
+    if (!filtered.length) {
+      grid.innerHTML = '<div class="empty-state">No styles match. Try another search or add a new style.</div>';
+      return;
+    }
+    grid.innerHTML = filtered.map((style) => {
+      const coverUrl = style.thumbnail || "";
+      const img = coverUrl
+        ? `<img src="${escapeHtml(coverUrl)}" alt="${escapeHtml(style.name)} cover" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\'image-placeholder\'>Preview unavailable</div>'">`
+        : '';
+      const collectionBadge = `<span class="style-collection-pill">${escapeHtml(style.collections?.[0] || "No collection")}</span>`;
+      const groupName = styleGroups.membership(style.id);
+      const groupLabel = groupName ? `<p class="style-group-summary">Group: ${escapeHtml(groupName)}</p>` : '';
+      const verificationBadge = style.verified === true
+        ? '<span class="verification-badge is-verified">✓ Verified</span>'
+        : '<span class="verification-badge is-unverified">Unverified</span>';
+      return `<article class="style-card website-style-card" data-style-open="${escapeHtml(style.id)}"><div class="style-image ${coverUrl ? "" : "missing-image"}">${img}${collectionBadge}</div><div class="style-body"><h3 class="style-card-title">${escapeHtml(style.name)}</h3>${groupLabel}<p class="style-tag-summary">${style.tags?.length ? escapeHtml(style.tags.slice(0, 3).join(' · ')) + (style.tags.length > 3 ? ` +${style.tags.length - 3}` : '') : 'Missing tags'}</p><div class="style-admin-footer">${verificationBadge}<span><button class="edit-button" data-edit="${escapeHtml(style.id)}">Edit</button><button class="delete-button" data-delete="${escapeHtml(style.id)}">Delete</button></span></div></div></article>`;
+    }).join("");
+    grid.querySelectorAll("[data-style-open]").forEach((card) => card.addEventListener("click", (event) => {
+      if (event.target.closest("button, a, input, label")) return;
+      if (bulkStyles.handleCardClick(card.dataset.styleOpen)) return;
+      openStyleEditor(card.dataset.styleOpen);
+    }));
+    grid.querySelectorAll("[data-edit]").forEach((button) => button.addEventListener("click", () => openStyleEditor(button.dataset.edit)));
+    grid.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", () => deleteStyle(button.dataset.delete)));
+    bulkStyles.decorateCards();
+  }
+
+  const styleImageMaxBytes = 300_000;
+
+  async function loadImageForCompression(file) {
+    if (typeof createImageBitmap === "function") {
+      try {
+        return await createImageBitmap(file, { imageOrientation: "from-image" });
+      } catch {
+        // Fall back for browsers that decode the format but lack this option.
+      }
+    }
+    const sourceUrl = URL.createObjectURL(file);
+    try {
+      return await new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error("The selected image could not be opened."));
+        image.src = sourceUrl;
+      });
+    } finally {
+      URL.revokeObjectURL(sourceUrl);
+    }
+  }
+
+  function canvasToBlob(canvas, type, quality) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("The image could not be compressed in this browser.")), type, quality);
+    });
+  }
+
+  async function exportStyleImage(canvas, quality) {
+    let blob = await canvasToBlob(canvas, "image/webp", quality);
+    if (blob.type === "image/webp") return blob;
+
+    // Older browsers may not encode WebP. Workspace images are photos, so use a
+    // white-backed JPEG fallback to avoid black transparency when exporting.
+    const jpegCanvas = document.createElement("canvas");
+    jpegCanvas.width = canvas.width;
+    jpegCanvas.height = canvas.height;
+    const context = jpegCanvas.getContext("2d");
+    if (!context) throw new Error("The image could not be compressed in this browser.");
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, jpegCanvas.width, jpegCanvas.height);
+    context.drawImage(canvas, 0, 0);
+    blob = await canvasToBlob(jpegCanvas, "image/jpeg", quality);
+    if (blob.type !== "image/jpeg") throw new Error("This browser cannot encode a compressed image. Try Chrome or Edge.");
+    return blob;
+  }
+
+  async function compressStyleImage(file) {
+    let image;
+    try {
+      image = await loadImageForCompression(file);
+      const sourceWidth = image.width || image.naturalWidth;
+      const sourceHeight = image.height || image.naturalHeight;
+      if (!sourceWidth || !sourceHeight) throw new Error("The selected image has invalid dimensions.");
+
+      let scale = Math.min(1, 900 / sourceWidth, 1260 / sourceHeight);
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d", { alpha: true });
+      if (!context) throw new Error("The image could not be compressed in this browser.");
+
+      for (let dimensionPass = 0; dimensionPass < 10; dimensionPass += 1) {
+        const width = Math.max(1, Math.round(sourceWidth * scale));
+        const height = Math.max(1, Math.round(sourceHeight * scale));
+        canvas.width = width;
+        canvas.height = height;
+        context.clearRect(0, 0, width, height);
+        context.drawImage(image, 0, 0, width, height);
+
+        let lowQuality = 0.48;
+        let highQuality = 0.92;
+        let bestBlob = null;
+        for (let qualityPass = 0; qualityPass < 8; qualityPass += 1) {
+          const quality = (lowQuality + highQuality) / 2;
+          const blob = await exportStyleImage(canvas, quality);
+          if (blob.size <= styleImageMaxBytes) {
+            bestBlob = blob;
+            lowQuality = quality;
+          } else {
+            highQuality = quality;
+          }
+        }
+
+        if (bestBlob) {
+          const extension = bestBlob.type === "image/webp" ? "webp" : "jpg";
+          const baseName = file.name.replace(/\.[^.]+$/, "") || "madds-style-image";
+          return {
+            file: new File([bestBlob], `${baseName}.${extension}`, { type: bestBlob.type, lastModified: Date.now() }),
+            width,
+            height,
+          };
+        }
+        scale *= 0.84;
+      }
+      throw new Error("This image could not be reduced below 300 KB. Choose a smaller image and try again.");
+    } finally {
+      if (typeof image?.close === "function") image.close();
+    }
+  }
+
+  async function uploadStyleExampleImage(kind, fileInput) {
+    if (styleSaving) { notify("Please wait for the style to finish saving."); return; }
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    const cover = kind === "cover";
+    const prefix = cover ? "cover" : "after";
+    const button = byId(`upload-${prefix}-image`);
+    const status = byId(`${prefix}-image-status`);
+    const preview = byId(`${prefix}-image-preview`);
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+    if (!allowedTypes.includes(file.type) || file.size > 10 * 1024 * 1024) {
+      status.textContent = "Choose a JPG, PNG, WebP or AVIF image up to 10 MB.";
+      fileInput.value = "";
+      return;
+    }
+
+    const collections = [...byId("style-form").querySelectorAll('input[name="collections"]:checked')].map((input) => input.value);
+    button.disabled = true;
+    button.textContent = "Compressing…";
+    status.textContent = "Compressing image to 300 KB or less…";
+    try {
+      const compressed = await compressStyleImage(file);
+      status.textContent = `Compressed to ${(compressed.file.size / 1000).toFixed(0)} KB · ${compressed.width} × ${compressed.height}. Uploading…`;
+      button.textContent = "Uploading…";
+      const signed = await api("/api/admin/catalog/cloudinary/signature", {
+        method: "POST", body: JSON.stringify({ collections: collections.length ? collections : ["Other"] }),
+      });
+      const uploadForm = new FormData();
+      uploadForm.append("file", compressed.file);
+      uploadForm.append("api_key", signed.apiKey);
+      uploadForm.append("timestamp", String(signed.timestamp));
+      uploadForm.append("folder", signed.folder);
+      uploadForm.append("public_id", signed.publicId);
+      uploadForm.append("tags", signed.tags);
+      uploadForm.append("signature", signed.signature);
+      const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/image/upload`, { method: "POST", body: uploadForm });
+      const uploaded = await response.json().catch(() => ({}));
+      if (!response.ok || !uploaded.secure_url || uploaded.public_id !== signed.expectedPublicId) throw new Error(uploaded.error?.message || "Cloudinary upload failed.");
+
+      styleUploads.track(uploaded.public_id);
+      const form = byId("style-form");
+      const urlField = cover ? "thumbnail" : "exampleAfterUrl";
+      const idField = cover ? "thumbnailPublicId" : "exampleAfterPublicId";
+      form.elements[urlField].value = uploaded.secure_url;
+      form.elements[idField].value = uploaded.public_id;
+      if (cover) form.elements.thumbnail.value = uploaded.secure_url;
+      synchronizeImageFields();
+      releaseEditorUploads(editorImageIds());
+      preview.src = uploaded.secure_url;
+      preview.hidden = false;
+      status.textContent = `Uploaded compressed image · ${(compressed.file.size / 1000).toFixed(0)} KB · ${compressed.width} × ${compressed.height}. Save the style to keep it.`;
+    } catch (error) {
+      status.textContent = error.message || "Cloudinary upload failed.";
+    } finally {
+      button.disabled = false;
+      button.textContent = cover ? "Upload cover image" : "Upload generated image";
+      fileInput.value = "";
+    }
+  }
+
+  async function generatePromptTestImage() {
+    const prompt = byId("prompt-test-prompt").value.trim();
+    const error = byId("prompt-test-error");
+    const button = byId("generate-test-image");
+    error.textContent = "";
+    if (!state.promptTestFile) {
+      error.textContent = "Choose an original image first.";
+      return;
+    }
+    if (!prompt) {
+      error.textContent = "Enter a prompt first.";
+      return;
+    }
+
+    if (state.promptTestGenerating) return;
+    state.promptTestGenerating = true;
+    button.disabled = true;
+    button.textContent = "Generating with Sunburst…";
+    byId("prompt-test-progress").hidden = false;
+    if (!state.promptTestResultUrl) byId("prompt-test-empty").hidden = true;
+    byId("prompt-test-progress-status").textContent = "Sending your image and prompt to Sunburst…";
+    byId("prompt-test-nav-status").hidden = false;
+    byId("prompt-test-nav-status").textContent = "Generating";
+    const progressMessages = ["Sunburst is creating your style preview…", "Working on the details…", "Still generating. You can keep using the other Workspace sections."];
+    let messageIndex = 0;
+    const progressTimer = window.setInterval(() => {
+      messageIndex = Math.min(messageIndex + 1, progressMessages.length - 1);
+      byId("prompt-test-progress-status").textContent = progressMessages[messageIndex];
+    }, 7000);
+    try {
+      const body = new FormData();
+      body.append("image", state.promptTestFile);
+      body.append("prompt", prompt);
+      const result = await api("/api/admin/catalog/test-generation", { method: "POST", body });
+      if (!result.image) throw new Error("Sunburst returned no image. Try again.");
+      if (state.promptTestResultUrl) URL.revokeObjectURL(state.promptTestResultUrl);
+      const imageBlob = await fetch(result.image).then((response) => response.blob());
+      state.promptTestResultUrl = URL.createObjectURL(imageBlob);
+      byId("prompt-test-result-image").src = state.promptTestResultUrl;
+      byId("prompt-test-result-image").hidden = false;
+      byId("prompt-test-empty").hidden = true;
+      byId("test-export-controls").hidden = false;
+      byId("prompt-test-progress").hidden = true;
+      byId("prompt-test-nav-status").textContent = "Ready";
+      byId("download-test-status").textContent = "";
+    } catch (cause) {
+      error.textContent = cause.message || "Could not generate a test image.";
+      byId("prompt-test-progress").hidden = true;
+      byId("prompt-test-nav-status").textContent = "Failed";
+      if (!state.promptTestResultUrl) byId("prompt-test-empty").hidden = false;
+    } finally {
+      window.clearInterval(progressTimer);
+      state.promptTestGenerating = false;
+      button.disabled = false;
+      button.textContent = "Generate test image";
+    }
+  }
+
+  async function prepareAndDownloadTestImage() {
+    const button = byId("download-test-image");
+    const status = byId("download-test-status");
+    const ratioParts = byId("test-export-aspect").value.split(":").map(Number);
+    const ratioWidth = ratioParts[0];
+    const ratioHeight = ratioParts[1];
+    const targetRatio = ratioWidth / ratioHeight;
+    const selectedQuality = Number(byId("test-export-quality").value) / 100;
+    const maxBytes = 300_000;
+    const image = new Image();
+    button.disabled = true;
+    button.textContent = "Preparing download…";
+    status.textContent = "Cropping and compressing a copy. The Sunburst preview is unchanged.";
+
+    try {
+      image.src = state.promptTestResultUrl;
+      await image.decode();
+      const sourceRatio = image.naturalWidth / image.naturalHeight;
+      let sx = 0;
+      let sy = 0;
+      let sw = image.naturalWidth;
+      let sh = image.naturalHeight;
+      if (sourceRatio > targetRatio) {
+        sw = image.naturalHeight * targetRatio;
+        sx = (image.naturalWidth - sw) / 2;
+      } else {
+        sh = image.naturalWidth / targetRatio;
+        sy = (image.naturalHeight - sh) / 2;
+      }
+
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d", { alpha: false });
+      if (!context) throw new Error("This browser cannot prepare the download.");
+      let scale = 1;
+      let quality = selectedQuality;
+      let exportBlob = null;
+      let actualMime = "image/webp";
+
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const ratioUnit = Math.max(1, Math.floor(Math.min(sw * scale / ratioWidth, sh * scale / ratioHeight)));
+        canvas.width = ratioUnit * ratioWidth;
+        canvas.height = ratioUnit * ratioHeight;
+        context.drawImage(image, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+        exportBlob = await canvasToBlob(canvas, "image/webp", quality);
+        if (exportBlob.type !== "image/webp") {
+          actualMime = "image/jpeg";
+          exportBlob = await canvasToBlob(canvas, actualMime, quality);
+        }
+        if (exportBlob.size <= maxBytes) break;
+        if (quality > 0.4) quality = Math.max(0.4, quality - 0.1);
+        else {
+          scale *= 0.86;
+          quality = selectedQuality;
+        }
+      }
+
+      if (!exportBlob || exportBlob.size > maxBytes) {
+        throw new Error("Could not compress this image below 300 KB. Try a lower quality setting.");
+      }
+      if (state.promptTestDownloadUrl) URL.revokeObjectURL(state.promptTestDownloadUrl);
+      state.promptTestDownloadUrl = URL.createObjectURL(exportBlob);
+      const ratioLabel = byId("test-export-aspect").value.replace(":", "x");
+      const extension = actualMime === "image/webp" ? "webp" : "jpg";
+      const link = document.createElement("a");
+      link.href = state.promptTestDownloadUrl;
+      link.download = `madds-prompt-test-${ratioLabel}.${extension}`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      const sizeKb = (exportBlob.size / 1000).toFixed(0);
+      const effectiveQuality = Math.round(quality * 100);
+      status.textContent = `Downloaded ${sizeKb} KB · ${byId("test-export-aspect").value} · ${effectiveQuality}% quality`;
+    } catch (cause) {
+      status.textContent = cause.message || "Could not prepare the download.";
+    } finally {
+      button.disabled = false;
+      button.textContent = "Prepare and download";
+    }
+  }
+
+  function canvasToBlob(canvas, mimeType, quality) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Could not encode the image in this browser."));
+      }, mimeType, quality);
+    });
+  }
+
+  function renderCollectionOptions() {
+    const filter = byId("collection-filter");
+    const current = filter.value;
+    filter.innerHTML = '<option value="">All collections</option>' + state.collections.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)}</option>`).join("");
+    if ([...filter.options].some((option) => option.value === current)) filter.value = current;
+    const selected = new Set(byId("style-form").elements.collections ? [...byId("style-form").querySelectorAll('input[name="collections"]:checked')].map((input) => input.value) : []);
+    byId("collection-checkboxes").innerHTML = state.collections.map((item) => `<label class="collection-check"><input type="checkbox" name="collections" value="${escapeHtml(item.name)}" ${selected.has(item.name) ? "checked" : ""}>${escapeHtml(item.name)}</label>`).join("") || '<span class="muted">Create a collection first.</span>';
+  }
+
+  function renderCollections() {
+    homeOrder.update(state.sections);
+    const root = byId("collections-list");
+    if (!state.collections.length) { root.innerHTML = '<div class="empty-state">No collections have been created.</div>'; return; }
+    const collections = [...state.collections];
+    sortItems(collections, byId("collection-sort").value);
+    root.innerHTML = collections.map((collection) => {
+      const count = state.styles.filter((style) => style.collections.includes(collection.name)).length;
+      const section = state.sections.find((item) => String(item.slug).toLowerCase() === collection.name.toLowerCase());
+      const visible = Boolean(section?.visible);
+      const isFallback = collection.name.trim().toLowerCase() === "other";
+      return `<div class="collection-row"><div><div class="collection-name">${escapeHtml(collection.name)}</div><div class="collection-meta">ID: ${escapeHtml(collection.id)}</div></div><label class="home-control collection-check"><input class="home-toggle" type="checkbox" data-home="${escapeHtml(section?.id || "")}" ${visible ? "checked" : ""} ${section ? "" : "disabled"}>Show on Home</label><div class="collection-count">${count} style${count === 1 ? "" : "s"}</div><div class="collection-actions"><button class="text-button" data-rename="${escapeHtml(collection.id)}">Rename</button><button class="delete-button collection-delete" data-delete-collection="${escapeHtml(collection.id)}" ${isFallback ? 'disabled title="Other is the protected fallback collection."' : ""}>Delete</button></div></div>`;
+    }).join("");
+    root.querySelectorAll("[data-rename]").forEach((button) => button.addEventListener("click", () => openRenameDialog(button.dataset.rename)));
+    root.querySelectorAll("[data-delete-collection]").forEach((button) => button.addEventListener("click", () => deleteCollection(button.dataset.deleteCollection)));
+    root.querySelectorAll("[data-home]").forEach((input) => input.addEventListener("change", () => updateHomeVisibility(input.dataset.home, input.checked)));
+  }
+
+  function sortItems(items, sort) {
+    const [field, direction] = String(sort || "name-asc").split("-");
+    const multiplier = direction === "desc" ? -1 : 1;
+    items.sort((left, right) => {
+      if (field === "created" || field === "updated") {
+        const key = field === "created" ? "createdAt" : "updatedAt";
+        const leftTime = Date.parse(left[key] || "") || 0;
+        const rightTime = Date.parse(right[key] || "") || 0;
+        return (leftTime - rightTime) * multiplier || left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+      }
+      return left.name.localeCompare(right.name, undefined, { sensitivity: "base" }) * multiplier;
+    });
+  }
+
+  async function deleteCollection(id) {
+    const collection = state.collections.find((item) => item.id === id);
+    if (!collection || collection.name.trim().toLowerCase() === "other") return;
+    const affectedCount = state.styles.filter((style) => style.collections.includes(collection.name)).length;
+    if (!window.confirm(`Delete the “${collection.name}” collection? ${affectedCount} assigned style(s) will be updated: styles assigned only here move to Other, while styles assigned to other collections keep those assignments. Styles and Cloudinary images will not be deleted.`)) return;
+    const button = [...document.querySelectorAll("[data-delete-collection]")].find((item) => item.dataset.deleteCollection === id);
+    if (button) { button.disabled = true; button.textContent = "Deleting…"; }
+    try {
+      const result = await api(`/api/admin/catalog/collections/${encodeURIComponent(id)}`, { method: "DELETE" });
+      state.collections = state.collections.filter((item) => item.id !== id);
+      if (!state.collections.some((item) => item.name.trim().toLowerCase() === "other")) state.collections.push({ id: "other", name: "Other" });
+      state.styles = state.styles.map((style) => {
+        const remaining = style.collections.filter((name) => name !== collection.name);
+        return { ...style, collections: remaining.length ? remaining : ["Other"] };
+      });
+      state.sections = state.sections.filter((section) => String(section.slug).toLowerCase() !== collection.name.toLowerCase());
+      renderStyles(); renderCollections(); renderCollectionOptions();
+      notify(`Collection deleted. ${Number(result.stylesMovedToOther || 0)} style(s) moved to Other; other collection assignments and images were kept.`);
+    } catch (error) {
+      notify(error.message, true);
+      if (button) { button.disabled = false; button.textContent = "Delete"; }
+    }
+  }
+
+  async function updateHomeVisibility(id, visible) {
+    if (!id) return;
+    const input = document.querySelector(`[data-home="${CSS.escape(id)}"]`);
+    if (input) input.disabled = true;
+    try {
+      const result = await api(`/api/admin/catalog/home-sections/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ visible }) });
+      const index = state.sections.findIndex((section) => section.id === id);
+      if (index >= 0) state.sections[index] = result.section;
+      homeOrder.update(state.sections);
+      notify(visible ? "Collection will appear on the app Home screen." : "Collection hidden from the app Home screen.");
+    } catch (error) { notify(error.message, true); await loadCatalog(); }
+    finally { if (input?.isConnected) input.disabled = false; }
+  }
+
+  async function deleteStyle(id) {
+    const style = state.styles.find((item) => item.id === id);
+    if (!style) return;
+    if (!window.confirm(`Permanently delete “${style.name}”? It will disappear from the catalogue and users’ favorites. Existing generation history will remain.`)) return;
+    const deleteButton = [...document.querySelectorAll("[data-delete]")].find((button) => button.dataset.delete === id);
+    if (deleteButton) { deleteButton.disabled = true; deleteButton.textContent = "Deleting…"; }
+    try {
+      const result = await api(`/api/admin/catalog/styles/${encodeURIComponent(id)}`, { method: "DELETE" });
+      state.styles = state.styles.filter((item) => item.id !== id);
+      invalidateRawImages();
+      if (result.cloudinaryCleanupPending) state.pendingCloudinaryCleanup += 1;
+      const cleanupButton = byId("retry-cloudinary-cleanup");
+      cleanupButton.hidden = state.pendingCloudinaryCleanup === 0;
+      cleanupButton.textContent = `Retry image cleanup (${state.pendingCloudinaryCleanup})`;
+      renderStyles();
+      renderCollections();
+      notify(result.cloudinaryCleanupPending
+        ? "Style deleted. Cloudinary cleanup is pending and will retry automatically."
+        : "Style permanently deleted.", Boolean(result.cloudinaryCleanupPending));
+    } catch (error) { notify(error.message, true); if (deleteButton) { deleteButton.disabled = false; deleteButton.textContent = "Delete"; } }
+  }
+
+  let editorLoad = 0;
+  async function openStyleEditor(id = null) {
+    const ticket = ++editorLoad;
+    if (id) {
+      try {
+        const data = await api(`/api/admin/catalog/styles/${encodeURIComponent(id)}`);
+        if (ticket !== editorLoad) return;
+        state.styles = state.styles.map(item => item.id === id ? data.style : item);
+      } catch (error) { notify(error.message, true); return; }
+    }
+    state.editingId = id;
+    const form = byId("style-form");
+    form.reset();
+    byId("link-cover-after").checked = false;
+    byId("upload-after-image").hidden = false;
+    // Hidden input values become their reset defaults; form.reset() cannot clear
+    // images assigned while editing the previous style.
+    window.MaddsStyleUploads.clearImageFields(form);
+    byId("before-image-preview").removeAttribute("src");
+    byId("before-image-preview").hidden = true;
+    byId("after-image-preview").removeAttribute("src");
+    byId("after-image-preview").hidden = true;
+    for (const image of ["cover", "before", "after"]) {
+      byId(`${image}-image-preview`).removeAttribute("src");
+      byId(`${image}-image-preview`).hidden = true;
+    }
+    byId("cover-image-status").textContent = "Required";
+    byId("before-image-status").textContent = "Optional";
+    byId("after-image-status").textContent = "Optional";
+    form.elements.tokensRequired.value = "10";
+    form.elements.genderTag.value = "none";
+    byId("form-error").textContent = "";
+    const style = state.styles.find((item) => item.id === id);
+    byId("dialog-title").textContent = style ? "Edit style" : "Add a style";
+    styleTags.setValue(style?.tags || []);
+    byId('style-group-membership').textContent = styleGroups.membership(id) ? `Group: ${styleGroups.membership(id)}. Manage variants in the Groups tab.` : 'Not grouped. Select similar styles together to create a group.';
+    const editor = byId("style-last-editor");
+    editor.textContent = style ? `Last edited by ${style.lastEditedByName || "Unknown team member"}` : "";
+    editor.hidden = !style;
+    if (style) {
+      form.elements.name.value = style.name;
+      form.elements.description.value = style.description;
+      form.elements.prompt.value = style.prompt;
+      form.elements.verified.checked = style.verified === true;
+      form.elements.genderTag.value = ["her", "him"].includes(style.genderTag) ? style.genderTag : "none";
+      const hasPreviewPair = (style.previewImages || []).length >= 2;
+      const beforeUrl = (hasPreviewPair ? style.previewImages[0] : style.exampleBeforeUrl) || "";
+      const afterUrl = (hasPreviewPair ? style.previewImages[1] : style.exampleAfterUrl) || "";
+      form.elements.thumbnail.value = style.thumbnail || style.exampleBeforeUrl || "";
+      form.elements.thumbnailPublicId.value = style.thumbnailPublicId || style.exampleBeforePublicId || "";
+      form.elements.exampleBeforeUrl.value = beforeUrl;
+      form.elements.exampleBeforePublicId.value = style.previewImagePublicIds?.[0] || style.exampleBeforePublicId || "";
+      form.elements.exampleAfterUrl.value = afterUrl;
+      form.elements.exampleAfterPublicId.value = style.previewImagePublicIds?.[1] || style.exampleAfterPublicId || "";
+      byId("link-cover-after").checked = style.coverAfterLinked ?? Boolean(form.elements.thumbnailPublicId.value && form.elements.thumbnailPublicId.value === form.elements.exampleAfterPublicId.value);
+      form.elements.previewImages.value = (style.previewImages || []).join("\n");
+      form.elements.previewImagePublicIds.value = (style.previewImagePublicIds || []).join("\n");
+      const coverUrl = style.thumbnail || style.exampleBeforeUrl || "";
+      if (coverUrl) {
+        byId("cover-image-preview").src = coverUrl;
+        byId("cover-image-preview").hidden = false;
+        byId("cover-image-status").textContent = "Current cover image";
+      }
+      if (beforeUrl) {
+        byId("before-image-preview").src = beforeUrl;
+        byId("before-image-preview").hidden = false;
+        byId("before-image-status").textContent = "Current before preview";
+      }
+      if (afterUrl) {
+        byId("after-image-preview").src = afterUrl;
+        byId("after-image-preview").hidden = false;
+        byId("after-image-status").textContent = "Current after preview";
+      }
+      form.elements.imageCount.value = String(style.imageCount);
+      form.elements.tokensRequired.value = String(style.tokensRequired);
+    }
+    synchronizeImageFields();
+    updateIdPreview(form.elements.name.value, style?.id);
+    renderCollectionOptions();
+    if (style) for (const input of form.querySelectorAll('input[name="collections"]')) input.checked = style.collections.includes(input.value);
+    state.styleEditorBaseline = styleEditorSnapshot();
+    updatePromptCount();
+    byId("copy-prompt-status").textContent = "";
+    byId("copy-style-prompt").textContent = "Copy prompt";
+    byId("style-dialog").showModal();
+  }
+
+  function styleEditorSnapshot() {
+    const form = byId("style-form");
+    const entries = [...new FormData(form).entries()];
+    const selectedFiles = ["cover-image-file", "after-image-file"].map((id) => {
+      const file = byId(id).files?.[0];
+      return file ? [file.name, file.size, file.lastModified] : null;
+    });
+    return JSON.stringify({ entries, selectedFiles });
+  }
+
+  function requestCloseStyleEditor() {
+    if (styleSaving) { notify("Please wait for the style to finish saving."); return; }
+    if (["upload-cover-image", "upload-before-image", "upload-after-image"].some(id => byId(id)?.disabled)) {
+      notify("Please wait for the image upload to finish."); return;
+    }
+    if (state.styleEditorBaseline !== null && styleEditorSnapshot() !== state.styleEditorBaseline) {
+      byId("discard-confirm-dialog").showModal();
+      return;
+    }
+    state.styleEditorBaseline = null;
+    releaseEditorUploads();
+    byId("style-dialog").close();
+  }
+
+  function openRenameDialog(id) {
+    state.renamingId = id;
+    const collection = state.collections.find((item) => item.id === id);
+    byId("rename-form").elements.name.value = collection?.name || "";
+    byId("rename-dialog").showModal();
+  }
+
+  byId("login-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    setPasswordVisible(false);
+    const form = new FormData(event.currentTarget);
+    byId("login-message").textContent = "Signing in…";
+    const submit = event.currentTarget.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    submit.textContent = "Signing in…";
+    try {
+      const data = await api("/api/auth/login", { method: "POST", body: JSON.stringify({ email: form.get("email"), password: form.get("password") }) }, false);
+      sessionApi.reset();
+      sessionStorage.setItem(tokenKey, data.accessToken);
+      sessionStorage.setItem(refreshKey, data.refreshToken);
+      showApp(data.user?.name);
+      void loadCatalog();
+    } catch (error) { showLogin(error.message); }
+    finally { submit.disabled = false; submit.textContent = "Sign in"; }
+  });
+
+  byId("style-search").addEventListener("input", renderStyles);
+  byId("collection-filter").addEventListener("change", renderStyles);
+  byId("verification-filter").addEventListener("change", renderStyles);
+  byId('tag-filter').addEventListener('change', renderStyles);
+  byId("style-sort").addEventListener("change", renderStyles);
+  byId("collection-sort").addEventListener("change", renderCollections);
+  byId("add-style").addEventListener("click", () => openStyleEditor());
+  byId("refresh-button").addEventListener("click", async () => {
+    const button = byId("refresh-button");
+    if (button.disabled) return;
+    // loadCatalog owns this same button while refreshing the catalogue.
+    if (["styles-panel", "collections-panel"].includes(state.activePanel)) { await loadCatalog(); return; }
+    button.disabled = true;
+    button.setAttribute("aria-label", "Refreshing workspace");
+    try {
+      if (state.activePanel === "logs-panel") await loadLogs(1);
+      else if (state.activePanel === "notifications-panel") await Promise.all([notifications.refresh(), welcomeBack.refresh(), dailyReminder.refresh()]);
+      else if (state.activePanel === "performance-panel") await performance.refresh();
+      else if (state.activePanel === "users-panel") await users.refresh();
+      else if (state.activePanel === "feedback-panel") await feedback.refresh();
+      else if (state.activePanel === "storage-panel") await storage.refresh();
+      else if (state.activePanel === "app-settings-panel") await settingsNavigation.refresh();
+      else await loadCatalog();
+    } finally { button.disabled = false; button.setAttribute("aria-label", "Refresh workspace"); }
+  });
+  document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => {
+    if (button.dataset.close === "style-dialog") requestCloseStyleEditor();
+    else byId(button.dataset.close).close();
+  }));
+  byId("style-dialog").addEventListener("cancel", (event) => {
+    event.preventDefault();
+    requestCloseStyleEditor();
+  });
+  byId("keep-style-editing").addEventListener("click", () => byId("discard-confirm-dialog").close());
+  byId("discard-style-editing").addEventListener("click", () => {
+    byId("discard-confirm-dialog").close();
+    state.styleEditorBaseline = null;
+    releaseEditorUploads();
+    byId("style-dialog").close();
+  });
+  function updatePromptCount() {
+    const input = byId("style-prompt"), trimmed = input.value.trim();
+    const words = trimmed ? trimmed.split(/\s+/u).length : 0;
+    const count = byId("style-prompt-count");
+    count.textContent = `${Array.from(input.value).length} characters · ${words} / 250 words${words > 250 ? " — remove " + (words - 250) + " words to save" : ""}`;
+    count.classList.toggle("is-over-limit", words > 250);
+    input.setCustomValidity(words > 250 ? "The generation prompt must contain no more than 250 words." : "");
+    return words <= 250;
+  }
+  byId("style-prompt").addEventListener("input", updatePromptCount);
+  byId("copy-style-prompt").addEventListener("click", async () => {
+    const prompt = byId("style-prompt").value;
+    const status = byId("copy-prompt-status");
+    const button = byId("copy-style-prompt");
+    if (!prompt) {
+      status.textContent = "There is no prompt to copy yet.";
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(prompt);
+    } catch {
+      const textarea = byId("style-prompt");
+      textarea.focus();
+      textarea.select();
+      const copied = document.execCommand("copy");
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+      if (!copied) {
+        status.textContent = "Copy was blocked by the browser. Select the prompt and copy it manually.";
+        return;
+      }
+    }
+    window.clearTimeout(button.copyFeedbackTimer);
+    button.textContent = "Copied";
+    status.textContent = "Prompt copied.";
+    button.copyFeedbackTimer = window.setTimeout(() => {
+      button.textContent = "Copy prompt";
+    }, 1800);
+  });
+  document.querySelectorAll(".side-link").forEach((button) => button.addEventListener("click", () => {
+    if (button.dataset.panel === 'notifications-panel' && !notifications.newNotification()) return;
+    if (state.activePanel === 'notifications-panel' && button.dataset.panel !== 'notifications-panel' && !dailyReminder.canLeave()) return;
+    if (state.activePanel === 'notifications-panel' && button.dataset.panel !== 'notifications-panel' && !notifications.leave()) return;
+    if (state.activePanel === 'notifications-panel' && button.dataset.panel !== 'notifications-panel') dailyReminder.reset();
+    state.activePanel = button.dataset.panel;
+    document.querySelectorAll(".side-link").forEach((item) => item.classList.toggle("active", item === button));
+    document.querySelectorAll(".panel-view").forEach((panel) => { panel.hidden = panel.id !== button.dataset.panel; });
+    if (state.activePanel === "logs-panel") void loadLogs(1);
+    if (state.activePanel === "notifications-panel") { void notifications.refresh(); void welcomeBack.refresh(); void dailyReminder.refresh(); }
+    if (state.activePanel === "performance-panel") void performance.refresh();
+    if (state.activePanel === "users-panel") void users.refresh();
+    if (state.activePanel === "feedback-panel") void feedback.refresh();
+    if (state.activePanel === "storage-panel") void storage.refresh();
+    if (state.activePanel === "app-settings-panel") void settingsNavigation.open();
+  }));
+  byId("log-member-filter").addEventListener("change", () => loadLogs(1));
+  byId("log-action-filter").addEventListener("change", () => loadLogs(1));
+  byId("logs-refresh").addEventListener("click", () => loadLogs(1));
+  byId("logs-previous").addEventListener("click", () => loadLogs(Math.max(1, state.logPage - 1)));
+  byId("logs-next").addEventListener("click", () => loadLogs(state.logPage + 1));
+  byId("cover-image-file").addEventListener("change", (event) => uploadStyleExampleImage("cover", event.currentTarget));
+  byId("after-image-file").addEventListener("change", (event) => uploadStyleExampleImage("after", event.currentTarget));
+  byId("upload-cover-image").addEventListener("click", () => byId("cover-image-file").click());
+  byId("upload-after-image").addEventListener("click", () => byId("after-image-file").click());
+  byId("link-cover-after").addEventListener("change", (event) => {
+    if (styleSaving || ["cover", "before", "after"].some(kind => byId(`upload-${kind}-image`).disabled)) {
+      event.currentTarget.checked = !event.currentTarget.checked;
+      notify("Please wait for the upload or save to finish.");
+      return;
+    }
+    synchronizeImageFields();
+    if (!event.currentTarget.checked) byId("after-image-status").textContent = "Upload a separate after image if needed.";
+    releaseEditorUploads(editorImageIds());
+  });
+  byId("upload-before-image").addEventListener("click", () => {
+    if (styleSaving || ["cover", "before", "after"].some(kind => byId(`upload-${kind}-image`).disabled)) return;
+    openRawLibrary(true);
+  });
+  byId("open-raw-library").addEventListener("click", () => openRawLibrary(false));
+  byId("raw-image-folders").addEventListener("click", event => {
+    const button = event.target.closest("[data-raw-folder]");
+    if (!button || libraryBusy) return;
+    rawFolder = button.dataset.rawFolder;
+    byId("raw-image-grid").scrollTop = 0;
+    byId("raw-image-search").value = "";
+    byId("raw-image-status").textContent = "";
+    renderRawImages();
+  });
+  byId("raw-image-search").addEventListener("input", renderRawImages);
+  byId("raw-preview-close").addEventListener("click", () => byId("raw-image-preview-dialog").close());
+  byId("raw-image-preview-dialog").addEventListener("close", closeRawPreview);
+  byId("raw-preview-select").addEventListener("click", () => {
+    if (!rawPreview || libraryBusy || styleSaving || !selectFromLibrary) return;
+    selectOriginalImage(rawPreview);
+    byId("raw-image-preview-dialog").close();
+    byId("raw-image-dialog").close();
+  });
+  byId("raw-image-add").addEventListener("click", () => byId("raw-image-files").click());
+  byId("raw-image-files").addEventListener("change", async event => {
+    const input = event.currentTarget;
+    const files = [...input.files];
+    if (!files.length || libraryBusy || !rawFolder) return;
+    const folder = rawFolder;
+    const owner = workspaceEpoch;
+    libraryBusy = true;
+    renderRawImages();
+    const failures = [];
+    try {
+      for (const [index, file] of files.entries()) {
+        byId("raw-image-status").textContent = `Saving ${index + 1} of ${files.length}…`;
+        try {
+          if (!["image/jpeg", "image/png", "image/webp", "image/avif"].includes(file.type) || file.size > 10 * 1024 * 1024) throw new Error("Invalid image");
+          const image = await uploadRawImage(file, folder);
+          if (owner !== workspaceEpoch) return;
+          invalidateRawImages();
+          rawImages = [image, ...rawImages.filter(entry => entry.publicId !== image.publicId)];
+        } catch { failures.push(file.name); }
+      }
+      if (owner !== workspaceEpoch) return;
+      invalidateRawImages();
+      await loadRawImages();
+      if (failures.length) byId("raw-image-status").textContent = `Could not save: ${failures.join(", ")}. Retry these images.`;
+    } finally {
+      if (owner === workspaceEpoch) { libraryBusy = false; renderRawImages(); }
+      input.value = "";
+    }
+  });
+  byId("raw-image-dialog").addEventListener("cancel", event => { if (libraryBusy) event.preventDefault(); });
+  byId("raw-image-dialog").querySelector("form").addEventListener("submit", event => { if (libraryBusy) event.preventDefault(); });
+  byId("clear-style-previews").addEventListener("click", () => {
+    if (styleSaving || ["upload-cover-image", "upload-before-image", "upload-after-image"].some(id => byId(id).disabled)) {
+      notify("Please wait for the upload or save to finish."); return;
+    }
+    const form = byId("style-form");
+    byId("link-cover-after").checked = false;
+    byId("upload-after-image").hidden = false;
+    window.MaddsStyleUploads.clearImageFields(form, true);
+    for (const kind of ["before", "after"]) {
+      if (kind === "after") byId("after-image-file").value = "";
+      byId(`${kind}-image-preview`).removeAttribute("src");
+      byId(`${kind}-image-preview`).hidden = true;
+      byId(`${kind}-image-status`).textContent = "Optional · cover photo will be shown";
+    }
+    releaseEditorUploads(editorImageIds());
+  });
+  byId("prompt-test-image").addEventListener("change", (event) => {
+    const file = event.currentTarget.files?.[0] || null;
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 10 * 1024 * 1024) {
+      byId("prompt-test-error").textContent = "Choose a JPG, PNG or WebP image up to 10 MB.";
+      event.currentTarget.value = "";
+      return;
+    }
+    state.promptTestFile = file;
+    if (state.promptTestOriginalUrl) URL.revokeObjectURL(state.promptTestOriginalUrl);
+    state.promptTestOriginalUrl = URL.createObjectURL(file);
+    byId("prompt-test-file-name").textContent = file.name;
+    byId("prompt-test-original-preview").src = state.promptTestOriginalUrl;
+    byId("prompt-test-original-preview").hidden = false;
+    byId("prompt-test-error").textContent = "";
+  });
+  byId("generate-test-image").addEventListener("click", generatePromptTestImage);
+  byId("download-test-image").addEventListener("click", prepareAndDownloadTestImage);
+  byId("test-export-quality").addEventListener("input", (event) => {
+    byId("test-export-quality-value").value = `${event.currentTarget.value}%`;
+  });
+  byId("retry-cloudinary-cleanup").addEventListener("click", async () => {
+    const button = byId("retry-cloudinary-cleanup");
+    button.disabled = true;
+    try {
+      const result = await api("/api/admin/catalog/cloudinary/retry-cleanup", { method: "POST", body: "{}" });
+      const firstFailure = result.failures?.find((failure) => failure.lastError);
+      const failureDetail = firstFailure ? ` ${firstFailure.styleName}: ${firstFailure.lastError}` : "";
+      notify(result.pending
+        ? `${result.pending} Cloudinary image cleanup${result.pending === 1 ? "" : "s"} still pending.${failureDetail}`
+        : "Cloudinary image cleanup is complete.", Boolean(result.pending));
+      await loadCatalog();
+    } catch (error) { notify(error.message, true); }
+    finally { button.disabled = false; }
+  });
+  byId("style-form").elements.name.addEventListener("input", (event) => updateIdPreview(event.currentTarget.value, state.editingId));
+
+  function updateIdPreview(name, existingId = null) {
+    const id = existingId || String(name || "").normalize("NFKD").toLowerCase().trim().replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "style-id-from-name";
+    byId("style-id-preview").textContent = id;
+  }
+
+  byId("style-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (styleSaving) return;
+    if (["upload-cover-image", "upload-before-image", "upload-after-image"].some(id => byId(id)?.disabled)) {
+      byId("form-error").textContent = "Please wait for the image upload to finish."; return;
+    }
+    if (!updatePromptCount()) { byId("style-prompt").reportValidity(); return; }
+    if (!styleTags.commit()) return;
+    const fields = new FormData(form);
+    if (!fields.get("thumbnail") || !fields.get("thumbnailPublicId")) {
+      byId("form-error").textContent = "Upload a cover image before saving.";
+      return;
+    }
+    const beforeUrl = String(fields.get("exampleBeforeUrl") || "");
+    const afterUrl = String(fields.get("exampleAfterUrl") || "");
+    const beforeId = String(fields.get("exampleBeforePublicId") || "");
+    const afterId = String(fields.get("exampleAfterPublicId") || "");
+    if (Boolean(beforeUrl || beforeId) !== Boolean(afterUrl || afterId) || (beforeUrl && !beforeId) || (afterUrl && !afterId)) {
+      byId("form-error").textContent = "Before and after previews are optional, but upload both together.";
+      return;
+    }
+    const previewImages = beforeUrl && afterUrl
+      ? [beforeUrl, afterUrl]
+      : [];
+    const previewImagePublicIds = beforeUrl && afterUrl
+      ? [beforeId, afterId]
+      : [];
+    const style = {
+      ...(state.editingId ? { expectedUpdatedAt: state.styles.find(item => item.id === state.editingId)?.updatedAt } : {}),
+      id: String(fields.get("name") || "").normalize("NFKD").toLowerCase().trim().replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""), name: fields.get("name"), description: fields.get("description"), prompt: fields.get("prompt"), verified: fields.get("verified") === "on",
+      genderTag: fields.get("genderTag") || "none",
+      ...(state.tagging?.version === 1 ? { tags: styleTags.getValue() } : {}),
+      thumbnail: fields.get("thumbnail"),
+      thumbnailPublicId: fields.get("thumbnailPublicId"),
+      coverAfterLinked: fields.get("linkCoverAfter") === "on",
+      exampleBeforeUrl: beforeUrl || null,
+      exampleBeforePublicId: beforeId || null,
+      exampleAfterUrl: afterUrl || null,
+      exampleAfterPublicId: afterId || null,
+      previewImages,
+      previewImagePublicIds,
+      imageCount: Number(fields.get("imageCount")), tokensRequired: Number(fields.get("tokensRequired")),
+      collections: [...form.querySelectorAll('input[name="collections"]:checked')].map((input) => input.value),
+    };
+    const save = form.querySelector('button[type="submit"]');
+    styleSaving = true;
+    styleTags.setBusy(true);
+    save.disabled = true; save.textContent = "Saving…";
+    try {
+      const wasEditing = Boolean(state.editingId);
+      const result = await api(state.editingId ? `/api/admin/catalog/styles/${encodeURIComponent(state.editingId)}` : "/api/admin/catalog/styles", { method: state.editingId ? "PUT" : "POST", body: JSON.stringify(style) });
+      styleUploads.saved(editorImageIds());
+      invalidateRawImages();
+      releaseEditorUploads();
+      const savedAt = new Date().toISOString();
+      const savedStyle = { ...result.style, createdAt: wasEditing ? state.styles.find((item) => item.id === result.style.id)?.createdAt : savedAt, updatedAt: savedAt };
+      if (wasEditing) state.styles = state.styles.map((item) => item.id === result.style.id ? savedStyle : item);
+      else state.styles = [savedStyle, ...state.styles];
+      if (result.cloudinaryCleanupPending) state.pendingCloudinaryCleanup += 1;
+      const cleanupButton = byId("retry-cloudinary-cleanup");
+      cleanupButton.hidden = state.pendingCloudinaryCleanup === 0;
+      cleanupButton.textContent = `Retry image cleanup (${state.pendingCloudinaryCleanup})`;
+      renderStyles();
+      renderCollections();
+      state.styleEditorBaseline = null;
+      byId("style-dialog").close();
+      notify(result.cloudinaryCleanupPending
+        ? "Style saved. The replaced Cloudinary image cleanup is pending and will retry automatically."
+        : state.editingId ? "Style saved. App and site will receive the new catalogue data from the backend." : "Style added to the live catalogue.", Boolean(result.cloudinaryCleanupPending));
+    } catch (error) { byId("form-error").textContent = error.message; }
+    finally { styleSaving = false; styleTags.setBusy(false); save.disabled = false; save.textContent = "Save style"; }
+  });
+
+  byId("collection-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const collectionForm = event.currentTarget;
+    const form = new FormData(collectionForm);
+    const submit = collectionForm.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    submit.textContent = "Creating…";
+    collectionForm.setAttribute("aria-busy", "true");
+    try {
+      const result = await api("/api/admin/catalog/collections", { method: "POST", body: JSON.stringify({ name: form.get("name") }) });
+      const createdAt = new Date().toISOString();
+      state.collections = [...state.collections, { ...result.collection, createdAt, updatedAt: createdAt }].sort((a, b) => a.name.localeCompare(b.name));
+      if (result.section && !state.sections.some((section) => section.id === result.section.id)) state.sections.push(result.section);
+      collectionForm.reset();
+      renderCollections();
+      renderCollectionOptions();
+      notify("Collection created and ready to assign.");
+    } catch (error) { notify(error.message, true); }
+    finally { submit.disabled = false; submit.textContent = "Create collection"; collectionForm.setAttribute("aria-busy", "false"); }
+  });
+
+  byId("rename-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const renameForm = event.currentTarget;
+    const name = new FormData(renameForm).get("name");
+    const submit = renameForm.querySelector('button[type="submit"]');
+    submit.disabled = true; submit.textContent = "Saving…";
+    try {
+      const result = await api(`/api/admin/catalog/collections/${encodeURIComponent(state.renamingId)}`, { method: "PUT", body: JSON.stringify({ name }) });
+      const previous = state.collections.find((item) => item.id === state.renamingId);
+      const oldName = previous?.name;
+      const renamedAt = new Date().toISOString();
+      state.collections = state.collections.map((item) => item.id === state.renamingId ? { ...result.collection, createdAt: item.createdAt, updatedAt: renamedAt } : item).sort((a, b) => a.name.localeCompare(b.name));
+      if (oldName) {
+        state.styles = state.styles.map((style) => ({ ...style, collections: style.collections.map((collection) => collection === oldName ? result.collection.name : collection) }));
+        state.sections = state.sections.map((section) => String(section.slug).toLowerCase() === oldName.toLowerCase() ? { ...section, title: result.collection.name, slug: result.collection.name } : section);
+      }
+      renderStyles(); renderCollections(); renderCollectionOptions();
+      byId("rename-dialog").close(); notify("Collection renamed and assigned styles were updated.");
+    } catch (error) { notify(error.message, true); }
+    finally { submit.disabled = false; submit.textContent = "Save name"; }
+  });
+
+  byId("logout-button").addEventListener("click", async () => {
+    try { await api("/api/auth/logout", { method: "POST" }, false); } catch { /* Clear the browser session even when the network is unavailable. */ }
+    clearSession(); showLogin("You are signed out.");
+  });
+
+  if (!apiBase) showLogin("Set the backend URL in config.js before signing in.");
+  else if (sessionStorage.getItem(tokenKey)) { showApp(""); void loadCatalog(); }
+  else {
+    // A single connection attempt can begin while the member types credentials.
+    // Login remains independent of this optional public health request.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+    void fetch(`${apiBase}/health`, { cache: "no-store", signal: controller.signal }).catch(() => {}).finally(() => clearTimeout(timeout));
+  }
+})();

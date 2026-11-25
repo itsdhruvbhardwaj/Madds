@@ -1,0 +1,121 @@
+import { env } from "../../config/env.js";
+import { diagnosticToken } from "../generationDiagnostics.js";
+import { extractProviderError, readProviderError, sanitizeProviderText } from "../providerErrorDiagnostics.js";
+import type { GeneratedImage, GenerationProvider, UploadedImage } from "../../types/generation.js";
+import type { ImageGenerationConfig } from '../imageGenerationSettings.js';
+
+type OpenRouterImageResponse = {
+  data?: Array<{
+    b64_json?: string;
+    media_type?: string;
+  }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+};
+
+class OpenRouterRequestError extends Error {
+  readonly status: number;
+  providerCode?: string;
+  providerRequestId?: string;
+  reasonCategory?: string;
+
+  constructor(status: number) {
+    super(`OpenRouter image request failed with status ${status}.`);
+    this.name = "OpenRouterRequestError";
+    this.status = status;
+  }
+}
+
+function toImageReference(image: UploadedImage) {
+  const buffer = image.buffer ?? Buffer.alloc(0);
+  const mimeType = image.mimetype || "image/png";
+  return {
+    type: "image_url",
+    image_url: {
+      url: `data:${mimeType};base64,${buffer.toString("base64")}`,
+    },
+  };
+}
+
+export class OpenRouterImageGenerator implements GenerationProvider {
+  constructor(private readonly config?: ImageGenerationConfig) {}
+  async generate(input: {
+    prompt: string;
+    images: UploadedImage[];
+    aspectRatio?: string;
+    resolution?: string;
+  }): Promise<GeneratedImage> {
+    if (!env.openRouterApiKey) {
+      throw new Error("OPENROUTER_API_KEY is required for OpenRouter image generation.");
+    }
+
+    const model = this.config?.model ?? env.openRouterImageModel;
+    const usesQuality = ["openai/gpt-image-2.5-sunburst", "openai/gpt-image-2.6-sunburst"].includes(model);
+    const imageSettings = usesQuality
+      ? { quality: this.config?.quality ?? env.openRouterImageQuality }
+      : { resolution: input.resolution ?? env.openRouterImageResolution };
+    const complexity = model === 'openai/gpt-image-2.6-sunburst' ? this.config?.complexity : undefined;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), env.openAiTimeoutMs);
+
+    try {
+      const response = await fetch("https://openrouter.ai/api/v1/images", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${env.openRouterApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          prompt: input.prompt,
+          ...imageSettings,
+          ...(complexity ? { provider: { options: { openai: { complexity } } } } : {}),
+          aspect_ratio: input.aspectRatio ?? env.openRouterImageAspectRatio,
+          ...(input.images.length > 0
+            ? { input_references: input.images.map(toImageReference) }
+            : {}),
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const error = new OpenRouterRequestError(response.status);
+        const privateTexts = [input.prompt, env.openRouterApiKey, ...input.images.map(image => image.originalname)];
+        const details = extractProviderError(await readProviderError(response), privateTexts);
+        const headerReference = response.headers?.get("x-request-id") || response.headers?.get("request-id") || response.headers?.get("x-openrouter-request-id");
+        Object.assign(error, details, {
+          providerRequestId: extractProviderError({ request_id: headerReference }, privateTexts).providerRequestId || details.providerRequestId,
+          providerRequestSummary: sanitizeProviderText(JSON.stringify({
+            ...imageSettings,
+            ...(complexity ? { complexity } : {}),
+            aspectRatio: input.aspectRatio ?? env.openRouterImageAspectRatio,
+            images: input.images.map(image => ({ mimeType: image.mimetype, bytes: image.buffer?.length || 0 }))
+          }), privateTexts, 1000)
+        });
+        throw error;
+      }
+
+      const payload = await response.json() as OpenRouterImageResponse;
+      const image = payload.data?.[0];
+      if (typeof image?.b64_json !== "string" || !image.b64_json) {
+        throw Object.assign(new Error("OpenRouter returned an empty image payload."), { code: "EMPTY_IMAGE_RESPONSE" });
+      }
+
+      return {
+        base64: image.b64_json,
+        providerRequestId: diagnosticToken(response.headers?.get("x-request-id") || response.headers?.get("request-id")),
+        mimeType: image.media_type || "image/png",
+        usage: payload.usage ? {
+          inputTokens: payload.usage.prompt_tokens,
+          outputTokens: payload.usage.completion_tokens,
+          totalTokens: payload.usage.total_tokens,
+        } : undefined,
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+}

@@ -1,0 +1,103 @@
+package com.itsdhruvbhardwaj.picme.data.model
+
+import com.google.gson.annotations.SerializedName
+
+fun genderTagLabel(value: String?): String? = when (value) {
+    "her" -> "For her"
+    "him" -> "For him"
+    else -> null
+}
+
+/**
+ * Data model representing a generation style in PicMe.
+ */
+data class Style(
+    @SerializedName("id")
+    val id: String = "",
+    
+    @SerializedName("name")
+    val name: String = "",
+    
+    @SerializedName("description")
+    val description: String = "",
+    
+    @SerializedName("prompt")
+    val prompt: String = "",
+    
+    @SerializedName("thumbnail")
+    val thumbnail: String? = null,
+    
+    @SerializedName("previewImages", alternate = ["preview_images", "previews", "sample_images", "images", "preview_image_urls"])
+    val previewImages: List<String>? = emptyList(),
+
+    @SerializedName("exampleBeforeUrl", alternate = ["example_before_url"])
+    val exampleBeforeUrl: String? = null,
+
+    @SerializedName("exampleAfterUrl", alternate = ["example_after_url"])
+    val exampleAfterUrl: String? = null,
+    
+    @SerializedName("imageCount", alternate = ["image_count", "required_images"])
+    val imageCount: Int = 1,
+    
+    @SerializedName("tokensRequired", alternate = ["tokens_required", "price", "cost", "tokens", "credit_cost"])
+    val tokensRequired: Int = 0,
+    
+    @SerializedName("collections")
+    val collections: List<String> = emptyList(),
+
+    @SerializedName("isFavorite", alternate = ["is_favorite"])
+    val isFavorite: Boolean = false,
+    @SerializedName("genderTag")
+    val genderTag: String? = "none",
+    @SerializedName("tags") val tags: List<String>? = emptyList(),
+    @SerializedName("variantLabel") val variantLabel: String? = null,
+    @SerializedName("groupName") val groupName: String? = null,
+    @SerializedName("group") val group: StyleVariantGroup? = null
+)
+
+data class StyleVariantGroup(
+    val id: String = "", val name: String = "", val coverStyleId: String = "",
+    val variants: List<Style>? = emptyList()
+)
+
+val Style.cardTitle: String get() = group?.name?.takeIf { it.isNotBlank() } ?: groupName?.takeIf { it.isNotBlank() } ?: name
+val Style.variantCount: Int get() = group?.variants.orEmpty().size
+fun Style.publicCacheCopy(): Style = copy(isFavorite = false, prompt = "", group = group?.copy(
+    variants = group.variants.orEmpty().map { it.copy(isFavorite = false, prompt = "", group = null) }
+))
+fun styleCacheEntries(styles: List<Style>): Map<String, Style> = buildMap {
+    styles.forEach { style ->
+        style.group?.variants.orEmpty().forEach { variant -> put(variant.id, variant.copy(group = style.group)) }
+        put(style.id, style)
+    }
+}
+
+data class PaginationMetadata(
+    @SerializedName("currentPage", alternate = ["current_page"])
+    val currentPage: Int = 1,
+    
+    @SerializedName("totalPages", alternate = ["total_pages"])
+    val totalPages: Int = 1,
+    
+    @SerializedName("totalCount", alternate = ["total_count"])
+    val totalCount: Int = 0,
+    
+    @SerializedName("hasNextPage", alternate = ["has_next_page"])
+    val hasNextPage: Boolean = false
+)
+
+data class StyleResponse(
+    @SerializedName("styles")
+    val styles: List<Style> = emptyList(),
+    
+    @SerializedName("pagination")
+    val pagination: PaginationMetadata = PaginationMetadata()
+)
+
+data class FavoritesResponse(
+    @SerializedName("ok")
+    val ok: Boolean = false,
+    
+    @SerializedName("favorites")
+    val favorites: List<Style> = emptyList()
+)

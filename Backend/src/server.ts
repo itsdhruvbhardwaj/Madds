@@ -1,0 +1,688 @@
+import { generationFailureDetails } from "./services/generationDiagnostics.js";
+import { pathToFileURL } from "node:url";
+
+import cors from "cors";
+import express, { type NextFunction, type Request, type Response } from "express";
+import rateLimit from "express-rate-limit";
+import helmet from "helmet";
+import multer from "multer";
+import { fileTypeFromBuffer } from "file-type";
+
+import { connectToDatabase } from "./config/database.js";
+import { env } from "./config/env.js";
+import { requireAuth, type AuthenticatedRequest } from "./middleware/auth.js";
+import { cleanupScheduledAccountDeletions } from "./services/accountDeletion.js";
+import { cleanupUnverifiedSignups } from "./services/unverifiedSignupCleanup.js";
+import { CreditTransaction } from "./models/CreditTransaction.js";
+import { FavoriteStyle } from "./models/FavoriteStyle.js";
+import { Generation } from "./models/Generation.js";
+import { RewardedAdAttempt } from "./models/RewardedAdAttempt.js";
+import { Purchase } from "./models/Purchase.js";
+import { authRouter } from "./routes/auth.js";
+import { accountHistoryRouter } from "./routes/accountHistory.js";
+import { feedbackRouter } from "./routes/feedback.js";
+import { generationRecoveryRouter } from "./routes/generationRecovery.js";
+import { saveGenerationResult } from "./services/generationRecovery.js";
+import { GenerationResult } from "./models/GenerationResult.js";
+import { GenerationThumbnail } from "./models/GenerationThumbnail.js";
+import { GenerationNotification } from "./models/GenerationNotification.js";
+import { adminCatalogRouter } from "./routes/adminCatalog.js";
+import { adminSettingsRouter } from "./routes/adminSettings.js";
+import { startWelcomeBackProcessor } from "./services/welcomeBackCredits.js";
+import { publicAdSettingsRouter } from "./routes/adSettings.js";
+import { publicWatermarkRouter } from "./routes/watermarkSettings.js";
+import { adminStorageRouter } from "./routes/adminStorage.js";
+import { startStorageCleanup } from "./services/storageCleanup.js";
+import { adminUsersRouter } from "./routes/adminUsers.js";
+import { favoritesRouter } from "./routes/favorites.js";
+import { googlePlayBillingRouter } from "./routes/googlePlayBilling.js";
+import { rewardedAdsRouter } from "./routes/rewardedAds.js";
+import { dailyRewardsRouter } from './routes/dailyRewards.js';
+import { getHomeSectionCatalog, initializeHomeSectionCatalog } from "./services/home/homeCatalog.js";
+import { orderDiscoveryStyles, validDiscoverySeed } from "./services/styles/discoveryOrder.js";
+import { matchesStylePreference, validStylePreference } from "./services/styles/stylePreference.js";
+import { buildHomeFeed } from "./services/home/homeFeed.js";
+import { engagementPromptRouter } from "./routes/engagementPrompt.js";
+import { profileRouter } from "./routes/profile.js";
+import { notificationDevicesRouter } from "./routes/notificationDevices.js";
+import { styleDetailsRouter } from "./routes/styleDetails.js";
+import { adminNotificationsRouter } from "./modules/notifications/notification.routes.js";
+import { startWebNotificationProcessor } from "./modules/notifications/notification.web.js";
+import { startStyleImageCleanup } from "./services/styleImageCleanup.js";
+import { cleanupPendingProfileImages } from "./services/profileImages.js";
+import {
+  completeGeneration,
+  fingerprintGenerationRequest,
+  hashIdempotencyKey,
+  IdempotencyConflictError,
+  InsufficientCreditsError,
+  markGenerationOutcomeUnknown,
+  refundGeneration,
+  reserveGenerationCredits,
+  UserNotFoundError,
+} from "./services/credits/creditService.js";
+import { createImageGenerator } from "./services/generationProvider.js";
+import { resolveImageGenerationConfig, type ImageGenerationConfig } from './services/imageGenerationSettings.js';
+import { buildCustomPrompt, buildPrompt } from "./services/styles/styles.js";
+import { searchStyles } from './services/styles/styleSearch.js';
+import { tagAliases } from './services/styles/styleTags.js';
+import { groupStyles, groupSearchNames, listPublishedGroups } from './services/styles/styleGroups.js';
+import { getCatalogStyle, listCatalogCollectionSummaries, listCatalogCollections, listCatalogStyles } from "./services/styles/catalog.js";
+import type { Style } from "./services/styles/styleTypes.js";
+import type { UploadedImage } from "./types/generation.js";
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: env.maxUploadBytes,
+    files: 2,
+  },
+});
+
+type GenerationRequest = AuthenticatedRequest & {
+  idempotencyKeyHash?: string;
+};
+
+function requireIdempotencyKey(
+  req: GenerationRequest,
+  res: Response,
+  next: NextFunction,
+): void {
+  const key = req.get("Idempotency-Key")?.trim();
+  if (!key) {
+    res.status(400).json({
+      ok: false,
+      code: "IDEMPOTENCY_KEY_REQUIRED",
+      error: "An Idempotency-Key header is required.",
+    });
+    return;
+  }
+  if (key.length < 8 || key.length > 128 || !/^[A-Za-z0-9._~-]+$/.test(key)) {
+    res.status(400).json({
+      ok: false,
+      code: "IDEMPOTENCY_KEY_INVALID",
+      error: "Idempotency-Key must be 8 to 128 URL-safe characters.",
+    });
+    return;
+  }
+
+  req.idempotencyKeyHash = hashIdempotencyKey(key);
+  next();
+}
+
+function isConfirmedProviderFailure(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("status" in error)) {
+    return false;
+  }
+  const status = error.status;
+  return typeof status === "number" && status >= 400 && status < 500 && status !== 408;
+}
+
+function optionalAuth(req: Request, res: Response, next: NextFunction): void {
+  if (!req.headers.authorization) {
+    next();
+    return;
+  }
+
+  void requireAuth(req as AuthenticatedRequest, res, next);
+}
+
+const app = express();
+
+app.set("trust proxy", 1);
+app.disable("x-powered-by");
+app.use(helmet());
+app.use(
+  cors({
+    origin: env.clientOrigins.length > 0 ? env.clientOrigins : true,
+    credentials: true,
+  }),
+);
+app.use(express.json({ limit: "5mb" }));
+app.use(
+  rateLimit({
+    windowMs: 60_000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => req.path === "/api/ads/admob/ssv" || req.path === "/api/generations" || req.path.startsWith("/api/generations/") || (
+      req.method === "GET" && ["/api/home/config", "/api/collections", "/api/styles"].includes(req.path)
+    ),
+  }),
+);
+app.use(
+  ["/api/home/config", "/api/collections", "/api/styles"],
+  rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false }),
+);
+
+app.get("/.well-known/assetlinks.json", (_req: Request, res: Response) => {
+  res.json([
+    {
+      relation: ["delegate_permission/common.handle_all_urls"],
+      target: {
+        namespace: "android_app",
+        package_name: "com.itsdhruvbhardwaj.picme",
+        sha256_cert_fingerprints: [
+          "B9:EA:A3:05:97:C5:CF:64:FE:D7:A0:4D:DE:5B:E9:31:F7:E2:C0:E4:2B:AF:A5:9F:A1:DE:F0:4B:C3:A3:B4:8C",
+          "4E:C5:23:26:60:7B:E9:86:89:62:EE:B4:86:2A:57:20:87:5F:E6:9A:C4:DF:EA:E8:28:0C:1E:48:7C:28:4E:87",
+          "A1:F7:90:CC:7F:42:6B:BA:4E:9C:A2:60:20:72:90:F0:CE:E8:52:06:EF:4C:6B:EC:04:98:3B:F8:C7:47:65:EA",
+          "CD:B7:4B:DF:1C:1A:02:A3:3B:05:CF:F1:4B:C5:72:F6:F3:22:3A:12:99:53:04:8D:24:DA:00:25:D1:13:93:A4",
+        ],
+      },
+    },
+  ]);
+});
+
+app.get("/health", (_req: Request, res: Response) => {
+  res.json({ ok: true, service: "ai-photo-studio-backend",
+    revision: /^[a-f0-9]{40}$/i.test(process.env.RENDER_GIT_COMMIT || "") ? process.env.RENDER_GIT_COMMIT!.slice(0, 12) : null });
+});
+
+app.use(["/api/home/config", "/api/styles", "/api/collections"], (req, res, next) => {
+  if (req.query.shuffleSeed !== undefined && !validDiscoverySeed(req.query.shuffleSeed)) return res.status(400).json({ error: "Invalid discovery session." });
+  if (req.query.gender !== undefined && !validStylePreference(req.query.gender)) return res.status(400).json({ error: "Invalid style preference." });
+  next();
+});
+app.get("/api/home/config", async (req: Request, res: Response) => {
+  if (req.query.includeStyles !== "true") {
+    res.json({ sections: await getHomeSectionCatalog() });
+    return;
+  }
+  // Public catalogue only: one catalogue read replaces a request per section.
+  const [sections, styles] = await Promise.all([getHomeSectionCatalog(), listCatalogStyles()]);
+  if (req.query.grouped === 'true') {
+    const groups = await listPublishedGroups();
+    const eligible = styles.filter(style => matchesStylePreference(style, String(req.query.gender || 'all')));
+    return res.json({ sections: sections.filter(section => section.visible).sort((a, b) => a.order - b.order).map(section => {
+      const members = section.slug ? eligible.filter(style => style.collections.some(name => name.toLowerCase() === section.slug!.toLowerCase())) : eligible;
+      return { ...section, styles: orderDiscoveryStyles(groupStyles(members, members, groups), req.query.shuffleSeed as string | undefined).slice(0, 10) };
+    }) });
+  }
+  res.json(buildHomeFeed(sections, orderDiscoveryStyles(styles.filter(style => matchesStylePreference(style, String(req.query.gender || "all"))), req.query.shuffleSeed as string | undefined)));
+});
+
+app.get("/api/collections", async (req: Request, res: Response) => {
+  if (req.query.grouped === 'true') {
+    const [collections, styles, groups] = await Promise.all([listCatalogCollections(), listCatalogStyles(), listPublishedGroups()]);
+    const eligible = styles.filter(style => matchesStylePreference(style, String(req.query.gender || 'all')));
+    return res.json({ collections: collections.flatMap(collection => {
+      const members = eligible.filter(style => style.collections.some(name => name.toLowerCase() === collection.name.toLowerCase()));
+      const cards = groupStyles(members, members, groups);
+      return cards.length ? [{ ...collection, thumbnail: cards[0].thumbnail, styleCount: cards.length }] : [];
+    }) });
+  }
+  res.json({ collections: await listCatalogCollectionSummaries(String(req.query.gender || "all")) });
+});
+
+app.get("/api/styles", optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  // Parse query parameters with defaults and safety limits
+  const page = Math.max(1, parseInt(req.query.page as string) || 1);
+  const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 18));
+  const collectionQuery = req.query.collection;
+  const searchQuery = typeof req.query.search === "string" ? req.query.search.trim().toLowerCase() : "";
+  const trendingFirst = req.query.trendingFirst === "true";
+  const collections = (Array.isArray(collectionQuery) ? collectionQuery : [collectionQuery])
+    .filter((value): value is string => typeof value === "string");
+
+  // Apply collection filters before pagination
+  const [catalogueStyles, catalogueCollections] = await Promise.all([listCatalogStyles(), listCatalogCollections()]);
+  let filteredStyles = catalogueStyles.filter(style => matchesStylePreference(style, String(req.query.gender || "all")));
+  if (collections.length > 0) {
+    filteredStyles = filteredStyles.filter((style) =>
+      style.collections.some((collection) =>
+        collections.some((requestedCollection) =>
+          collection.toLowerCase() === requestedCollection.toLowerCase()
+        )
+      )
+    );
+  }
+  const eligibleStyles = filteredStyles;
+  const publishedGroups = req.query.grouped === 'true' ? await listPublishedGroups() : [];
+  filteredStyles = orderDiscoveryStyles(filteredStyles, req.query.shuffleSeed as string | undefined, trendingFirst);
+  filteredStyles = searchStyles(filteredStyles, searchQuery, groupSearchNames(publishedGroups));
+  if (req.query.grouped === 'true') {
+    filteredStyles = groupStyles(filteredStyles, eligibleStyles, publishedGroups, Boolean(searchQuery));
+    if (!searchQuery) filteredStyles = orderDiscoveryStyles(filteredStyles, req.query.shuffleSeed as string | undefined, trendingFirst);
+  }
+
+  // Calculate pagination metadata
+  const totalCount = filteredStyles.length;
+  const totalPages = Math.ceil(totalCount / limit);
+  const startIndex = (page - 1) * limit;
+  const endIndex = page * limit;
+
+  // Slice styles for the requested page
+  const paginatedStyles = filteredStyles.slice(startIndex, endIndex);
+  const userId = req.user?.id;
+  const favoriteIds = userId
+    ? new Set(
+        (await FavoriteStyle.find({ userId }, null, { maxTimeMS: 5_000 }).select("styleId -_id").lean())
+          .map(({ styleId }) => styleId),
+      )
+    : new Set<string>();
+
+  res.json({
+    searchAliases: tagAliases,
+    styles: paginatedStyles.map((style) => ({
+      ...style,
+      isFavorite: favoriteIds.has(style.id),
+      ...(style.group ? { group: { ...style.group, variants: style.group.variants.map(variant => ({ ...variant, isFavorite: favoriteIds.has(variant.id) })) } } : {}),
+    })),
+    collections: [...new Set([
+      ...catalogueCollections.map((collection) => collection.name),
+      ...catalogueStyles.flatMap((style) => style.collections),
+    ])],
+    pagination: {
+      currentPage: page,
+      totalPages: totalPages,
+      totalCount: totalCount,
+      hasNextPage: page < totalPages,
+    },
+  });
+});
+
+app.use("/api/auth", authRouter);
+app.use("/api/styles", styleDetailsRouter);
+app.use("/api/profile", profileRouter);
+app.use("/api/engagement", engagementPromptRouter);
+app.use("/api/notifications", notificationDevicesRouter);
+app.use("/api", feedbackRouter);
+app.use("/api/generations", generationRecoveryRouter);
+app.use("/api/admin/notifications", adminNotificationsRouter);
+app.use("/api/admin/users", adminUsersRouter);
+app.use("/api/admin/storage", adminStorageRouter);
+app.use("/api/admin/settings", adminSettingsRouter);
+app.use("/api/app-config/watermark", publicWatermarkRouter);
+app.use("/api/app-config/ads", publicAdSettingsRouter);
+app.use("/api/admin", adminCatalogRouter);
+app.use("/api/me", favoritesRouter);
+app.use("/api", rewardedAdsRouter);
+app.use('/api/daily-rewards', dailyRewardsRouter);
+app.use("/api", googlePlayBillingRouter);
+app.use("/api/me", accountHistoryRouter);
+
+app.post(
+  "/api/generate",
+  requireAuth,
+  requireIdempotencyKey,
+  upload.array("images", 2),
+  async (req: GenerationRequest, res: Response) => {
+    const userId = req.user?.id;
+    const idempotencyKeyHash = req.idempotencyKeyHash;
+    if (!userId || !idempotencyKeyHash) {
+      return res.status(401).json({
+        ok: false,
+        code: "AUTHENTICATION_REQUIRED",
+        error: "Authentication required.",
+      });
+    }
+
+    const body = req.body ?? {};
+    const hasStyleId = Object.prototype.hasOwnProperty.call(body, "styleId");
+    const hasCustomPrompt = Object.prototype.hasOwnProperty.call(body, "customPrompt");
+    if (hasStyleId === hasCustomPrompt) {
+      return res.status(400).json({
+        ok: false,
+        code: hasStyleId ? "GENERATION_MODE_CONFLICT" : "GENERATION_MODE_REQUIRED",
+        error: hasStyleId
+          ? "Provide either styleId or customPrompt, not both."
+          : "Provide either styleId or customPrompt.",
+      });
+    }
+
+    let style: Style | undefined;
+    let customPrompt: string | undefined;
+    if (hasStyleId) {
+      const styleId = typeof body.styleId === "string" ? body.styleId.trim() : "";
+      style = await getCatalogStyle(styleId);
+      if (!style) {
+        return res.status(400).json({
+          ok: false,
+          code: "INVALID_STYLE",
+          error: "A valid styleId is required.",
+        });
+      }
+    } else {
+      customPrompt = typeof body.customPrompt === "string" ? body.customPrompt.trim() : "";
+      if (!customPrompt) {
+        return res.status(400).json({
+          ok: false,
+          code: "CUSTOM_PROMPT_EMPTY",
+          error: "A non-empty customPrompt is required.",
+        });
+      }
+
+      const wordCount = customPrompt.split(/\s+/u).length;
+      if (wordCount > 150) {
+        return res.status(400).json({
+          ok: false,
+          code: "CUSTOM_PROMPT_TOO_LONG",
+          error: "customPrompt must contain no more than 150 words.",
+          maxWords: 150,
+        });
+      }
+    }
+
+    const uploadedFiles = Array.isArray(req.files) ? req.files : [];
+    if (style && uploadedFiles.length !== style.imageCount) {
+      return res.status(400).json({
+        ok: false,
+        code: "INVALID_IMAGE_COUNT",
+        error: `This style requires exactly ${style.imageCount} reference image${style.imageCount === 1 ? "" : "s"}.`,
+        requiredImageCount: style.imageCount,
+      });
+    }
+
+    const inspectedImages = await Promise.all(
+      uploadedFiles.map(async (file) => {
+        const detectedType = await fileTypeFromBuffer(file.buffer);
+        const mimeType = detectedType?.mime ?? file.mimetype ?? "image/png";
+
+        if (!mimeType.startsWith("image/")) {
+          return null;
+        }
+
+        return {
+          path: file.originalname,
+          originalname: file.originalname,
+          mimetype: mimeType,
+          buffer: file.buffer,
+        };
+      }),
+    );
+
+    if (inspectedImages.some((image) => image === null)) {
+      return res.status(400).json({
+        ok: false,
+        code: "INVALID_IMAGE",
+        error: "One or more uploaded files are not valid images.",
+      });
+    }
+    const validatedImages = inspectedImages.filter((image) => image !== null);
+
+    let generationConfig: ImageGenerationConfig;
+    try { generationConfig = await resolveImageGenerationConfig(); }
+    catch {
+      return res.status(503).json({ ok: false, code: 'GENERATION_UNAVAILABLE', error: 'Image generation settings are temporarily unavailable. Please retry.' });
+    }
+    const providerKeyMissing = generationConfig.provider === "openrouter"
+      ? !env.openRouterApiKey
+      : generationConfig.provider === "openai"
+        ? !env.openAiApiKey
+        : true;
+    if (providerKeyMissing) {
+      return res.status(503).json({
+        ok: false,
+        code: "GENERATION_UNAVAILABLE",
+        error: "Image generation is temporarily unavailable.",
+      });
+    }
+
+    const reservationStyleId = style?.id ?? "custom-prompt";
+    const requestFingerprint = fingerprintGenerationRequest(
+      reservationStyleId,
+      validatedImages,
+      customPrompt,
+    );
+    let reservation: { generationId: string; balanceAfter: number };
+    try {
+      reservation = await reserveGenerationCredits({
+        userId,
+        styleId: reservationStyleId,
+        idempotencyKeyHash,
+        requestFingerprint,
+        creditsCost: style?.tokensRequired ?? 10,
+      });
+    } catch (error) {
+      if (error instanceof InsufficientCreditsError) {
+        return res.status(402).json({
+          ok: false,
+          code: "INSUFFICIENT_CREDITS",
+          error: "Not enough credits.",
+          requiredCredits: error.requiredCredits,
+          availableCredits: error.availableCredits,
+        });
+      }
+      if (error instanceof IdempotencyConflictError) {
+        const code = !error.sameRequest
+          ? "IDEMPOTENCY_KEY_REUSED"
+          : error.status === "processing"
+            ? "GENERATION_IN_PROGRESS"
+            : error.status === "completed"
+              ? "GENERATION_ALREADY_COMPLETED"
+              : error.status === "outcome_unknown"
+                ? "GENERATION_OUTCOME_UNKNOWN"
+                : "GENERATION_FAILED";
+        return res.status(409).json({
+          ok: false,
+          code,
+          error: !error.sameRequest
+            ? "This Idempotency-Key was already used for a different request."
+            : "This generation request has already been accepted and will not be run again.",
+          generationId: error.generationId,
+          status: error.status,
+        });
+      }
+      if (error instanceof UserNotFoundError) {
+        return res.status(401).json({
+          ok: false,
+          code: "USER_NOT_FOUND",
+          error: "Authenticated user was not found.",
+        });
+      }
+      console.error("Credit reservation failed.", error instanceof Error ? error.name : "UNKNOWN");
+      return res.status(500).json({
+        ok: false,
+        code: "CREDIT_RESERVATION_FAILED",
+        error: "Unable to reserve credits for generation.",
+      });
+    }
+
+    // New apps receive an operation ID immediately. Paid work continues once;
+    // status/result requests never execute this provider call again.
+    if (req.get("X-Generation-Recovery") === "1") {
+      res.status(202).json({ ok: true, generationId: reservation.generationId, status: "processing" });
+    }
+    const reply = res.headersSent
+      ? { status: (_status: number) => ({ json: (_body: unknown) => undefined }) }
+      : res;
+    const providerStartedAt = new Date();
+    const recordDiagnostics = async (details: Record<string, unknown>) => {
+      try { await Generation.updateOne({ _id: reservation.generationId, userId }, { $set: {
+        ...details, providerName: generationConfig.provider, providerModel: generationConfig.model,
+      } }); }
+      catch { console.error("Generation diagnostics could not be saved.", reservation.generationId); }
+    };
+    await recordDiagnostics({ providerStartedAt, providerSettingsRevision: generationConfig.revision,
+      providerQuality: generationConfig.quality, providerComplexity: generationConfig.complexity });
+    let result;
+    try {
+      const generator = createImageGenerator(generationConfig);
+      result = await generator.generate({
+        prompt: style
+          ? buildPrompt(style, validatedImages.length)
+          : buildCustomPrompt(customPrompt ?? "", validatedImages.length),
+        images: validatedImages,
+      });
+    } catch (error) {
+      await recordDiagnostics({ ...generationFailureDetails(error), providerDurationMs: Date.now() - providerStartedAt.getTime() });
+      if (isConfirmedProviderFailure(error)) {
+        try {
+          const refunded = await refundGeneration(reservation.generationId, "PROVIDER_REJECTED");
+          if (!refunded) {
+            console.error("Generation refund was not committed.", reservation.generationId);
+            return reply.status(500).json({
+              ok: false,
+              code: "GENERATION_REFUND_PENDING",
+              error: "Generation failed, but its refund is pending reconciliation.",
+              generationId: reservation.generationId,
+            });
+          }
+          return reply.status(502).json({
+            ok: false,
+            code: "GENERATION_FAILED_CREDITS_REFUNDED",
+            error: "Image generation failed. Reserved credits were refunded.",
+            generationId: reservation.generationId,
+          });
+        } catch (refundError) {
+          console.error(
+            "Generation refund transaction failed.",
+            reservation.generationId,
+            refundError instanceof Error ? refundError.name : "UNKNOWN",
+          );
+          return reply.status(500).json({
+            ok: false,
+            code: "GENERATION_REFUND_PENDING",
+            error: "Generation failed, but its refund is pending reconciliation.",
+            generationId: reservation.generationId,
+          });
+        }
+      }
+
+      try {
+        await markGenerationOutcomeUnknown(reservation.generationId, "PROVIDER_OUTCOME_UNKNOWN");
+      } catch (stateError) {
+        console.error(
+          "Unable to record uncertain generation outcome.",
+          reservation.generationId,
+          stateError instanceof Error ? stateError.name : "UNKNOWN",
+        );
+      }
+      return reply.status(504).json({
+        ok: false,
+        code: "GENERATION_OUTCOME_UNKNOWN",
+        error: "The provider outcome is uncertain. Reserved credits remain held; retrying this key will not start another generation.",
+        generationId: reservation.generationId,
+      });
+    }
+
+    await recordDiagnostics({ providerDurationMs: Date.now() - providerStartedAt.getTime(), providerCompletedAt: new Date(), providerRequestId: result.providerRequestId });
+    const image = `data:${result.mimeType ?? `image/${env.imageFormat}`};base64,${result.base64}`;
+    let resultExpiresAt: Date | undefined;
+    try {
+      resultExpiresAt = await saveGenerationResult(userId, reservation.generationId, image);
+      const completed = await completeGeneration(reservation.generationId);
+      if (!completed && !await Generation.exists({ _id: reservation.generationId, userId, status: "completed", resultParts: { $gt: 0 } })) {
+        throw new Error("Generation completion state was not updated.");
+      }
+    } catch (error) {
+      await recordDiagnostics({ ...generationFailureDetails(error, "storage"), failureCode: "GENERATION_FINALIZATION_PENDING" });
+      try { await markGenerationOutcomeUnknown(reservation.generationId, "GENERATION_FINALIZATION_PENDING"); }
+      catch { console.error("Unable to record finalization failure.", reservation.generationId); }
+      console.error(
+        "Generated image could not be finalized.",
+        reservation.generationId,
+        error instanceof Error ? error.name : "UNKNOWN",
+      );
+      return reply.status(503).json({
+        ok: false,
+        code: "GENERATION_FINALIZATION_PENDING",
+        error: "Generation completed, but its result could not be finalized. Do not retry with a new key.",
+        generationId: reservation.generationId,
+      });
+    }
+
+    return reply.status(200).json({
+      ok: true,
+      image,
+      generationId: reservation.generationId,
+      usage: result.usage,
+      resultExpiresAt,
+      serverNow: new Date().toISOString(),
+    });
+  },
+);
+
+app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === "LIMIT_UNEXPECTED_FILE" || error.code === "LIMIT_FILE_COUNT") {
+      res.status(400).json({
+        ok: false,
+        code: "TOO_MANY_IMAGES",
+        error: "A maximum of 2 images may be uploaded.",
+      });
+      return;
+    }
+    if (error.code === "LIMIT_FILE_SIZE") {
+      res.status(400).json({
+        ok: false,
+        code: "IMAGE_TOO_LARGE",
+        error: "An uploaded image exceeds the allowed file size.",
+      });
+      return;
+    }
+  }
+
+  res.status(500).json({
+    ok: false,
+    error: error.message,
+  });
+});
+
+export { app };
+
+const isDirectExecution =
+  typeof process.argv[1] === "string" &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isDirectExecution) {
+  void connectToDatabase()
+    .then(async (database) => {
+      if (database) {
+        await Promise.all([
+          Generation.init(),
+          GenerationResult.init(),
+          GenerationThumbnail.init(),
+          GenerationNotification.init(),
+          CreditTransaction.init(),
+          FavoriteStyle.init(),
+          RewardedAdAttempt.init(),
+          Purchase.init(),
+        ]);
+        const { initializeStyleCatalog } = await import("./services/styles/catalog.js");
+        await initializeStyleCatalog();
+        await initializeHomeSectionCatalog();
+        const stopStorageCleanup = startStorageCleanup();
+        process.once("SIGTERM", stopStorageCleanup);
+        process.once("SIGINT", stopStorageCleanup);
+        const stopStyleCleanup = startStyleImageCleanup();
+        process.once("SIGTERM", stopStyleCleanup);
+        process.once("SIGINT", stopStyleCleanup);
+        await cleanupScheduledAccountDeletions();
+        await cleanupUnverifiedSignups();
+        void cleanupPendingProfileImages().catch(() => console.warn("Profile cleanup deferred."));
+        const accountDeletionCleanupTimer = setInterval(() => {
+          void cleanupUnverifiedSignups().catch(() => console.warn("Unverified signup cleanup deferred."));
+          void cleanupPendingProfileImages().catch(() => console.warn("Profile cleanup deferred."));
+          void cleanupScheduledAccountDeletions().catch((error: unknown) => {
+            console.error(
+              "Account deletion cleanup failed.",
+              error instanceof Error ? error.name : "UNKNOWN",
+            );
+          });
+        }, 60 * 60 * 1000);
+        accountDeletionCleanupTimer.unref();
+      }
+      app.listen(env.port, () => {
+        console.log(`Server listening on port ${env.port}`);
+        if (database) {
+          const stopWelcomeBack = startWelcomeBackProcessor();
+          process.once("SIGTERM", () => { void stopWelcomeBack(); });
+          process.once("SIGINT", () => { void stopWelcomeBack(); });
+          try {
+            const stopNotifications = startWebNotificationProcessor();
+            if (stopNotifications) {
+              process.once("SIGTERM", () => { void stopNotifications(); });
+              process.once("SIGINT", () => { void stopNotifications(); });
+            }
+          } catch {
+            console.warn("Web notification processor unavailable. Check Firebase configuration.");
+          }
+        }
+      });
+    })
+    .catch((error: unknown) => {
+      console.error("Backend startup failed.", error instanceof Error ? error.name : "UNKNOWN");
+      process.exit(1);
+    });
+}

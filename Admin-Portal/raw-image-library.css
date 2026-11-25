@@ -1,0 +1,44 @@
+#raw-image-dialog { width: min(1440px, calc(100vw - 32px)); height: min(94dvh, 1080px); max-height: 94dvh; overflow: hidden; }
+#raw-image-dialog > form { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; overflow: hidden; padding: 20px 24px; }
+#raw-image-dialog .dialog-header { margin: 0 0 8px; }
+#raw-image-dialog .field-hint { margin: 4px 0; }
+#raw-image-folder-title { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.raw-image-toolbar { display: flex; gap: 10px; align-items: center; margin: 8px 0 10px; }
+.raw-image-toolbar input[type="search"] { flex: 1; min-width: 0; }
+.raw-image-toolbar button { flex-shrink: 0; }
+.raw-image-grid { display: grid; flex: 1; min-height: 0; align-content: start; align-items: start; grid-template-columns: repeat(auto-fill, minmax(205px, 1fr)); grid-auto-rows: max-content; gap: 14px; overflow-y: auto; padding: 4px 4px 16px; }
+.raw-image-card { display: flex; flex-direction: column; align-items: stretch; align-self: start; min-width: 0; height: max-content; overflow: hidden; text-align: left; padding: 0; border: 1px solid var(--line); background: transparent; color: inherit; border-radius: 10px; }
+.raw-image-card:hover, .raw-image-card:focus-visible { border-color: #cca967; outline: 1px solid #cca967; }
+.raw-image-photo-button { display: block; position: relative; width: 100%; aspect-ratio: 5 / 7; flex: 0 0 auto; overflow: hidden; border: 0; padding: 0; border-radius: 0; background: #80808013; cursor: zoom-in; }
+.raw-image-card img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+.raw-image-card span { flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 10px 10px 8px; font-size: 12px; }
+#upload-after-image[hidden] { display: none; }
+.raw-image-folders { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 0; }
+.raw-image-folders button { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border: 1px solid var(--line); background: transparent; color: inherit; border-radius: 8px; cursor: pointer; }
+.raw-image-folders button[aria-pressed="true"] { border-color: #cca967; color: #cca967; background: #cca96718; }
+.raw-card-actions { display: flex; flex-shrink: 0; gap: 6px; padding: 0 8px 8px; }
+.raw-card-actions .button, .raw-card-actions select { flex: 1 1 0; min-width: 0; width: 0; min-height: 34px; margin: 0; font-size: 11px; padding: 7px 5px; border-radius: 7px; }
+.raw-card-actions .button { text-align: center; text-decoration: none; }
+.raw-card-actions select { padding-right: 18px; }
+.raw-image-skeleton { aspect-ratio: 5 / 7; border-radius: 10px; background: linear-gradient(110deg, #7a7a7a12 8%, #7a7a7a2c 24%, #7a7a7a12 40%); background-size: 200% 100%; animation: raw-image-loading 1.4s linear infinite; }
+@keyframes raw-image-loading { to { background-position: -200% 0; } }
+#raw-image-preview-dialog { width: min(1100px, calc(100vw - 28px)); height: min(95dvh, 1080px); max-height: 95dvh; overflow: hidden; }
+#raw-image-preview-dialog[open] { display: flex; flex-direction: column; }
+.raw-preview-header, .raw-preview-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; }
+.raw-preview-header h2 { font-size: 16px; overflow-wrap: anywhere; margin: 0; }
+.raw-preview-image { flex: 1; min-height: 0; display: grid; place-items: center; padding: 8px; background: #111; }
+.raw-preview-image img { width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.raw-preview-actions { justify-content: flex-end; }
+.raw-preview-actions a { text-decoration: none; }
+#raw-preview-download[hidden], #raw-preview-select[hidden] { display: none; }
+.user-serial-number { font-variant-numeric: tabular-nums; color: var(--muted); }
+@media(max-width: 600px) {
+  #raw-image-dialog { width: calc(100vw - 12px); height: 95dvh; max-height: 95dvh; }
+  #raw-image-dialog > form { padding: 12px; }
+  .raw-image-folders { flex-wrap: nowrap; overflow-x: auto; }
+  .raw-image-folders button { flex-shrink: 0; padding: 8px; font-size: 12px; }
+  .raw-image-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .raw-image-toolbar { gap: 6px; }
+  .raw-image-toolbar .button { padding: 10px 8px; }
+}
+@media(prefers-reduced-motion: reduce) { .raw-image-skeleton { animation: none; } }

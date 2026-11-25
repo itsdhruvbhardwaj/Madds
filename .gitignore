@@ -1,0 +1,25 @@
+# Android
+.gradle/
+**/build/
+local.properties
+App/app/google-services.json
+*.iml
+.idea/
+.externalNativeBuild/
+.cxx/
+
+# Backend
+**/*firebase-adminsdk*.json
+**/firebase-service-account.json
+Backend/node_modules/
+Backend/dist/
+Backend/.env
+Backend/.env.*
+!Backend/.env.example
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

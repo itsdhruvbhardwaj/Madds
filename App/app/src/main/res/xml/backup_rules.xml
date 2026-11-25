@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <exclude domain="sharedpref" path="madds_saved_generations.xml" />
+    <!-- Android Keystore keys cannot be restored alongside these preferences. -->
+    <exclude domain="sharedpref" path="picme_secure_auth_prefs.xml" />
+    <exclude domain="sharedpref" path="madds_push_installation.xml" />
+    <exclude domain="sharedpref" path="madds_generation_alerts.xml" />
+</full-backup-content>

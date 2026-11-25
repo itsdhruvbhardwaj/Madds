@@ -1,0 +1,20 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="340" android:viewportHeight="340">
+    <!-- Monochrome wordmark fallback with no surrounding outline. -->
+    <group android:translateX="28" android:translateY="126" android:scaleX="0.84" android:scaleY="0.84">
+        <path android:fillColor="@android:color/transparent" android:strokeColor="#FFFFFFFF" android:strokeWidth="12" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M12 88V53C12 34 40 34 40 53V88M40 53C40 34 68 34 68 53V88" />
+      <group android:translateX="15">
+        <path android:fillColor="@android:color/transparent" android:strokeColor="#FFFFFFFF" android:strokeWidth="12" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M119 51C113 41 104 36 93 36C77 36 67 48 67 64C67 80 78 92 94 92C104 92 113 87 119 78M119 36V88" />
+      </group>
+      <group android:translateX="16">
+        <path android:fillColor="@android:color/transparent" android:strokeColor="#FFFFFFFF" android:strokeWidth="12" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M184 51C178 41 169 36 158 36C142 36 132 48 132 64C132 80 143 92 159 92C169 92 178 87 184 78M184 12V88" />
+      </group>
+      <group android:translateX="17">
+        <path android:fillColor="@android:color/transparent" android:strokeColor="#FFFFFFFF" android:strokeWidth="12" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M249 51C243 41 234 36 223 36C207 36 197 48 197 64C197 80 208 92 224 92C234 92 243 87 249 78M249 12V88" />
+      </group>
+      <group android:translateX="21">
+        <path android:fillColor="@android:color/transparent" android:strokeColor="#FFFFFFFF" android:strokeWidth="12" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M304 49C298 43 290 40 280 40C268 40 261 46 261 54C261 62 268 66 282 69C297 72 304 76 304 82C304 89 296 92 283 92C273 92 265 89 259 83" />
+      </group>
+    </group>
+</vector>

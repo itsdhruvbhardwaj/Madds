@@ -1,0 +1,236 @@
+import { createHash, randomUUID } from "node:crypto";
+
+import { styles as bundledStyles } from "./styles/index.js";
+import { env } from "../config/env.js";
+
+export type CloudinaryUploadSignature = {
+  cloudName: string;
+  apiKey: string;
+  timestamp: number;
+  signature: string;
+  folder: string;
+  publicId: string;
+  expectedPublicId: string;
+  tags: string;
+};
+
+export function cloudinaryIsConfigured(): boolean {
+  return Boolean(env.cloudinaryCloudName && env.cloudinaryApiKey && env.cloudinaryApiSecret);
+}
+
+export async function uploadRawStyleImage(buffer: Buffer, filename: string, mime: string, publicId: string): Promise<string> {
+  if (!cloudinaryIsConfigured()) throw new Error("Cloudinary upload is not configured.");
+  const params = {
+    public_id: publicId,
+    asset_folder: "Madds-aiphotostudio/Raw-images",
+    overwrite: "false",
+    timestamp: String(Math.floor(Date.now() / 1000)),
+  };
+  const body = new FormData();
+  for (const [key, value] of Object.entries(params)) body.append(key, value);
+  body.append("api_key", env.cloudinaryApiKey);
+  body.append("signature", signCloudinaryParameters(params));
+  body.append("file", new Blob([new Uint8Array(buffer)], { type: mime }), filename);
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(env.cloudinaryCloudName)}/image/upload`, { method: "POST", body, signal: AbortSignal.timeout(30_000) });
+  const uploaded = await response.json() as { public_id?: string; secure_url?: string };
+  if (!response.ok || uploaded.public_id !== publicId || !uploaded.secure_url) throw new Error("Original image upload failed. Please retry.");
+  return uploaded.secure_url;
+}
+
+export function createStyleImageUploadSignature(collectionNames: string[]): CloudinaryUploadSignature {
+  const names = collectionNames.length ? collectionNames : ["Other"];
+  const primarySlug = slugify(names[0]) || "other";
+  const folder = `picmee/styles/${primarySlug}`;
+  const timestamp = Math.floor(Date.now() / 1000);
+  const publicId = `img-${randomUUID()}`;
+  const expectedPublicId = `${folder}/${publicId}`;
+  const tags = [...new Set(["picmee-style", ...names.map((name) => slugify(name)).filter(Boolean)])].join(",");
+  const signature = signCloudinaryParameters({
+    folder,
+    public_id: publicId,
+    tags,
+    timestamp: String(timestamp),
+  });
+
+  return {
+    cloudName: env.cloudinaryCloudName,
+    apiKey: env.cloudinaryApiKey,
+    timestamp,
+    signature,
+    folder,
+    publicId,
+    expectedPublicId,
+    tags,
+  };
+}
+
+/**
+ * Notification images are uploaded directly from Madds Studio with a short-lived
+ * signature. Keeping the secret on the backend lets Studio upload efficiently
+ * without ever exposing Cloudinary credentials to the browser.
+ */
+export function createNotificationImageUploadSignature(): CloudinaryUploadSignature {
+  const folder = "picmee/notifications";
+  const timestamp = Math.floor(Date.now() / 1000);
+  const publicId = `notification-${randomUUID()}`;
+  const expectedPublicId = `${folder}/${publicId}`;
+  const tags = "picmee-notification";
+  const signature = signCloudinaryParameters({
+    folder,
+    public_id: publicId,
+    tags,
+    timestamp: String(timestamp),
+  });
+
+  return {
+    cloudName: env.cloudinaryCloudName,
+    apiKey: env.cloudinaryApiKey,
+    timestamp,
+    signature,
+    folder,
+    publicId,
+    expectedPublicId,
+    tags,
+  };
+}
+
+/**
+ * Older Studio versions queued the bare `img-<uuid>` before uploading, while
+ * Cloudinary prepends the upload folder to the resulting public_id. Resolve
+ * those legacy queue IDs through the Admin Search API before retrying deletion.
+ */
+export async function resolveLegacyStyleImagePublicIds(publicIds: string[]): Promise<Map<string, string>> {
+  const wanted = new Set(publicIds.filter((id) => /^img-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)));
+  const resolved = new Map<string, string>();
+  if (!wanted.size) return resolved;
+  if (!cloudinaryIsConfigured()) throw new Error("Cloudinary credentials are not configured.");
+
+  let nextCursor: string | undefined;
+  do {
+    const body: Record<string, unknown> = {
+      expression: "resource_type:image AND public_id=picmee/styles/*",
+      max_results: 500,
+      sort_by: [{ public_id: "asc" }],
+    };
+    if (nextCursor) body.next_cursor = nextCursor;
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(env.cloudinaryCloudName)}/resources/search`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${env.cloudinaryApiKey}:${env.cloudinaryApiSecret}`).toString("base64")}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(12_000),
+    });
+    const result = await response.json() as {
+      resources?: Array<{ public_id?: string }>;
+      next_cursor?: string;
+      error?: { message?: string };
+    };
+    if (!response.ok) throw new Error(result.error?.message || `Cloudinary asset lookup failed (${response.status}).`);
+    for (const resource of result.resources ?? []) {
+      const fullPublicId = resource.public_id;
+      if (!fullPublicId?.startsWith("picmee/styles/")) continue;
+      const basename = fullPublicId.slice(fullPublicId.lastIndexOf("/") + 1);
+      if (wanted.has(basename)) resolved.set(basename, fullPublicId);
+    }
+    nextCursor = result.next_cursor;
+  } while (nextCursor && resolved.size < wanted.size);
+
+  return resolved;
+}
+
+function rootStyleImageId(source: unknown): string | undefined {
+  try {
+    if (typeof source !== "string") return;
+    const url = new URL(source);
+    if (url.hostname !== "res.cloudinary.com" || url.pathname.split("/")[1] !== env.cloudinaryCloudName) return;
+    const match = decodeURIComponent(url.pathname).match(/\/image\/upload\/(?:(?:[a-z]{1,3}_[^/]+|v[0-9]+)\/)*([^/]+)\.(?:png|jpe?g|webp|avif)$/i);
+    return match?.[1];
+  } catch { return; }
+}
+
+// Only exact assets from the original bundled catalogue may be removed from
+// the Cloudinary root. Other folders and arbitrary root files remain excluded.
+function legacyStyleIds() {
+  return new Set(bundledStyles.flatMap(style => [style.thumbnail, style.exampleBeforeUrl, style.exampleAfterUrl, ...style.previewImages])
+    .map(rootStyleImageId).filter((id): id is string => Boolean(id)));
+}
+export function legacyStyleImagePublicId(source: unknown): string | undefined {
+  const id = rootStyleImageId(source);
+  return id && legacyStyleIds().has(id) ? id : undefined;
+}
+export function isManagedStyleImageId(id: string): boolean {
+  return !id.includes("..") && (id.startsWith("picmee/styles/") || legacyStyleIds().has(id));
+}
+
+export function isManagedNotificationImageId(id: string): boolean {
+  return /^picmee\/notifications\/[a-zA-Z0-9_-]+$/.test(id);
+}
+export function isManagedWatermarkImageId(id: string): boolean {
+  return /^picmee\/branding\/watermarks\/logo-[0-9a-f-]{36}$/.test(id);
+}
+export async function destroyManagedWatermarkImage(publicId: string): Promise<void> {
+  if (!isManagedWatermarkImageId(publicId)) throw new Error("Invalid managed watermark image.");
+  return destroyManagedImage(publicId);
+}
+export function notificationImageId(source: unknown): string | undefined {
+  try {
+    const url = new URL(String(source));
+    if (url.hostname !== "res.cloudinary.com" || url.pathname.split("/")[1] !== env.cloudinaryCloudName || !url.pathname.includes("/image/upload/")) return;
+    const path = decodeURIComponent(url.pathname), index = path.indexOf("/picmee/notifications/");
+    const id = index >= 0 ? path.slice(index + 1).replace(/\.[^/.]+$/, "") : "";
+    return isManagedNotificationImageId(id) ? id : undefined;
+  } catch { return; }
+}
+export async function destroyManagedNotificationImage(publicId: string): Promise<void> {
+  if (!isManagedNotificationImageId(publicId)) throw new Error("Invalid managed notification image.");
+  return destroyManagedImage(publicId);
+}
+export async function destroyManagedStyleImage(publicId: string): Promise<void> {
+  if (!isManagedStyleImageId(publicId)) {
+    throw new Error("Refusing to delete an image outside the managed style catalogue.");
+  }
+  return destroyManagedImage(publicId);
+}
+async function destroyManagedImage(publicId: string): Promise<void> {
+  if (!cloudinaryIsConfigured()) throw new Error("Cloudinary credentials are not configured.");
+
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = signCloudinaryParameters({
+    invalidate: "true",
+    public_id: publicId,
+    timestamp: String(timestamp),
+  });
+  const body = new URLSearchParams({
+    invalidate: "true",
+    public_id: publicId,
+    timestamp: String(timestamp),
+    api_key: env.cloudinaryApiKey,
+    signature,
+  });
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(env.cloudinaryCloudName)}/image/destroy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+    signal: AbortSignal.timeout(12_000),
+  });
+  const result = await response.json() as { result?: string; error?: { message?: string } };
+  if (!response.ok || (result.result !== "ok" && result.result !== "not found")) {
+    throw new Error(result.error?.message || `Cloudinary image deletion failed (${response.status}).`);
+  }
+}
+
+function signCloudinaryParameters(parameters: Record<string, string>): string {
+  const serialized = Object.keys(parameters).sort()
+    .map((key) => `${key}=${parameters[key]}`)
+    .join("&");
+  return createHash("sha1").update(`${serialized}${env.cloudinaryApiSecret}`).digest("hex");
+}
+
+function slugify(value: string): string {
+  return value.normalize("NFKD").toLowerCase().trim()
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
